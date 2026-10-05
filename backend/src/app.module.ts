@@ -6,6 +6,9 @@ import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { GoalsModule } from './goals/goals.module';
+import { AiModule } from './ai/ai.module';
+import { StagesModule } from './stages/stages.module';
+import { ActivitiesModule } from './activities/activities.module';
 
 @Module({
   imports: [
@@ -25,6 +28,9 @@ import { GoalsModule } from './goals/goals.module';
     UsersModule,
     AuthModule,
     GoalsModule,
+    AiModule,
+    StagesModule,
+    ActivitiesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

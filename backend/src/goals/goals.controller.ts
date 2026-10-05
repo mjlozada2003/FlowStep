@@ -9,13 +9,13 @@ export class GoalsController {
   constructor(private readonly goalsService: GoalsService) {}
 
   @Post()
-  create(@Request() req, @Body() createGoalDto: CreateGoalDto) {
+  create(@Request() req: any, @Body() createGoalDto: CreateGoalDto) {
     // req.user viene del JwtStrategy (contiene userId)
     return this.goalsService.create(req.user.userId, createGoalDto);
   }
 
   @Get()
-  findAll(@Request() req) {
+  findAll(@Request() req: any) {
     return this.goalsService.findAllByUser(req.user.userId);
   }
 }

@@ -1,5 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { Stage } from '../../stages/entities/stage.entity';
 import { PriorityLevel, GoalStatus } from '../enums/goal.enum';
 
 @Entity('GOAL')
@@ -43,4 +44,7 @@ export class Goal {
 
   @DeleteDateColumn({ type: 'timestamp', nullable: true })
   deleted_at: Date;
+
+  @OneToMany(() => Stage, (stage) => stage.goal)
+  stages: Stage[];
 }
