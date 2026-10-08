@@ -1,17 +1,14 @@
 import { router } from 'expo-router';
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Screen } from '@/components/ui/Screen';
 import { Colors, Spacing } from '@/constants/theme';
 
 export default function RegisterScreen() {
   return (
-    <View style={styles.container}>
+    <Screen>
       <View style={styles.content}>
         <View style={styles.header}>
           <View style={styles.logo}>
@@ -26,62 +23,54 @@ export default function RegisterScreen() {
         </View>
 
         <View style={styles.form}>
-          <Text style={styles.label}>Nombre</Text>
-
-          <TextInput
-            style={styles.input}
+          <Input
+            label="Nombre"
             placeholder="Tu nombre"
-            placeholderTextColor={Colors.light.textSecondary}
+            autoCapitalize="words"
           />
 
-          <Text style={styles.label}>Correo electrónico</Text>
-
-          <TextInput
-            style={styles.input}
+          <Input
+            label="Correo electrónico"
             placeholder="tu correo@example.com"
-            placeholderTextColor={Colors.light.textSecondary}
             keyboardType="email-address"
             autoCapitalize="none"
           />
 
-          <Text style={styles.label}>Contraseña</Text>
-
-          <TextInput
-            style={styles.input}
+          <Input
+            label="Contraseña"
             placeholder="Crea una contraseña"
-            placeholderTextColor={Colors.light.textSecondary}
             secureTextEntry
           />
 
-          <Pressable style={styles.button}>
-            <Text style={styles.buttonText}>Crear cuenta</Text>
-          </Pressable>
+          <Button
+            title="Crear cuenta"
+            onPress={() => {}}
+          />
         </View>
 
         <View style={styles.loginContainer}>
-          <Text style={styles.loginText}>¿Ya tienes una cuenta?</Text>
+          <Text style={styles.loginText}>
+            ¿Ya tienes una cuenta?
+          </Text>
 
-          <Pressable onPress={() => router.back()}>
-            <Text style={styles.loginLink}>Iniciar sesión</Text>
-          </Pressable>
+          <Text
+            style={styles.loginLink}
+            onPress={() => router.back()}>
+            Iniciar sesión
+          </Text>
         </View>
       </View>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.light.background,
-    justifyContent: 'center',
-  },
-
   content: {
+    flex: 1,
+    justifyContent: 'center',
     width: '100%',
     maxWidth: 500,
     alignSelf: 'center',
-    paddingHorizontal: Spacing.four,
   },
 
   header: {
@@ -90,9 +79,9 @@ const styles = StyleSheet.create({
   },
 
   logo: {
-    width: 64,
-    height: 64,
-    borderRadius: 22,
+    width: 72,
+    height: 72,
+    borderRadius: 24,
     backgroundColor: Colors.light.primary,
     justifyContent: 'center',
     alignItems: 'center',
@@ -100,13 +89,13 @@ const styles = StyleSheet.create({
   },
 
   logoText: {
-    fontSize: 30,
+    fontSize: 36,
     fontWeight: '700',
     color: '#FFFFFF',
   },
 
   title: {
-    fontSize: 30,
+    fontSize: 32,
     fontWeight: '700',
     color: Colors.light.text,
     marginBottom: Spacing.two,
@@ -120,40 +109,7 @@ const styles = StyleSheet.create({
   },
 
   form: {
-    gap: Spacing.two,
-  },
-
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.light.text,
-    marginTop: Spacing.two,
-  },
-
-  input: {
-    height: 52,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-    borderRadius: 16,
-    backgroundColor: Colors.light.backgroundElement,
-    paddingHorizontal: Spacing.three,
-    fontSize: 16,
-    color: Colors.light.text,
-  },
-
-  button: {
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: Colors.light.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: Spacing.three,
-  },
-
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
+    gap: Spacing.three,
   },
 
   loginContainer: {
