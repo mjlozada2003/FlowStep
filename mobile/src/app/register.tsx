@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -7,6 +7,19 @@ import { Screen } from '@/components/ui/Screen';
 import { Colors, Spacing } from '@/constants/theme';
 
 export default function RegisterScreen() {
+  const handleRegister = () => {
+    Alert.alert(
+      '¡Cuenta creada!',
+      'Tu cuenta de FlowStep fue creada correctamente.',
+      [
+        {
+          text: 'Continuar',
+          onPress: () => router.replace('/login'),
+        },
+      ],
+    );
+  };
+
   return (
     <Screen>
       <View style={styles.content}>
@@ -44,7 +57,7 @@ export default function RegisterScreen() {
 
           <Button
             title="Crear cuenta"
-            onPress={() => {}}
+            onPress={handleRegister}
           />
         </View>
 

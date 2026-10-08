@@ -36,14 +36,14 @@ export default function HomeScreen() {
         {/* Encabezado */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Hola, Flo 👋</Text>
+            <Text style={styles.greeting}>Hola, Juan 👋</Text>
             <Text style={styles.question}>
               ¿Qué quieres lograr hoy?
             </Text>
           </View>
 
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>F</Text>
+            <Text style={styles.avatarText}>J</Text>
           </View>
         </View>
 
