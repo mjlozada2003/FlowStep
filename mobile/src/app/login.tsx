@@ -38,7 +38,7 @@ export default function LoginScreen() {
 
           <Button
             title="Iniciar sesión"
-            onPress={() => {}}
+            onPress={() => router.push('/home')}
           />
         </View>
 
