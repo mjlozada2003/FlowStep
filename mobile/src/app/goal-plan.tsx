@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -18,9 +19,18 @@ const mockStages = [
     name: 'Fundamentos',
     description: 'Aprende las bases necesarias para comenzar.',
     activities: [
-      'Aprender vocabulario básico',
-      'Practicar saludos y expresiones',
-      'Trabajar la pronunciación',
+      {
+        title: 'Aprender vocabulario básico',
+        status: 'completed',
+      },
+      {
+        title: 'Practicar saludos y expresiones',
+        status: 'pending',
+      },
+      {
+        title: 'Trabajar la pronunciación',
+        status: 'pending',
+      },
     ],
   },
   {
@@ -29,9 +39,18 @@ const mockStages = [
     name: 'Construir vocabulario',
     description: 'Amplía las palabras y expresiones que puedes utilizar.',
     activities: [
-      'Aprender palabras frecuentes',
-      'Practicar frases cotidianas',
-      'Repasar vocabulario',
+      {
+        title: 'Aprender palabras frecuentes',
+        status: 'pending',
+      },
+      {
+        title: 'Practicar frases cotidianas',
+        status: 'pending',
+      },
+      {
+        title: 'Repasar vocabulario',
+        status: 'pending',
+      },
     ],
   },
   {
@@ -40,19 +59,33 @@ const mockStages = [
     name: 'Conversación',
     description: 'Empieza a utilizar lo aprendido en situaciones reales.',
     activities: [
-      'Presentarte en francés',
-      'Practicar una conversación básica',
+      {
+        title: 'Presentarte en francés',
+        status: 'pending',
+      },
+      {
+        title: 'Practicar una conversación básica',
+        status: 'pending',
+      },
     ],
   },
 ];
 
 export default function GoalPlanScreen() {
+  const [expandedStage, setExpandedStage] = useState<number | null>(null);
+
+  const toggleStage = (stageId: number) => {
+    setExpandedStage(
+      expandedStage === stageId ? null : stageId,
+    );
+  };
+
   return (
     <Screen>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}>
-        
+
         {/* Encabezado */}
         <View style={styles.header}>
           <Pressable
@@ -112,55 +145,130 @@ export default function GoalPlanScreen() {
             </Text>
           </View>
 
-          {mockStages.map((stage, index) => (
-            <View key={stage.id} style={styles.stageWrapper}>
-              <Card style={styles.stageCard}>
-                <View style={styles.stageHeader}>
-                  <View style={styles.stageNumber}>
-                    <Text style={styles.stageNumberText}>
-                      {stage.number}
-                    </Text>
-                  </View>
+          {mockStages.map((stage, index) => {
+            const isExpanded = expandedStage === stage.id;
 
-                  <View style={styles.stageInfo}>
-                    <Text style={styles.stageTitle}>
-                      {stage.name}
-                    </Text>
+            return (
+              <View key={stage.id} style={styles.stageWrapper}>
+                <Pressable
+                  onPress={() => toggleStage(stage.id)}
+                  style={({ pressed }) => [
+                    styles.stagePressable,
+                    pressed && styles.pressed,
+                  ]}>
 
-                    <Text style={styles.stageDescription}>
-                      {stage.description}
-                    </Text>
-                  </View>
-                </View>
+                  <Card style={styles.stageCard}>
+                    <View style={styles.stageHeader}>
+                      <View style={styles.stageNumber}>
+                        <Text style={styles.stageNumberText}>
+                          {stage.number}
+                        </Text>
+                      </View>
 
-                <View style={styles.divider} />
+                      <View style={styles.stageInfo}>
+                        <Text style={styles.stageTitle}>
+                          {stage.name}
+                        </Text>
 
-                <Text style={styles.activitiesLabel}>
-                  Actividades
-                </Text>
+                        <Text style={styles.stageDescription}>
+                          {stage.description}
+                        </Text>
+                      </View>
 
-                <View style={styles.activities}>
-                  {stage.activities.map((activity, activityIndex) => (
-                    <View
-                      key={`${stage.id}-${activityIndex}`}
-                      style={styles.activityRow}>
-                      <View style={styles.activityBullet} />
-
-                      <Text style={styles.activityText}>
-                        {activity}
+                      <Text style={styles.expandIcon}>
+                        {isExpanded ? '⌃' : '⌄'}
                       </Text>
                     </View>
-                  ))}
-                </View>
-              </Card>
 
-              {index < mockStages.length - 1 && (
-                <View style={styles.connector}>
-                  <View style={styles.connectorLine} />
-                </View>
-              )}
-            </View>
-          ))}
+                    <View style={styles.stageFooter}>
+                      <Text style={styles.activitiesCount}>
+                        {stage.activities.length}{' '}
+                        {stage.activities.length === 1
+                          ? 'actividad'
+                          : 'actividades'}
+                      </Text>
+
+                      <Text style={styles.viewText}>
+                        {isExpanded
+                          ? 'Ocultar'
+                          : 'Ver actividades'}
+                      </Text>
+                    </View>
+
+                    {isExpanded && (
+                      <>
+                        <View style={styles.divider} />
+
+                        <View style={styles.activities}>
+                          {stage.activities.map(
+                            (activity, activityIndex) => {
+                              const completed =
+                                activity.status === 'completed';
+
+                              return (
+                                <Pressable
+                                  key={`${stage.id}-${activityIndex}`}
+                                  onPress={() => {}}
+                                  style={({ pressed }) => [
+                                    styles.activityRow,
+                                    pressed && styles.activityPressed,
+                                  ]}>
+
+                                  <View
+                                    style={[
+                                      styles.statusIcon,
+                                      completed &&
+                                        styles.statusIconCompleted,
+                                    ]}>
+                                    <Text
+                                      style={[
+                                        styles.statusIconText,
+                                        completed &&
+                                          styles.statusIconTextCompleted,
+                                      ]}>
+                                      {completed ? '✓' : '○'}
+                                    </Text>
+                                  </View>
+
+                                  <View style={styles.activityInfo}>
+                                    <Text
+                                      style={styles.activityText}>
+                                      {activity.title}
+                                    </Text>
+
+                                    <Text
+                                      style={[
+                                        styles.activityStatus,
+                                        completed &&
+                                          styles.activityStatusCompleted,
+                                      ]}>
+                                      {completed
+                                        ? 'Completada'
+                                        : 'Pendiente'}
+                                    </Text>
+                                  </View>
+
+                                  <Text style={styles.activityArrow}>
+                                    ›
+                                  </Text>
+                                </Pressable>
+                              );
+                            },
+                          )}
+                        </View>
+                      </>
+                    )}
+                  </Card>
+                </Pressable>
+
+                {index < mockStages.length - 1 && (
+                  <View style={styles.connector}>
+                    <View style={styles.connectorLine} />
+                  </View>
+                )}
+              </View>
+            );
+          })}
         </View>
 
         {/* Acción */}
@@ -312,6 +420,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  stagePressable: {
+    width: '100%',
+  },
+
   stageCard: {
     width: '100%',
     padding: Spacing.three,
@@ -355,43 +467,102 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
 
+  expandIcon: {
+    fontSize: 22,
+    color: Colors.light.primary,
+    marginLeft: Spacing.one,
+  },
+
+  stageFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: Spacing.three,
+  },
+
+  activitiesCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.light.textSecondary,
+  },
+
+  viewText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.light.primary,
+  },
+
   divider: {
     height: 1,
     backgroundColor: Colors.light.border,
     marginVertical: Spacing.three,
   },
 
-  activitiesLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.light.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: Spacing.two,
-  },
-
   activities: {
-    gap: Spacing.two,
+    gap: Spacing.one,
   },
 
   activityRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.one,
+    borderRadius: 12,
   },
 
-  activityBullet: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.light.secondary,
+  activityPressed: {
+    opacity: 0.65,
+  },
+
+  statusIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: Colors.light.backgroundSelected,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: Spacing.two,
   },
 
-  activityText: {
+  statusIconCompleted: {
+    backgroundColor: Colors.light.success,
+  },
+
+  statusIconText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.light.primary,
+  },
+
+  statusIconTextCompleted: {
+    color: '#FFFFFF',
+  },
+
+  activityInfo: {
     flex: 1,
+  },
+
+  activityText: {
     fontSize: 14,
+    fontWeight: '600',
     color: Colors.light.text,
     lineHeight: 20,
+  },
+
+  activityStatus: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 2,
+  },
+
+  activityStatusCompleted: {
+    color: Colors.light.success,
+  },
+
+  activityArrow: {
+    fontSize: 22,
+    color: Colors.light.textSecondary,
+    marginLeft: Spacing.two,
   },
 
   connector: {
