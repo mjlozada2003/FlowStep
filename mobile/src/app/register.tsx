@@ -25,13 +25,13 @@ export default function RegisterScreen() {
         <View style={styles.form}>
           <Input
             label="Nombre"
-            placeholder="Juan Perez"
+            placeholder="Juan Pérez"
             autoCapitalize="words"
           />
 
           <Input
             label="Correo electrónico"
-            placeholder="mi-correo@ejemplo.com"
+            placeholder="tu-correo@ejemplo.com"
             keyboardType="email-address"
             autoCapitalize="none"
           />

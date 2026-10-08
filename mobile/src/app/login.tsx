@@ -25,7 +25,7 @@ export default function LoginScreen() {
         <View style={styles.form}>
           <Input
             label="Correo electrónico"
-            placeholder="mi-correo@ejemplo.com"
+            placeholder="tu-correo@ejemplo.com"
             keyboardType="email-address"
             autoCapitalize="none"
           />
