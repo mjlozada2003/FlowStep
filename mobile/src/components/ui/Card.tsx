@@ -1,0 +1,27 @@
+import { ReactNode } from 'react';
+import { StyleSheet, View, ViewStyle } from 'react-native';
+
+import { Colors, Spacing } from '@/constants/theme';
+
+type CardProps = {
+  children: ReactNode;
+  style?: ViewStyle;
+};
+
+export function Card({ children, style }: CardProps) {
+  return (
+    <View style={[styles.card, style]}>
+      {children}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: Colors.light.backgroundElement,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    padding: Spacing.three,
+  },
+});
