@@ -81,4 +81,31 @@ export class GoalsService {
       order: { created_at: 'DESC' },
     });
   }
+
+  async findOne(goalId: number, userId: number): Promise<Goal | null> {
+    return this.goalsRepository.findOne({
+      where: { goal_id: goalId, user_id: userId },
+      relations: {
+        stages: {
+          activities: true,
+        },
+      },
+      order: {
+        stages: {
+          sort_order: 'ASC',
+          activities: {
+            sort_order: 'ASC',
+          },
+        },
+      },
+    });
+  }
+
+  async getProgress(goalId: number, userId: number): Promise<any> {
+    const result = await this.goalsRepository.query(
+      'SELECT * FROM v_goal_progress WHERE goal_id = $1 AND user_id = $2',
+      [goalId, userId],
+    );
+    return result[0] || null;
+  }
 }
