@@ -77,7 +77,7 @@ export default function HomeScreen() {
                 styles.primaryButton,
                 pressed && styles.pressed,
               ]}
-              onPress={() => {}}>
+              onPress={() => router.push('/goal-plan')}>
               <Text style={styles.primaryButtonText}>
                 Continuar
               </Text>
@@ -90,7 +90,7 @@ export default function HomeScreen() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Mis objetivos</Text>
 
-            <Pressable onPress={() => {}}>
+            <Pressable onPress={() => router.push('/goal-plan')}>
               <Text style={styles.seeAll}>Ver todos</Text>
             </Pressable>
           </View>

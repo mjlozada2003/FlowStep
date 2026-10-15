@@ -1,5 +1,14 @@
+
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -7,13 +16,41 @@ import { Input } from '@/components/ui/Input';
 import { Screen } from '@/components/ui/Screen';
 import { Colors, Spacing } from '@/constants/theme';
 
+type Priority = 'high' | 'medium' | 'low';
+
 export default function CreateGoalScreen() {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [priority, setPriority] = useState<Priority>('medium');
+
+  const handleCreatePlan = () => {
+    const cleanTitle = title.trim();
+
+    if (!cleanTitle) {
+      Alert.alert(
+        'Falta tu objetivo',
+        'Cuéntanos qué quieres conseguir para preparar tu plan.',
+      );
+      return;
+    }
+
+    router.push({
+      pathname: '/goal-plan',
+      params: {
+        title: cleanTitle,
+        description: description.trim(),
+        priority,
+      },
+    });
+  };
+
   return (
     <Screen>
       <ScrollView
         contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}>
-        
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Encabezado */}
         <View style={styles.header}>
           <Pressable
@@ -21,7 +58,8 @@ export default function CreateGoalScreen() {
             style={({ pressed }) => [
               styles.backButton,
               pressed && styles.pressed,
-            ]}>
+            ]}
+          >
             <Text style={styles.backText}>‹</Text>
           </Pressable>
 
@@ -40,20 +78,25 @@ export default function CreateGoalScreen() {
           <Input
             label="¿Qué quieres lograr?"
             placeholder="Ej. Quiero aprender francés"
+            value={title}
+            onChangeText={setTitle}
+            returnKeyType="next"
+            maxLength={120}
           />
 
           <View style={styles.descriptionContainer}>
-            <Text style={styles.label}>
-              Cuéntanos un poco más
-            </Text>
+            <Text style={styles.label}>Cuéntanos un poco más</Text>
 
             <Input
               label=""
               placeholder="Describe qué quieres conseguir, por qué es importante para ti o qué te gustaría poder hacer al finalizar."
+              value={description}
+              onChangeText={setDescription}
               multiline
               numberOfLines={5}
               textAlignVertical="top"
               style={styles.descriptionInput}
+              maxLength={500}
             />
           </View>
 
@@ -63,19 +106,12 @@ export default function CreateGoalScreen() {
               ¿Cuándo quieres lograrlo?
             </Text>
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.selectButton,
-                pressed && styles.pressed,
-              ]}>
+            <View style={styles.dateInfo}>
               <Text style={styles.selectIcon}>📅</Text>
-
-              <Text style={styles.selectText}>
-                Seleccionar fecha
+              <Text style={styles.dateInfoText}>
+                Puedes definir tu fecha más adelante.
               </Text>
-
-              <Text style={styles.chevron}>›</Text>
-            </Pressable>
+            </View>
           </View>
 
           {/* Prioridad */}
@@ -83,22 +119,64 @@ export default function CreateGoalScreen() {
             <Text style={styles.label}>Prioridad</Text>
 
             <View style={styles.priorityRow}>
-              <Pressable style={styles.priorityButton}>
-                <Text style={styles.priorityText}>Alta</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: priority === 'high' }}
+                onPress={() => setPriority('high')}
+                style={({ pressed }) => [
+                  styles.priorityButton,
+                  priority === 'high' && styles.prioritySelected,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.priorityText,
+                    priority === 'high' && styles.prioritySelectedText,
+                  ]}
+                >
+                  Alta
+                </Text>
               </Pressable>
 
               <Pressable
-                style={[
+                accessibilityRole="button"
+                accessibilityState={{ selected: priority === 'medium' }}
+                onPress={() => setPriority('medium')}
+                style={({ pressed }) => [
                   styles.priorityButton,
-                  styles.prioritySelected,
-                ]}>
-                <Text style={styles.prioritySelectedText}>
+                  priority === 'medium' && styles.prioritySelected,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.priorityText,
+                    priority === 'medium' && styles.prioritySelectedText,
+                  ]}
+                >
                   Media
                 </Text>
               </Pressable>
 
-              <Pressable style={styles.priorityButton}>
-                <Text style={styles.priorityText}>Baja</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: priority === 'low' }}
+                onPress={() => setPriority('low')}
+                style={({ pressed }) => [
+                  styles.priorityButton,
+                  priority === 'low' && styles.prioritySelected,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.priorityText,
+                    priority === 'low' && styles.prioritySelectedText,
+                  ]}
+                >
+                  Baja
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -116,8 +194,8 @@ export default function CreateGoalScreen() {
             </Text>
 
             <Text style={styles.infoDescription}>
-              Analizaremos tu objetivo para organizar las etapas y
-              actividades que necesitas para avanzar.
+              Organizaremos tu objetivo en etapas y actividades para
+              ayudarte a avanzar paso a paso.
             </Text>
           </View>
         </Card>
@@ -126,7 +204,7 @@ export default function CreateGoalScreen() {
         <View style={styles.action}>
           <Button
             title="Crear mi plan"
-            onPress={() => {}}
+            onPress={handleCreatePlan}
           />
 
           <Text style={styles.actionHint}>
@@ -207,7 +285,7 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
   },
 
-  selectButton: {
+  dateInfo: {
     minHeight: 52,
     borderWidth: 1,
     borderColor: Colors.light.border,
@@ -223,14 +301,9 @@ const styles = StyleSheet.create({
     marginRight: Spacing.two,
   },
 
-  selectText: {
+  dateInfoText: {
     flex: 1,
-    fontSize: 15,
-    color: Colors.light.textSecondary,
-  },
-
-  chevron: {
-    fontSize: 24,
+    fontSize: 14,
     color: Colors.light.textSecondary,
   },
 
