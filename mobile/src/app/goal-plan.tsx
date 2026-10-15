@@ -72,13 +72,63 @@ const mockStages = [
 ];
 
 export default function GoalPlanScreen() {
+  const [stages, setStages] = useState(mockStages);
   const [expandedStage, setExpandedStage] = useState<number | null>(null);
 
   const toggleStage = (stageId: number) => {
-    setExpandedStage(
-      expandedStage === stageId ? null : stageId,
+    setExpandedStage((currentStage) =>
+      currentStage === stageId ? null : stageId,
     );
   };
+
+  const toggleActivity = (
+    stageId: number,
+    activityIndex: number,
+  ) => {
+    setStages((currentStages) =>
+      currentStages.map((stage) => {
+        if (stage.id !== stageId) {
+          return stage;
+        }
+
+        return {
+          ...stage,
+          activities: stage.activities.map((activity, index) => {
+            if (index !== activityIndex) {
+              return activity;
+            }
+
+            return {
+              ...activity,
+              status:
+                activity.status === 'completed'
+                  ? 'pending'
+                  : 'completed',
+            };
+          }),
+        };
+      }),
+    );
+  };
+
+  const totalActivities = stages.reduce(
+    (total, stage) => total + stage.activities.length,
+    0,
+  );
+
+  const completedActivities = stages.reduce(
+    (total, stage) =>
+      total +
+      stage.activities.filter(
+        (activity) => activity.status === 'completed',
+      ).length,
+    0,
+  );
+
+  const progressPercentage =
+    totalActivities > 0
+      ? Math.round((completedActivities / totalActivities) * 100)
+      : 0;
 
   return (
     <Screen>
@@ -108,7 +158,7 @@ export default function GoalPlanScreen() {
           </View>
         </View>
 
-        {/* Progreso */}
+        {/* Progreso general */}
         <Card style={styles.progressCard}>
           <View style={styles.progressHeader}>
             <View>
@@ -117,15 +167,22 @@ export default function GoalPlanScreen() {
               </Text>
 
               <Text style={styles.progressDescription}>
-                Tu plan acaba de comenzar
+                {completedActivities} de {totalActivities} actividades completadas
               </Text>
             </View>
 
-            <Text style={styles.progressPercentage}>0%</Text>
+            <Text style={styles.progressPercentage}>
+              {progressPercentage}%
+            </Text>
           </View>
 
           <View style={styles.progressBackground}>
-            <View style={styles.progressBar} />
+            <View
+              style={[
+                styles.progressBar,
+                { width: `${progressPercentage}%` },
+              ]}
+            />
           </View>
         </Card>
 
@@ -141,23 +198,28 @@ export default function GoalPlanScreen() {
             </View>
 
             <Text style={styles.stageCount}>
-              {mockStages.length} etapas
+              {stages.length} etapas
             </Text>
           </View>
 
-          {mockStages.map((stage, index) => {
+          {stages.map((stage, index) => {
             const isExpanded = expandedStage === stage.id;
+
+            const completedStageActivities =
+              stage.activities.filter(
+                (activity) => activity.status === 'completed',
+              ).length;
 
             return (
               <View key={stage.id} style={styles.stageWrapper}>
-                <Pressable
-                  onPress={() => toggleStage(stage.id)}
-                  style={({ pressed }) => [
-                    styles.stagePressable,
-                    pressed && styles.pressed,
-                  ]}>
+                <Card style={styles.stageCard}>
+                  <Pressable
+                    onPress={() => toggleStage(stage.id)}
+                    style={({ pressed }) => [
+                      styles.stagePressable,
+                      pressed && styles.pressed,
+                    ]}>
 
-                  <Card style={styles.stageCard}>
                     <View style={styles.stageHeader}>
                       <View style={styles.stageNumber}>
                         <Text style={styles.stageNumberText}>
@@ -182,10 +244,8 @@ export default function GoalPlanScreen() {
 
                     <View style={styles.stageFooter}>
                       <Text style={styles.activitiesCount}>
-                        {stage.activities.length}{' '}
-                        {stage.activities.length === 1
-                          ? 'actividad'
-                          : 'actividades'}
+                        {completedStageActivities} de{' '}
+                        {stage.activities.length} completadas
                       </Text>
 
                       <Text style={styles.viewText}>
@@ -194,74 +254,84 @@ export default function GoalPlanScreen() {
                           : 'Ver actividades'}
                       </Text>
                     </View>
+                  </Pressable>
 
-                    {isExpanded && (
-                      <>
-                        <View style={styles.divider} />
+                  {isExpanded && (
+                    <>
+                      <View style={styles.divider} />
 
-                        <View style={styles.activities}>
-                          {stage.activities.map(
-                            (activity, activityIndex) => {
-                              const completed =
-                                activity.status === 'completed';
+                      <View style={styles.activities}>
+                        {stage.activities.map(
+                          (activity, activityIndex) => {
+                            const completed =
+                              activity.status === 'completed';
 
-                              return (
-                                <Pressable
-                                  key={`${stage.id}-${activityIndex}`}
-                                  onPress={() => {}}
-                                  style={({ pressed }) => [
-                                    styles.activityRow,
-                                    pressed && styles.activityPressed,
+                            return (
+                              <Pressable
+                                key={`${stage.id}-${activityIndex}`}
+                                onPress={() =>
+                                  toggleActivity(stage.id, activityIndex)
+                                }
+                                accessibilityRole="checkbox"
+                                accessibilityState={{
+                                  checked: completed,
+                                }}
+                                style={({ pressed }) => [
+                                  styles.activityRow,
+                                  pressed && styles.activityPressed,
+                                ]}>
+
+                                <View
+                                  style={[
+                                    styles.statusIcon,
+                                    completed &&
+                                      styles.statusIconCompleted,
                                   ]}>
-
-                                  <View
+                                  <Text
                                     style={[
-                                      styles.statusIcon,
+                                      styles.statusIconText,
                                       completed &&
-                                        styles.statusIconCompleted,
+                                        styles.statusIconTextCompleted,
                                     ]}>
-                                    <Text
-                                      style={[
-                                        styles.statusIconText,
-                                        completed &&
-                                          styles.statusIconTextCompleted,
-                                      ]}>
-                                      {completed ? '✓' : '○'}
-                                    </Text>
-                                  </View>
-
-                                  <View style={styles.activityInfo}>
-                                    <Text
-                                      style={styles.activityText}>
-                                      {activity.title}
-                                    </Text>
-
-                                    <Text
-                                      style={[
-                                        styles.activityStatus,
-                                        completed &&
-                                          styles.activityStatusCompleted,
-                                      ]}>
-                                      {completed
-                                        ? 'Completada'
-                                        : 'Pendiente'}
-                                    </Text>
-                                  </View>
-
-                                  <Text style={styles.activityArrow}>
-                                    ›
+                                    {completed ? '✓' : '○'}
                                   </Text>
-                                </Pressable>
-                              );
-                            },
-                          )}
-                        </View>
-                      </>
-                    )}
-                  </Card>
-                </Pressable>
+                                </View>
 
-                {index < mockStages.length - 1 && (
+                                <View style={styles.activityInfo}>
+                                  <Text
+                                    style={[
+                                      styles.activityText,
+                                      completed &&
+                                        styles.activityTextCompleted,
+                                    ]}>
+                                    {activity.title}
+                                  </Text>
+
+                                  <Text
+                                    style={[
+                                      styles.activityStatus,
+                                      completed &&
+                                        styles.activityStatusCompleted,
+                                    ]}>
+                                    {completed
+                                      ? 'Completada'
+                                      : 'Pendiente'}
+                                  </Text>
+                                </View>
+
+                                <Text style={styles.activityArrow}>
+                                  ›
+                                </Text>
+                              </Pressable>
+                            );
+                          },
+                        )}
+                      </View>
+                    </>
+                  )}
+                </Card>
+
+                {index < stages.length - 1 && (
                   <View style={styles.connector}>
                     <View style={styles.connectorLine} />
                   </View>
@@ -382,7 +452,6 @@ const styles = StyleSheet.create({
   },
 
   progressBar: {
-    width: '0%',
     height: '100%',
     borderRadius: 4,
     backgroundColor: Colors.light.primary,
@@ -547,6 +616,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.light.text,
     lineHeight: 20,
+  },
+
+  activityTextCompleted: {
+    textDecorationLine: 'line-through',
+    opacity: 0.75,
   },
 
   activityStatus: {
