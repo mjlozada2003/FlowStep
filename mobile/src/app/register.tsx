@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -13,9 +14,57 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Screen } from '@/components/ui/Screen';
 import { Colors, Spacing } from '@/constants/theme';
+import { registerDemoUser } from '@/services/demoAuth';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function RegisterScreen() {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  const [errors, setErrors] = useState<{
+    name?: string;
+    email?: string;
+    password?: string;
+  }>({});
+
   const handleRegister = () => {
+    const newErrors: typeof errors = {};
+
+    if (!name.trim()) {
+      newErrors.name = 'Ingresa tu nombre.';
+    }
+
+    if (!email.trim()) {
+      newErrors.email = 'Ingresa tu correo electrónico.';
+    } else if (!EMAIL_REGEX.test(email.trim())) {
+      newErrors.email = 'Ingresa un correo electrónico válido.';
+    }
+
+    if (!password) {
+      newErrors.password = 'Ingresa una contraseña.';
+    }
+
+    setErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      return;
+    }
+
+    const result = registerDemoUser({
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      password,
+    });
+
+    if (result === 'exists') {
+      setErrors({
+        email: 'Este correo ya está registrado. Inicia sesión.',
+      });
+      return;
+    }
+
     Alert.alert(
       '¡Cuenta creada!',
       'Tu cuenta de FlowStep fue creada correctamente.',
@@ -54,24 +103,65 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.form}>
-              <Input
-                label="Nombre"
-                placeholder="Juan Pérez"
-                autoCapitalize="words"
-              />
+              <View style={styles.field}>
+                <Input
+                  label="Nombre"
+                  placeholder="Juan Pérez"
+                  autoCapitalize="words"
+                  value={name}
+                  onChangeText={(value) => {
+                    setName(value);
+                    setErrors((current) => ({
+                      ...current,
+                      name: undefined,
+                    }));
+                  }}
+                />
+                {errors.name ? (
+                  <Text style={styles.errorText}>{errors.name}</Text>
+                ) : null}
+              </View>
 
-              <Input
-                label="Correo electrónico"
-                placeholder="tu-correo@ejemplo.com"
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
+              <View style={styles.field}>
+                <Input
+                  label="Correo electrónico"
+                  placeholder="tu-correo@ejemplo.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  value={email}
+                  onChangeText={(value) => {
+                    setEmail(value);
+                    setErrors((current) => ({
+                      ...current,
+                      email: undefined,
+                    }));
+                  }}
+                />
+                {errors.email ? (
+                  <Text style={styles.errorText}>{errors.email}</Text>
+                ) : null}
+              </View>
 
-              <Input
-                label="Contraseña"
-                placeholder="Crea una contraseña"
-                secureTextEntry
-              />
+              <View style={styles.field}>
+                <Input
+                  label="Contraseña"
+                  placeholder="Crea una contraseña"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  value={password}
+                  onChangeText={(value) => {
+                    setPassword(value);
+                    setErrors((current) => ({
+                      ...current,
+                      password: undefined,
+                    }));
+                  }}
+                />
+                {errors.password ? (
+                  <Text style={styles.errorText}>{errors.password}</Text>
+                ) : null}
+              </View>
 
               <Button
                 title="Crear cuenta"
@@ -157,6 +247,15 @@ const styles = StyleSheet.create({
 
   form: {
     gap: Spacing.three,
+  },
+
+  field: {
+    gap: Spacing.one,
+  },
+
+  errorText: {
+    color: Colors.light.error,
+    fontSize: 13,
   },
 
   loginContainer: {

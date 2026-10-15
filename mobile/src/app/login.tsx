@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -13,8 +14,51 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Screen } from '@/components/ui/Screen';
 import { Colors, Spacing } from '@/constants/theme';
+import { validateDemoCredentials } from '@/services/demoAuth';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function LoginScreen() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  const [errors, setErrors] = useState<{
+    email?: string;
+    password?: string;
+    form?: string;
+  }>({});
+
+  const handleLogin = () => {
+    const newErrors: typeof errors = {};
+
+    if (!email.trim()) {
+      newErrors.email = 'Ingresa tu correo electrónico.';
+    } else if (!EMAIL_REGEX.test(email.trim())) {
+      newErrors.email = 'Ingresa un correo electrónico válido.';
+    }
+
+    if (!password) {
+      newErrors.password = 'Ingresa tu contraseña.';
+    }
+
+    setErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      return;
+    }
+
+    const isValid = validateDemoCredentials(email, password);
+
+    if (!isValid) {
+      setErrors({
+        form: 'Correo o contraseña incorrectos.',
+      });
+      return;
+    }
+
+    router.replace('/home');
+  };
+
   return (
     <Screen>
       <KeyboardAvoidingView
@@ -41,23 +85,67 @@ export default function LoginScreen() {
             </View>
 
             <View style={styles.form}>
-              <Input
-                label="Correo electrónico"
-                placeholder="tu-correo@ejemplo.com"
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
+              <View style={styles.field}>
+                <Input
+                  label="Correo electrónico"
+                  placeholder="tu-correo@ejemplo.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  value={email}
+                  onChangeText={(value) => {
+                    setEmail(value);
+                    setErrors((current) => ({
+                      ...current,
+                      email: undefined,
+                      form: undefined,
+                    }));
+                  }}
+                />
+                {errors.email ? (
+                  <Text style={styles.errorText}>{errors.email}</Text>
+                ) : null}
+              </View>
 
-              <Input
-                label="Contraseña"
-                placeholder="Tu contraseña"
-                secureTextEntry
-              />
+              <View style={styles.field}>
+                <Input
+                  label="Contraseña"
+                  placeholder="Tu contraseña"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  value={password}
+                  onChangeText={(value) => {
+                    setPassword(value);
+                    setErrors((current) => ({
+                      ...current,
+                      password: undefined,
+                      form: undefined,
+                    }));
+                  }}
+                />
+                {errors.password ? (
+                  <Text style={styles.errorText}>{errors.password}</Text>
+                ) : null}
+              </View>
+
+              {errors.form ? (
+                <Text style={styles.errorText}>{errors.form}</Text>
+              ) : null}
 
               <Button
                 title="Iniciar sesión"
-                onPress={() => router.push('/home')}
+                onPress={handleLogin}
               />
+            </View>
+
+            <View style={styles.demoContainer}>
+              <Text style={styles.demoTitle}>Acceso de demostración</Text>
+              <Text style={styles.demoText}>
+                Correo: demo@flowstep.app
+              </Text>
+              <Text style={styles.demoText}>
+                Contraseña: FlowStep123!
+              </Text>
             </View>
 
             <View style={styles.registerContainer}>
@@ -135,6 +223,35 @@ const styles = StyleSheet.create({
 
   form: {
     gap: Spacing.three,
+  },
+
+  field: {
+    gap: Spacing.one,
+  },
+
+  errorText: {
+    color: Colors.light.error,
+    fontSize: 13,
+  },
+
+  demoContainer: {
+    alignItems: 'center',
+    marginTop: Spacing.four,
+    padding: Spacing.three,
+    borderRadius: 16,
+    backgroundColor: Colors.light.backgroundElement,
+    gap: Spacing.one,
+  },
+
+  demoTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.light.text,
+  },
+
+  demoText: {
+    fontSize: 13,
+    color: Colors.light.textSecondary,
   },
 
   registerContainer: {
