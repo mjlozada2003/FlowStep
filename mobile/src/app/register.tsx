@@ -164,7 +164,7 @@ export default function RegisterScreen() {
 
               <Text
                 style={styles.loginLink}
-                onPress={() => router.back()}
+                onPress={() => router.push('/login')}
               >
                 Iniciar sesión
               </Text>
