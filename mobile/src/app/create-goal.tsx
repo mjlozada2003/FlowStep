@@ -2,13 +2,17 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
-  Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+
+import DateTimePicker, {
+  DateTimePickerChangeEvent,
+} from '@react-native-community/datetimepicker';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -22,15 +26,40 @@ export default function CreateGoalScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<Priority>('medium');
+  const [targetDate, setTargetDate] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const formattedDate = targetDate
+    ? targetDate.toLocaleDateString('es-BO', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      })
+    : '';
+
+  const handleDateValueChange = (
+    event: DateTimePickerChangeEvent,
+    selectedDate: Date,
+  ) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+
+    setTargetDate(selectedDate);
+  };
+
+  const handleDateDismiss = () => {
+    setShowDatePicker(false);
+  };
 
   const handleCreatePlan = () => {
     const cleanTitle = title.trim();
 
     if (!cleanTitle) {
-      Alert.alert(
-        'Falta tu objetivo',
-        'Cuéntanos qué quieres conseguir para preparar tu plan.',
-      );
+      alert('Cuéntanos qué quieres conseguir para preparar tu plan.');
       return;
     }
 
@@ -40,6 +69,13 @@ export default function CreateGoalScreen() {
         title: cleanTitle,
         description: description.trim(),
         priority,
+        targetDate: targetDate
+          ? [
+              targetDate.getFullYear(),
+              String(targetDate.getMonth() + 1).padStart(2, '0'),
+              String(targetDate.getDate()).padStart(2, '0'),
+            ].join('-')
+          : '',
       },
     });
   };
@@ -59,6 +95,8 @@ export default function CreateGoalScreen() {
               styles.backButton,
               pressed && styles.pressed,
             ]}
+            accessibilityRole="button"
+            accessibilityLabel="Volver"
           >
             <Text style={styles.backText}>‹</Text>
           </Pressable>
@@ -100,18 +138,84 @@ export default function CreateGoalScreen() {
             />
           </View>
 
-          {/* Fecha */}
+          {/* Fecha objetivo */}
           <View style={styles.field}>
             <Text style={styles.label}>
               ¿Cuándo quieres lograrlo?
             </Text>
 
-            <View style={styles.dateInfo}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                targetDate
+                  ? `Fecha objetivo: ${formattedDate}`
+                  : 'Seleccionar fecha objetivo'
+              }
+              onPress={() => setShowDatePicker(true)}
+              style={({ pressed }) => [
+                styles.dateButton,
+                pressed && styles.pressed,
+              ]}
+            >
               <Text style={styles.selectIcon}>📅</Text>
-              <Text style={styles.dateInfoText}>
-                Puedes definir tu fecha más adelante.
+
+              <Text
+                style={[
+                  styles.dateButtonText,
+                  !targetDate && styles.datePlaceholder,
+                ]}
+              >
+                {targetDate ? formattedDate : 'Seleccionar fecha'}
               </Text>
-            </View>
+
+              <Text style={styles.calendarArrow}>›</Text>
+            </Pressable>
+
+            {targetDate ? (
+              <Pressable
+                onPress={() => setTargetDate(null)}
+                style={styles.clearDateButton}
+                accessibilityRole="button"
+              >
+                <Text style={styles.clearDateText}>Quitar fecha</Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.dateHint}>
+                Este campo es opcional. Puedes elegir una fecha más adelante.
+              </Text>
+            )}
+
+            {showDatePicker && Platform.OS === 'ios' ? (
+              <View style={styles.datePickerContainer}>
+                <DateTimePicker
+                  value={targetDate ?? today}
+                  mode="date"
+                  display="spinner"
+                  minimumDate={today}
+                  onValueChange={handleDateValueChange}
+                  onDismiss={handleDateDismiss}
+                  locale="es-BO"
+                />
+
+                <Pressable
+                  style={styles.dateDoneButton}
+                  onPress={() => setShowDatePicker(false)}
+                >
+                  <Text style={styles.dateDoneText}>Listo</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {showDatePicker && Platform.OS === 'android' ? (
+              <DateTimePicker
+                value={targetDate ?? today}
+                mode="date"
+                display="default"
+                minimumDate={today}
+                onValueChange={handleDateValueChange}
+                onDismiss={handleDateDismiss}
+              />
+            ) : null}
           </View>
 
           {/* Prioridad */}
@@ -285,7 +389,7 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
   },
 
-  dateInfo: {
+  dateButton: {
     minHeight: 52,
     borderWidth: 1,
     borderColor: Colors.light.border,
@@ -301,10 +405,60 @@ const styles = StyleSheet.create({
     marginRight: Spacing.two,
   },
 
-  dateInfoText: {
+  dateButtonText: {
     flex: 1,
     fontSize: 14,
+    color: Colors.light.text,
+  },
+
+  datePlaceholder: {
     color: Colors.light.textSecondary,
+  },
+
+  calendarArrow: {
+    fontSize: 25,
+    color: Colors.light.textSecondary,
+    marginLeft: Spacing.two,
+  },
+
+  dateHint: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    lineHeight: 18,
+  },
+
+  clearDateButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: Spacing.one,
+  },
+
+  clearDateText: {
+    color: Colors.light.primary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  datePickerContainer: {
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    borderRadius: 16,
+    backgroundColor: Colors.light.backgroundElement,
+    padding: Spacing.two,
+    overflow: 'hidden',
+  },
+
+  dateDoneButton: {
+    alignSelf: 'flex-end',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: 12,
+    backgroundColor: Colors.light.backgroundSelected,
+  },
+
+  dateDoneText: {
+    color: Colors.light.primary,
+    fontSize: 14,
+    fontWeight: '700',
   },
 
   priorityRow: {
