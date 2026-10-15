@@ -1,6 +1,6 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * Theme configuration for FlowStep.
+ * Includes colors, typography, spacing and layout constants.
  */
 
 import '@/global.css';
@@ -9,40 +9,66 @@ import { Platform } from 'react-native';
 
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    // Base
+    text: '#123061',
+    background: '#F8F3E9',
+    backgroundElement: '#EBF1F8',
+    backgroundSelected: '#D2EDF2',
+    textSecondary: '#6F7D91',
+
+    // Brand
+    primary: '#4D8BC6',
+    secondary: '#78B9D6',
+
+    // UI
+    border: '#DCCEC1',
+
+    // States
+    success: '#69A98B',
+    warning: '#E7A66B',
+    error: '#D97A7A',
   },
+
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    // Base
+    text: '#F8F3E9',
+    background: '#10233F',
+    backgroundElement: '#183557',
+    backgroundSelected: '#244B70',
+    textSecondary: '#ACB5C4',
+
+    // Brand
+    primary: '#78B9D6',
+    secondary: '#4D8BC6',
+
+    // UI
+    border: '#49627D',
+
+    // States
+    success: '#78B99A',
+    warning: '#E7B77F',
+    error: '#E28C8C',
   },
 } as const;
 
-export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
+export type ThemeColor =
+  keyof typeof Colors.light & keyof typeof Colors.dark;
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
     sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
     rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
+
   default: {
     sans: 'normal',
     serif: 'serif',
     rounded: 'normal',
     mono: 'monospace',
   },
+
   web: {
     sans: 'var(--font-display)',
     serif: 'var(--font-serif)',
@@ -61,5 +87,9 @@ export const Spacing = {
   six: 64,
 } as const;
 
-export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
+export const BottomTabInset = Platform.select({
+  ios: 50,
+  android: 80,
+}) ?? 0;
+
 export const MaxContentWidth = 800;
