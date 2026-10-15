@@ -85,51 +85,43 @@ export default function LoginScreen() {
             </View>
 
             <View style={styles.form}>
-              <View style={styles.field}>
-                <Input
-                  label="Correo electrónico"
-                  placeholder="tu-correo@ejemplo.com"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  value={email}
-                  onChangeText={(value) => {
-                    setEmail(value);
-                    setErrors((current) => ({
-                      ...current,
-                      email: undefined,
-                      form: undefined,
-                    }));
-                  }}
-                />
-                {errors.email ? (
-                  <Text style={styles.errorText}>{errors.email}</Text>
-                ) : null}
-              </View>
+              <Input
+                label="Correo electrónico"
+                placeholder="tu-correo@ejemplo.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={email}
+                error={errors.email}
+                onChangeText={(value) => {
+                  setEmail(value);
+                  setErrors((current) => ({
+                    ...current,
+                    email: undefined,
+                    form: undefined,
+                  }));
+                }}
+              />
 
-              <View style={styles.field}>
-                <Input
-                  label="Contraseña"
-                  placeholder="Tu contraseña"
-                  secureTextEntry
-                  autoCapitalize="none"
-                  value={password}
-                  onChangeText={(value) => {
-                    setPassword(value);
-                    setErrors((current) => ({
-                      ...current,
-                      password: undefined,
-                      form: undefined,
-                    }));
-                  }}
-                />
-                {errors.password ? (
-                  <Text style={styles.errorText}>{errors.password}</Text>
-                ) : null}
-              </View>
+              <Input
+                label="Contraseña"
+                placeholder="Tu contraseña"
+                secureTextEntry
+                autoCapitalize="none"
+                value={password}
+                error={errors.password}
+                onChangeText={(value) => {
+                  setPassword(value);
+                  setErrors((current) => ({
+                    ...current,
+                    password: undefined,
+                    form: undefined,
+                  }));
+                }}
+              />
 
               {errors.form ? (
-                <Text style={styles.errorText}>{errors.form}</Text>
+                <Text style={styles.formError}>{errors.form}</Text>
               ) : null}
 
               <Button
@@ -225,13 +217,10 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
 
-  field: {
-    gap: Spacing.one,
-  },
-
-  errorText: {
+  formError: {
     color: Colors.light.error,
     fontSize: 13,
+    lineHeight: 18,
   },
 
   demoContainer: {
