@@ -1,5 +1,13 @@
 import { router } from 'expo-router';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -22,68 +30,94 @@ export default function RegisterScreen() {
 
   return (
     <Screen>
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <View style={styles.logo}>
-            <Text style={styles.logoText}>F</Text>
+      <KeyboardAvoidingView
+        style={styles.keyboardContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.content}>
+            <View style={styles.header}>
+              <View style={styles.logo}>
+                <Text style={styles.logoText}>F</Text>
+              </View>
+
+              <Text style={styles.title}>Crear cuenta</Text>
+
+              <Text style={styles.subtitle}>
+                Empieza a convertir tus objetivos en pasos concretos.
+              </Text>
+            </View>
+
+            <View style={styles.form}>
+              <Input
+                label="Nombre"
+                placeholder="Juan Pérez"
+                autoCapitalize="words"
+              />
+
+              <Input
+                label="Correo electrónico"
+                placeholder="tu-correo@ejemplo.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+
+              <Input
+                label="Contraseña"
+                placeholder="Crea una contraseña"
+                secureTextEntry
+              />
+
+              <Button
+                title="Crear cuenta"
+                onPress={handleRegister}
+              />
+            </View>
+
+            <View style={styles.loginContainer}>
+              <Text style={styles.loginText}>
+                ¿Ya tienes una cuenta?
+              </Text>
+
+              <Text
+                style={styles.loginLink}
+                onPress={() => router.back()}
+              >
+                Iniciar sesión
+              </Text>
+            </View>
           </View>
-
-          <Text style={styles.title}>Crear cuenta</Text>
-
-          <Text style={styles.subtitle}>
-            Empieza a convertir tus objetivos en pasos concretos.
-          </Text>
-        </View>
-
-        <View style={styles.form}>
-          <Input
-            label="Nombre"
-            placeholder="Juan Pérez"
-            autoCapitalize="words"
-          />
-
-          <Input
-            label="Correo electrónico"
-            placeholder="tu-correo@ejemplo.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-
-          <Input
-            label="Contraseña"
-            placeholder="Crea una contraseña"
-            secureTextEntry
-          />
-
-          <Button
-            title="Crear cuenta"
-            onPress={handleRegister}
-          />
-        </View>
-
-        <View style={styles.loginContainer}>
-          <Text style={styles.loginText}>
-            ¿Ya tienes una cuenta?
-          </Text>
-
-          <Text
-            style={styles.loginLink}
-            onPress={() => router.back()}>
-            Iniciar sesión
-          </Text>
-        </View>
-      </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  content: {
+  keyboardContainer: {
     flex: 1,
+  },
+
+  scroll: {
+    flex: 1,
+  },
+
+  scrollContent: {
+    flexGrow: 1,
+  },
+
+  content: {
+    flexGrow: 1,
     justifyContent: 'center',
     width: '100%',
     maxWidth: 500,
     alignSelf: 'center',
+    paddingVertical: Spacing.four,
   },
 
   header: {

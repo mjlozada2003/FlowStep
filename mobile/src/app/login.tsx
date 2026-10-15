@@ -1,5 +1,13 @@
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -9,60 +17,85 @@ import { Colors, Spacing } from '@/constants/theme';
 export default function LoginScreen() {
   return (
     <Screen>
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <View style={styles.logo}>
-            <Text style={styles.logoText}>F</Text>
+      <KeyboardAvoidingView
+        style={styles.keyboardContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.content}>
+            <View style={styles.header}>
+              <View style={styles.logo}>
+                <Text style={styles.logoText}>F</Text>
+              </View>
+
+              <Text style={styles.title}>FlowStep</Text>
+
+              <Text style={styles.subtitle}>
+                Convierte tus metas en pasos que puedes lograr.
+              </Text>
+            </View>
+
+            <View style={styles.form}>
+              <Input
+                label="Correo electrónico"
+                placeholder="tu-correo@ejemplo.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+
+              <Input
+                label="Contraseña"
+                placeholder="Tu contraseña"
+                secureTextEntry
+              />
+
+              <Button
+                title="Iniciar sesión"
+                onPress={() => router.push('/home')}
+              />
+            </View>
+
+            <View style={styles.registerContainer}>
+              <Text style={styles.registerText}>
+                ¿No tienes una cuenta?
+              </Text>
+
+              <Pressable onPress={() => router.push('/register')}>
+                <Text style={styles.registerLink}>Registrarse</Text>
+              </Pressable>
+            </View>
           </View>
-
-          <Text style={styles.title}>FlowStep</Text>
-
-          <Text style={styles.subtitle}>
-            Convierte tus metas en pasos que puedes lograr.
-          </Text>
-        </View>
-
-        <View style={styles.form}>
-          <Input
-            label="Correo electrónico"
-            placeholder="tu-correo@ejemplo.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-
-          <Input
-            label="Contraseña"
-            placeholder="Tu contraseña"
-            secureTextEntry
-          />
-
-          <Button
-            title="Iniciar sesión"
-            onPress={() => router.push('/home')}
-          />
-        </View>
-
-        <View style={styles.registerContainer}>
-          <Text style={styles.registerText}>
-            ¿No tienes una cuenta?
-          </Text>
-
-          <Pressable onPress={() => router.push('/register')}>
-            <Text style={styles.registerLink}>Registrarse</Text>
-          </Pressable>
-        </View>
-      </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  content: {
+  keyboardContainer: {
     flex: 1,
+  },
+
+  scroll: {
+    flex: 1,
+  },
+
+  scrollContent: {
+    flexGrow: 1,
+  },
+
+  content: {
+    flexGrow: 1,
     justifyContent: 'center',
     width: '100%',
     maxWidth: 500,
     alignSelf: 'center',
+    paddingVertical: Spacing.four,
   },
 
   header: {
