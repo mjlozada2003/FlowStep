@@ -177,7 +177,7 @@ export default function LoginScreen() {
 
                 <TouchableOpacity
                   style={styles.submitButton}
-                  onPress={handleLogin}
+                  onPress={() => router.push('/create-goal')}
                   activeOpacity={0.85}
                 >
                   <Text style={styles.submitButtonText}>Iniciar sesión</Text>
