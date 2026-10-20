@@ -21,40 +21,71 @@ interface Activity {
   completed: boolean;
 }
 
-const initialActivities: Activity[] = [
+const STAGE_DATA: Record<
+  string,
   {
-    id: 1,
-    title: 'Introducción a React',
-    duration: '20 min',
-    type: 'Lectura',
-    completed: false,
+    badge: string;
+    title: string;
+    description: string;
+    activities: Activity[];
+  }
+> = {
+  '1': {
+    badge: 'ETAPA 01',
+    title: 'Aprendizaje',
+    description:
+      'Construye las bases que necesitas para empezar a desarrollar con confianza.',
+    activities: [
+      {
+        id: 1,
+        title: 'Introducción a React',
+        duration: '20 min',
+        type: 'Lectura',
+        completed: false,
+      },
+      {
+        id: 2,
+        title: 'Componentes de React',
+        duration: '30 min',
+        type: 'Práctica',
+        completed: false,
+      },
+      {
+        id: 3,
+        title: 'Hooks',
+        duration: '30 min',
+        type: 'Práctica',
+        completed: false,
+      },
+      {
+        id: 4,
+        title: 'Consumo de APIs',
+        duration: '35 min',
+        type: 'Práctica',
+        completed: false,
+      },
+    ],
   },
-  {
-    id: 2,
-    title: 'Componentes de React',
-    duration: '30 min',
-    type: 'Práctica',
-    completed: false,
+  '2': {
+    badge: 'ETAPA 02',
+    title: 'Desarrollo',
+    description: 'Aplica tus conocimientos construyendo los módulos principales de tu meta.',
+    activities: [],
   },
-  {
-    id: 3,
-    title: 'Hooks',
-    duration: '30 min',
-    type: 'Práctica',
-    completed: false,
+  '3': {
+    badge: 'ETAPA 03',
+    title: 'Pruebas',
+    description: 'Refina, valida y asegura la calidad del resultado final.',
+    activities: [],
   },
-  {
-    id: 4,
-    title: 'Consumo de APIs',
-    duration: '35 min',
-    type: 'Práctica',
-    completed: false,
-  },
-];
+};
 
 export default function StageDetailScreen() {
   const params = useLocalSearchParams<{ stageId?: string; title?: string }>();
-  const [activities, setActivities] = useState<Activity[]>(initialActivities);
+  const currentStageId = params.stageId || '1';
+  const stageInfo = STAGE_DATA[currentStageId] || STAGE_DATA['1'];
+
+  const [activities, setActivities] = useState<Activity[]>(stageInfo.activities);
 
   const toggleActivity = (id: number) => {
     setActivities((prev) =>
@@ -66,7 +97,8 @@ export default function StageDetailScreen() {
 
   const completedCount = activities.filter((a) => a.completed).length;
   const totalCount = activities.length;
-  const progressPercent = Math.round((completedCount / totalCount) * 100);
+  const progressPercent =
+    totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   return (
     <Screen style={styles.screen}>
@@ -86,12 +118,9 @@ export default function StageDetailScreen() {
         </View>
 
         <View style={styles.headerHero}>
-          <Text style={styles.stageBadge}>ETAPA 01</Text>
-          <Text style={styles.stageTitle}>Aprendizaje</Text>
-          <Text style={styles.stageSubtitle}>
-            Construye las bases que necesitas para empezar a desarrollar con
-            confianza.
-          </Text>
+          <Text style={styles.stageBadge}>{stageInfo.badge}</Text>
+          <Text style={styles.stageTitle}>{stageInfo.title}</Text>
+          <Text style={styles.stageSubtitle}>{stageInfo.description}</Text>
 
           <View style={styles.progressRow}>
             <Text style={styles.progressLabel}>Progreso de la etapa</Text>
@@ -108,55 +137,69 @@ export default function StageDetailScreen() {
         </View>
 
         <View style={styles.bodyContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Tus actividades</Text>
-            <Text style={styles.counterText}>
-              {completedCount} de {totalCount} completadas
-            </Text>
-          </View>
+          {totalCount > 0 ? (
+            <>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Tus actividades</Text>
+                <Text style={styles.counterText}>
+                  {completedCount} de {totalCount} completadas
+                </Text>
+              </View>
 
-          <View style={styles.activitiesList}>
-            {activities.map((activity) => (
-              <Pressable
-                key={activity.id}
-                style={[
-                  styles.activityCard,
-                  activity.completed && styles.activityCardCompleted,
-                ]}
-                onPress={() => toggleActivity(activity.id)}
-              >
-                <View
-                  style={[
-                    styles.checkbox,
-                    activity.completed && styles.checkboxCompleted,
-                  ]}
-                >
-                  {activity.completed ? (
-                    <Feather name="check" size={14} color="#FFFFFF" />
-                  ) : null}
-                </View>
-
-                <View style={styles.activityInfo}>
-                  <Text style={styles.activityBadge}>
-                    ACTIVIDAD {activity.id}
-                  </Text>
-                  <Text
+              <View style={styles.activitiesList}>
+                {activities.map((activity) => (
+                  <Pressable
+                    key={activity.id}
                     style={[
-                      styles.activityTitle,
-                      activity.completed && styles.activityTitleCompleted,
+                      styles.activityCard,
+                      activity.completed && styles.activityCardCompleted,
                     ]}
+                    onPress={() => toggleActivity(activity.id)}
                   >
-                    {activity.title}
-                  </Text>
-                  <Text style={styles.activityMeta}>
-                    {activity.duration} · {activity.type}
-                  </Text>
-                </View>
+                    <View
+                      style={[
+                        styles.checkbox,
+                        activity.completed && styles.checkboxCompleted,
+                      ]}
+                    >
+                      {activity.completed ? (
+                        <Feather name="check" size={14} color="#FFFFFF" />
+                      ) : null}
+                    </View>
 
-                <Feather name="chevron-right" size={18} color="#94A3B8" />
-              </Pressable>
-            ))}
-          </View>
+                    <View style={styles.activityInfo}>
+                      <Text style={styles.activityBadge}>
+                        ACTIVIDAD {activity.id}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.activityTitle,
+                          activity.completed && styles.activityTitleCompleted,
+                        ]}
+                      >
+                        {activity.title}
+                      </Text>
+                      <Text style={styles.activityMeta}>
+                        {activity.duration} · {activity.type}
+                      </Text>
+                    </View>
+
+                    <Feather name="chevron-right" size={18} color="#94A3B8" />
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          ) : (
+            <View style={styles.emptyCard}>
+              <View style={styles.emptyIconCircle}>
+                <Feather name="lock" size={26} color="#174A62" />
+              </View>
+              <Text style={styles.emptyTitle}>Próximamente</Text>
+              <Text style={styles.emptySubtitle}>
+                Esta etapa se activará cuando completes la etapa anterior. ¡Sigue avanzando paso a paso!
+              </Text>
+            </View>
+          )}
 
           <TouchableOpacity
             style={styles.returnButton}
@@ -328,6 +371,37 @@ const styles = StyleSheet.create({
   activityMeta: {
     fontSize: 12,
     color: '#94A3B8',
+  },
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 28,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    boxShadow: '0px 4px 12px rgba(23, 74, 98, 0.04)',
+    elevation: 2,
+    gap: 8,
+  },
+  emptyIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#D8ECF8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F2C40',
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: '#627D98',
+    textAlign: 'center',
+    lineHeight: 19,
   },
   returnButton: {
     marginTop: 8,
