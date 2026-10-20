@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 
+import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
 import { registerDemoUser } from '@/services/demoAuth';
 
@@ -96,17 +97,7 @@ export default function RegisterScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.container}>
-            <View style={styles.brandHeader}>
-              <View style={styles.logoRow}>
-                <View style={styles.logoBars}>
-                  <View style={[styles.bar, styles.bar1]} />
-                  <View style={[styles.bar, styles.bar2]} />
-                  <View style={[styles.bar, styles.bar3]} />
-                </View>
-                <Text style={styles.brandName}>FlowStep</Text>
-              </View>
-              <Text style={styles.brandTagline}>Tu camino, paso a paso.</Text>
-            </View>
+            <BrandHeader />
 
             <View style={styles.card}>
               <Text style={styles.badge}>EMPECEMOS</Text>
@@ -116,7 +107,6 @@ export default function RegisterScreen() {
               </Text>
 
               <View style={styles.form}>
-                {/* Field: Nombre */}
                 <View style={styles.fieldContainer}>
                   <Text style={styles.label}>Nombre</Text>
                   <View
@@ -149,7 +139,6 @@ export default function RegisterScreen() {
                   {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
                 </View>
 
-                {/* Field: Correo electrónico */}
                 <View style={styles.fieldContainer}>
                   <Text style={styles.label}>Correo electrónico</Text>
                   <View
@@ -184,7 +173,6 @@ export default function RegisterScreen() {
                   {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
                 </View>
 
-                {/* Field: Contraseña */}
                 <View style={styles.fieldContainer}>
                   <Text style={styles.label}>Contraseña</Text>
                   <View
@@ -227,7 +215,7 @@ export default function RegisterScreen() {
 
                 <TouchableOpacity
                   style={styles.submitButton}
-                  onPress= {() => router.push('/login')}
+                  onPress={handleRegister}
                   activeOpacity={0.85}
                 >
                   <Text style={styles.submitButtonText}>Crear cuenta</Text>
@@ -281,49 +269,11 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     alignSelf: 'center',
   },
-  brandHeader: {
-    marginBottom: 20,
-    paddingLeft: 4,
-  },
-  logoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  logoBars: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 3,
-    height: 22,
-    marginRight: 4,
-  },
-  bar: {
-    width: 5,
-    borderRadius: 2.5,
-    backgroundColor: '#174A62',
-  },
-  bar1: { height: 12 },
-  bar2: { height: 17 },
-  bar3: { height: 22 },
-  brandName: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#0F2C40',
-    letterSpacing: -0.5,
-  },
-  brandTagline: {
-    fontSize: 13,
-    color: '#627D98',
-    marginTop: 2,
-  },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 28,
     padding: 24,
-    shadowColor: '#174A62',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
+    boxShadow: '0px 8px 16px rgba(23, 74, 98, 0.08)',
     elevation: 4,
   },
   badge: {
@@ -406,10 +356,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
-    shadowColor: '#174A62',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
+    boxShadow: '0px 4px 8px rgba(23, 74, 98, 0.25)',
     elevation: 3,
   },
   submitButtonText: {
