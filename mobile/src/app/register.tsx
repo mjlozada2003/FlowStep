@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -7,13 +8,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
-import { Colors, Spacing } from '@/constants/theme';
 import { registerDemoUser } from '@/services/demoAuth';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -22,6 +23,8 @@ export default function RegisterScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [focusedField, setFocusedField] = useState<'name' | 'email' | 'password' | null>(null);
 
   const [errors, setErrors] = useState<{
     name?: string;
@@ -44,6 +47,8 @@ export default function RegisterScreen() {
 
     if (!password) {
       newErrors.password = 'Ingresa una contraseña.';
+    } else if (password.length < 8) {
+      newErrors.password = 'La contraseña debe tener al menos 8 caracteres.';
     }
 
     setErrors(newErrors);
@@ -78,7 +83,9 @@ export default function RegisterScreen() {
   };
 
   return (
-    <Screen>
+    <Screen style={styles.screen}>
+      <View style={styles.topBlob} />
+
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -89,85 +96,139 @@ export default function RegisterScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.content}>
-            <View style={styles.header}>
-              <View style={styles.logo}>
-                <Text style={styles.logoText}>F</Text>
+          <View style={styles.container}>
+            <BrandHeader />
+
+            <View style={styles.card}>
+              <Text style={styles.badge}>EMPECEMOS</Text>
+              <Text style={styles.title}>Crea tu cuenta</Text>
+              <Text style={styles.subtitle}>
+                Define lo que quieres lograr. Nosotros te ayudamos a llegar.
+              </Text>
+
+              <View style={styles.form}>
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.label}>Nombre</Text>
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      focusedField === 'name' && styles.inputFocused,
+                      errors.name ? styles.inputError : null,
+                    ]}
+                  >
+                    <Feather
+                      name="user"
+                      size={18}
+                      color={focusedField === 'name' ? '#174A62' : '#8FA3B8'}
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      placeholder="Tu nombre"
+                      autoCapitalize="words"
+                      value={name}
+                      onFocus={() => setFocusedField('name')}
+                      onBlur={() => setFocusedField(null)}
+                      onChangeText={(value) => {
+                        setName(value);
+                        setErrors((curr) => ({ ...curr, name: undefined }));
+                      }}
+                      style={styles.input}
+                      placeholderTextColor="#94A3B8"
+                    />
+                  </View>
+                  {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
+                </View>
+
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.label}>Correo electrónico</Text>
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      focusedField === 'email' && styles.inputFocused,
+                      errors.email ? styles.inputError : null,
+                    ]}
+                  >
+                    <Feather
+                      name="mail"
+                      size={18}
+                      color={focusedField === 'email' ? '#174A62' : '#8FA3B8'}
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      placeholder="nombre@correo.com"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      value={email}
+                      onFocus={() => setFocusedField('email')}
+                      onBlur={() => setFocusedField(null)}
+                      onChangeText={(value) => {
+                        setEmail(value);
+                        setErrors((curr) => ({ ...curr, email: undefined }));
+                      }}
+                      style={styles.input}
+                      placeholderTextColor="#94A3B8"
+                    />
+                  </View>
+                  {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+                </View>
+
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.label}>Contraseña</Text>
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      focusedField === 'password' && styles.inputFocused,
+                      errors.password ? styles.inputError : null,
+                    ]}
+                  >
+                    <Feather
+                      name="lock"
+                      size={18}
+                      color={focusedField === 'password' ? '#174A62' : '#8FA3B8'}
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      placeholder="Mínimo 8 caracteres"
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      value={password}
+                      onFocus={() => setFocusedField('password')}
+                      onBlur={() => setFocusedField(null)}
+                      onChangeText={(value) => {
+                        setPassword(value);
+                        setErrors((curr) => ({ ...curr, password: undefined }));
+                      }}
+                      style={styles.input}
+                      placeholderTextColor="#94A3B8"
+                    />
+                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
+                      <Feather
+                        name={showPassword ? 'eye-off' : 'eye'}
+                        size={18}
+                        color="#8FA3B8"
+                      />
+                    </TouchableOpacity>
+                  </View>
+                  {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+                </View>
+
+                <TouchableOpacity
+                  style={styles.submitButton}
+                  onPress={handleRegister}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.submitButtonText}>Crear cuenta</Text>
+                  <Feather name="arrow-right" size={20} color="#FFFFFF" style={styles.buttonArrow} />
+                </TouchableOpacity>
               </View>
 
-              <Text style={styles.title}>Crear cuenta</Text>
-
-              <Text style={styles.subtitle}>
-                Empieza a convertir tus objetivos en pasos concretos.
-              </Text>
-            </View>
-
-            <View style={styles.form}>
-              <Input
-                label="Nombre"
-                placeholder="Juan Pérez"
-                autoCapitalize="words"
-                value={name}
-                error={errors.name}
-                onChangeText={(value) => {
-                  setName(value);
-                  setErrors((current) => ({
-                    ...current,
-                    name: undefined,
-                  }));
-                }}
-              />
-
-              <Input
-                label="Correo electrónico"
-                placeholder="tu-correo@ejemplo.com"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                value={email}
-                error={errors.email}
-                onChangeText={(value) => {
-                  setEmail(value);
-                  setErrors((current) => ({
-                    ...current,
-                    email: undefined,
-                  }));
-                }}
-              />
-
-              <Input
-                label="Contraseña"
-                placeholder="Crea una contraseña"
-                secureTextEntry
-                autoCapitalize="none"
-                value={password}
-                error={errors.password}
-                onChangeText={(value) => {
-                  setPassword(value);
-                  setErrors((current) => ({
-                    ...current,
-                    password: undefined,
-                  }));
-                }}
-              />
-
-              <Button
-                title="Crear cuenta"
-                onPress={handleRegister}
-              />
-            </View>
-
-            <View style={styles.loginContainer}>
-              <Text style={styles.loginText}>
-                ¿Ya tienes una cuenta?
-              </Text>
-
-              <Text
-                style={styles.loginLink}
-                onPress={() => router.push('/login')}
-              >
-                Iniciar sesión
-              </Text>
+              <View style={styles.loginContainer}>
+                <Text style={styles.loginText}>¿Ya tienes una cuenta? </Text>
+                <TouchableOpacity onPress={() => router.push('/login')}>
+                  <Text style={styles.loginLink}>Inicia sesión</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </ScrollView>
@@ -177,82 +238,148 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: '#FAF6F0',
+    flex: 1,
+  },
+  topBlob: {
+    position: 'absolute',
+    top: -80,
+    right: -60,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: '#D8ECF8',
+    opacity: 0.8,
+  },
   keyboardContainer: {
     flex: 1,
   },
-
   scroll: {
     flex: 1,
   },
-
   scrollContent: {
     flexGrow: 1,
-  },
-
-  content: {
-    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 32,
     justifyContent: 'center',
+  },
+  container: {
     width: '100%',
-    maxWidth: 500,
+    maxWidth: 400,
     alignSelf: 'center',
-    paddingVertical: Spacing.four,
   },
-
-  header: {
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    padding: 24,
+    boxShadow: '0px 8px 16px rgba(23, 74, 98, 0.08)',
+    elevation: 4,
+  },
+  badge: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#174A62',
+    letterSpacing: 1.2,
+    marginBottom: 6,
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#0F2C40',
+    marginBottom: 4,
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#627D98',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  form: {
+    gap: 16,
+  },
+  fieldContainer: {
+    gap: 6,
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F2C40',
+  },
+  inputWrapper: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.six,
+    borderWidth: 1.2,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    height: 52,
+    backgroundColor: '#FFFFFF',
   },
-
-  logo: {
-    width: 72,
-    height: 72,
-    borderRadius: 24,
-    backgroundColor: Colors.light.primary,
+  inputFocused: {
+    borderColor: '#174A62',
+    borderWidth: 1.5,
+  },
+  inputError: {
+    borderColor: '#D97A7A',
+  },
+  inputIcon: {
+    marginRight: 10,
+  },
+  eyeBtn: {
+    padding: 4,
+  },
+  input: {
+    flex: 1,
+    height: '100%',
+    fontSize: 14,
+    color: '#0F2C40',
+    ...(Platform.OS === 'web'
+      ? ({
+          outlineStyle: 'none',
+          outlineWidth: 0,
+          outlineColor: 'transparent',
+        } as any)
+      : {}),
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#D97A7A',
+    marginTop: 2,
+  },
+  submitButton: {
+    backgroundColor: '#174A62',
+    height: 52,
+    borderRadius: 20,
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: Spacing.three,
+    marginTop: 8,
+    boxShadow: '0px 4px 8px rgba(23, 74, 98, 0.25)',
+    elevation: 3,
   },
-
-  logoText: {
-    fontSize: 36,
-    fontWeight: '700',
+  submitButtonText: {
     color: '#FFFFFF',
-  },
-
-  title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: Colors.light.text,
-    marginBottom: Spacing.two,
-  },
-
-  subtitle: {
     fontSize: 16,
-    color: Colors.light.textSecondary,
-    textAlign: 'center',
-    lineHeight: 24,
+    fontWeight: '700',
   },
-
-  form: {
-    gap: Spacing.three,
+  buttonArrow: {
+    marginLeft: 8,
   },
-
   loginContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: Spacing.one,
-    marginTop: Spacing.four,
+    marginTop: 20,
   },
-
   loginText: {
-    color: Colors.light.textSecondary,
-    fontSize: 14,
+    color: '#627D98',
+    fontSize: 13,
   },
-
   loginLink: {
-    color: Colors.light.primary,
-    fontSize: 14,
-    fontWeight: '700',
+    color: '#174A62',
+    fontSize: 13,
+    fontWeight: '800',
   },
 });

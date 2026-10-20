@@ -3,56 +3,52 @@
  * Includes colors, typography, spacing and layout constants.
  */
 
+// theme.ts
 import '@/global.css';
-
 import { Platform } from 'react-native';
 
 export const Colors = {
   light: {
     // Base
-    text: '#123061',
-    background: '#F8F3E9',
-    backgroundElement: '#EBF1F8',
-    backgroundSelected: '#D2EDF2',
-    textSecondary: '#6F7D91',
+    text: '#0F2C40',
+    background: '#FAF6F0', // Fondo crema suave
+    cardBackground: '#FFFFFF',
+    textSecondary: '#627D98',
+    textMuted: '#8FA3B8',
 
     // Brand
-    primary: '#4D8BC6',
-    secondary: '#78B9D6',
+    primary: '#174A62', // Azul marino/petróleo del botón
+    primaryHover: '#0E3345',
+    accentBlue: '#D8ECF8', // Celeste para blobs de fondo
 
     // UI
-    border: '#DCCEC1',
+    border: '#E2E8F0',
 
     // States
     success: '#69A98B',
     warning: '#E7A66B',
     error: '#D97A7A',
   },
-
   dark: {
-    // Base
-    text: '#F8F3E9',
-    background: '#10233F',
-    backgroundElement: '#183557',
-    backgroundSelected: '#244B70',
-    textSecondary: '#ACB5C4',
+    text: '#FAF6F0',
+    background: '#0F2C40',
+    cardBackground: '#174A62',
+    textSecondary: '#A0AEC0',
+    textMuted: '#718096',
 
-    // Brand
     primary: '#78B9D6',
-    secondary: '#4D8BC6',
+    primaryHover: '#4D8BC6',
+    accentBlue: '#244B70',
 
-    // UI
-    border: '#49627D',
+    border: '#2D3748',
 
-    // States
     success: '#78B99A',
     warning: '#E7B77F',
     error: '#E28C8C',
   },
 } as const;
 
-export type ThemeColor =
-  keyof typeof Colors.light & keyof typeof Colors.dark;
+export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
 export const Fonts = Platform.select({
   ios: {
@@ -61,14 +57,12 @@ export const Fonts = Platform.select({
     rounded: 'ui-rounded',
     mono: 'ui-monospace',
   },
-
   default: {
     sans: 'normal',
     serif: 'serif',
     rounded: 'normal',
     mono: 'monospace',
   },
-
   web: {
     sans: 'var(--font-display)',
     serif: 'var(--font-serif)',
