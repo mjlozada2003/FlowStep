@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { ReactNode, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -11,14 +11,17 @@ import {
 import { Colors, Spacing } from '@/constants/theme';
 
 type InputProps = TextInputProps & {
-  label: string;
+  label?: string; //  Ahora es opcional para evitar el error TS(2741)
   error?: string;
+  icon?: ReactNode; // Soporte opcional para iconos a la izquierda (Feather)
 };
 
 export function Input({
   label,
   error,
+  icon,
   secureTextEntry,
+  style,
   ...props
 }: InputProps) {
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -26,7 +29,8 @@ export function Input({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>{label}</Text>
+      {/* Solo renderiza la etiqueta si existe */}
+      {label ? <Text style={styles.label}>{label}</Text> : null}
 
       <View
         style={[
@@ -34,13 +38,14 @@ export function Input({
           error ? styles.inputError : null,
         ]}
       >
+        {/* Icono opcional a la izquierda */}
+        {icon ? <View style={styles.iconContainer}>{icon}</View> : null}
+
         <TextInput
           {...props}
-          secureTextEntry={
-            isPassword ? !passwordVisible : false
-          }
-          style={styles.input}
-          placeholderTextColor={Colors.light.textSecondary}
+          secureTextEntry={isPassword ? !passwordVisible : false}
+          style={[styles.input, style]}
+          placeholderTextColor={Colors.light.textMuted}
         />
 
         {isPassword ? (
@@ -74,12 +79,12 @@ export function Input({
 
 const styles = StyleSheet.create({
   container: {
-    gap: Spacing.one,
+    gap: 6,
   },
 
   label: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
     color: Colors.light.text,
   },
 
@@ -87,10 +92,11 @@ const styles = StyleSheet.create({
     minHeight: 52,
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: 1.2,
     borderColor: Colors.light.border,
     borderRadius: 16,
-    backgroundColor: Colors.light.backgroundElement,
+    backgroundColor: '#FFFFFF', // Blanco limpio según el Card de Figma
+    paddingHorizontal: Spacing.three,
   },
 
   inputError: {
@@ -98,44 +104,46 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
 
+  iconContainer: {
+    marginRight: Spacing.two,
+  },
+
   input: {
     flex: 1,
     minWidth: 0,
-    minHeight: 50,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    fontSize: 16,
+    height: 50,
+    fontSize: 14,
     color: Colors.light.text,
+    paddingHorizontal: 0,
   },
 
   passwordToggle: {
-    paddingHorizontal: Spacing.three,
+    paddingLeft: Spacing.two,
     paddingVertical: Spacing.two,
   },
 
   toggleText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.light.primary,
+    color: Colors.light.textSecondary,
   },
 
   errorContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: Spacing.one,
+    marginTop: 2,
   },
 
   errorIcon: {
     color: Colors.light.error,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
-    lineHeight: 18,
   },
 
   errorText: {
     flex: 1,
     color: Colors.light.error,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
   },
 });
