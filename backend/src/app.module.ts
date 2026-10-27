@@ -9,6 +9,7 @@ import { GoalsModule } from './goals/goals.module';
 import { AiModule } from './ai/ai.module';
 import { StagesModule } from './stages/stages.module';
 import { ActivitiesModule } from './activities/activities.module';
+import { AvailabilityModule } from './availability/availability.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { ActivitiesModule } from './activities/activities.module';
     AiModule,
     StagesModule,
     ActivitiesModule,
+    AvailabilityModule,
   ],
   controllers: [AppController],
   providers: [AppService],
