@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -15,7 +16,10 @@ import {
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
-import { registerDemoUser } from '@/services/demoAuth';
+import {
+  getAuthErrorMessage,
+  registerUser,
+} from '@/services/api/auth';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -24,15 +28,17 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [focusedField, setFocusedField] = useState<'name' | 'email' | 'password' | null>(null);
 
   const [errors, setErrors] = useState<{
     name?: string;
     email?: string;
     password?: string;
+    form?: string;
   }>({});
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     const newErrors: typeof errors = {};
 
     if (!name.trim()) {
@@ -57,29 +63,29 @@ export default function RegisterScreen() {
       return;
     }
 
-    const result = registerDemoUser({
-      name: name.trim(),
-      email: email.trim().toLowerCase(),
-      password,
-    });
-
-    if (result === 'exists') {
-      setErrors({
-        email: 'Este correo ya está registrado. Inicia sesión.',
+    setIsSubmitting(true);
+    try {
+      await registerUser({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password,
       });
-      return;
-    }
 
-    Alert.alert(
-      '¡Cuenta creada!',
-      'Tu cuenta de FlowStep fue creada correctamente.',
-      [
-        {
-          text: 'Continuar',
-          onPress: () => router.replace('/login'),
-        },
-      ],
-    );
+      Alert.alert(
+        '¡Cuenta creada!',
+        'Tu cuenta de FlowStep fue creada correctamente.',
+        [
+          {
+            text: 'Continuar',
+            onPress: () => router.replace('/login'),
+          },
+        ],
+      );
+    } catch (error) {
+      setErrors({ form: getAuthErrorMessage(error) });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -130,10 +136,11 @@ export default function RegisterScreen() {
                       onBlur={() => setFocusedField(null)}
                       onChangeText={(value) => {
                         setName(value);
-                        setErrors((curr) => ({ ...curr, name: undefined }));
+                        setErrors((curr) => ({ ...curr, name: undefined, form: undefined }));
                       }}
                       style={styles.input}
                       placeholderTextColor="#94A3B8"
+                      maxLength={100}
                     />
                   </View>
                   {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
@@ -164,7 +171,7 @@ export default function RegisterScreen() {
                       onBlur={() => setFocusedField(null)}
                       onChangeText={(value) => {
                         setEmail(value);
-                        setErrors((curr) => ({ ...curr, email: undefined }));
+                        setErrors((curr) => ({ ...curr, email: undefined, form: undefined }));
                       }}
                       style={styles.input}
                       placeholderTextColor="#94A3B8"
@@ -197,7 +204,7 @@ export default function RegisterScreen() {
                       onBlur={() => setFocusedField(null)}
                       onChangeText={(value) => {
                         setPassword(value);
-                        setErrors((curr) => ({ ...curr, password: undefined }));
+                        setErrors((curr) => ({ ...curr, password: undefined, form: undefined }));
                       }}
                       style={styles.input}
                       placeholderTextColor="#94A3B8"
@@ -213,13 +220,27 @@ export default function RegisterScreen() {
                   {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
                 </View>
 
+                {errors.form ? (
+                  <Text style={styles.formError}>{errors.form}</Text>
+                ) : null}
+
                 <TouchableOpacity
-                  style={styles.submitButton}
+                  style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
                   onPress={handleRegister}
                   activeOpacity={0.85}
+                  disabled={isSubmitting}
                 >
-                  <Text style={styles.submitButtonText}>Crear cuenta</Text>
-                  <Feather name="arrow-right" size={20} color="#FFFFFF" style={styles.buttonArrow} />
+                  {isSubmitting ? (
+                    <>
+                      <ActivityIndicator color="#FFFFFF" />
+                      <Text style={styles.submitButtonText}>Creando cuenta...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.submitButtonText}>Crear cuenta</Text>
+                      <Feather name="arrow-right" size={20} color="#FFFFFF" style={styles.buttonArrow} />
+                    </>
+                  )}
                 </TouchableOpacity>
               </View>
 
@@ -348,6 +369,11 @@ const styles = StyleSheet.create({
     color: '#D97A7A',
     marginTop: 2,
   },
+  formError: {
+    fontSize: 13,
+    color: '#D97A7A',
+    textAlign: 'center',
+  },
   submitButton: {
     backgroundColor: '#174A62',
     height: 52,
@@ -358,6 +384,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
     boxShadow: '0px 4px 8px rgba(23, 74, 98, 0.25)',
     elevation: 3,
+  },
+  submitButtonDisabled: {
+    opacity: 0.7,
   },
   submitButtonText: {
     color: '#FFFFFF',
