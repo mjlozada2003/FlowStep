@@ -1,12 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Goal } from './entities/goal.entity';
 import { Stage } from '../stages/entities/stage.entity';
 import { Activity } from '../activities/entities/activity.entity';
 import { CreateGoalDto } from './dto/create-goal.dto';
+import { UpdateGoalDto } from './dto/update-goal.dto';
 import { AiService } from '../ai/ai.service';
 import { ActivityOrigin, ActivityStatus } from '../activities/enums/activity.enum';
+import { PriorityLevel } from './enums/goal.enum';
 
 @Injectable()
 export class GoalsService {
@@ -17,7 +19,7 @@ export class GoalsService {
     private stagesRepository: Repository<Stage>,
     @InjectRepository(Activity)
     private activitiesRepository: Repository<Activity>,
-    private aiService: AiService
+    private aiService: AiService,
   ) {}
 
   async create(userId: number, createGoalDto: CreateGoalDto): Promise<Goal | null> {
@@ -52,7 +54,7 @@ export class GoalsService {
                 estimated_minutes: act.estimated_minutes,
                 sort_order: act.sort_order,
                 origin: ActivityOrigin.INITIAL_PLAN,
-                status: ActivityStatus.PENDING
+                status: ActivityStatus.PENDING,
               });
             });
             await this.activitiesRepository.save(activitiesToSave);
@@ -61,7 +63,6 @@ export class GoalsService {
       }
     } catch (error) {
       console.error('No se pudo generar el plan automático. Se requiere generación manual o reintento.', error);
-      // Opcional: Podrías marcar el goal con un estado especial o lanzar error
     }
 
     // 4. Retornar el goal completo con sus etapas
@@ -69,9 +70,9 @@ export class GoalsService {
       where: { goal_id: savedGoal.goal_id },
       relations: {
         stages: {
-          activities: true
-        }
-      }
+          activities: true,
+        },
+      },
     });
   }
 
@@ -80,5 +81,48 @@ export class GoalsService {
       where: { user_id: userId },
       order: { created_at: 'DESC' },
     });
+  }
+
+  async findOneByUser(userId: number, goalId: number): Promise<Goal> {
+    const goal = await this.goalsRepository.findOne({
+      where: { goal_id: goalId, user_id: userId },
+      relations: {
+        stages: {
+          activities: true,
+        },
+      },
+    });
+
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    return goal;
+  }
+
+  async updatePriority(userId: number, goalId: number, priority: PriorityLevel): Promise<Goal> {
+    const goal = await this.goalsRepository.findOne({
+      where: { goal_id: goalId, user_id: userId },
+    });
+
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    goal.priority = priority;
+    return this.goalsRepository.save(goal);
+  }
+
+  async update(userId: number, goalId: number, updateGoalDto: UpdateGoalDto): Promise<Goal> {
+    const goal = await this.goalsRepository.findOne({
+      where: { goal_id: goalId, user_id: userId },
+    });
+
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    Object.assign(goal, updateGoalDto);
+    return this.goalsRepository.save(goal);
   }
 }
