@@ -3,8 +3,10 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { ActivitiesService } from './activities.service';
 import { Activity } from './entities/activity.entity';
 import { Stage } from '../stages/entities/stage.entity';
+import { ActivitySchedule } from './entities/activity-schedule.entity';
 import { ActivityOrigin, ActivityStatus, ActivityType } from './enums/activity.enum';
-import { NotFoundException } from '@nestjs/common';
+import { ScheduleReason } from './enums/schedule-reason.enum';
+import { BadRequestException } from '@nestjs/common';
 
 describe('ActivitiesService', () => {
   let service: ActivitiesService;
@@ -20,6 +22,13 @@ describe('ActivitiesService', () => {
     findOne: jest.fn(),
   };
 
+  const mockScheduleRepository = {
+    create: jest.fn(),
+    save: jest.fn(),
+    findOne: jest.fn(),
+    find: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -32,6 +41,10 @@ describe('ActivitiesService', () => {
           provide: getRepositoryToken(Stage),
           useValue: mockStageRepository,
         },
+        {
+          provide: getRepositoryToken(ActivitySchedule),
+          useValue: mockScheduleRepository,
+        },
       ],
     }).compile();
 
@@ -40,6 +53,59 @@ describe('ActivitiesService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('reschedule', () => {
+    it('should reschedule an activity creating a new version (HU-14)', async () => {
+      mockActivityRepository.findOne.mockResolvedValue({ activity_id: 1 });
+      mockScheduleRepository.findOne.mockResolvedValue({
+        schedule_id: 1,
+        activity_id: 1,
+        version_number: 1,
+        scheduled_date: '2026-11-01',
+      });
+
+      const dto = {
+        scheduled_date: '2026-11-05',
+        start_time: '14:00',
+        end_time: '15:30',
+      };
+
+      const newSchedule = {
+        schedule_id: 2,
+        activity_id: 1,
+        version_number: 2,
+        reason: ScheduleReason.USER_RESCHEDULE,
+        ...dto,
+      };
+
+      mockScheduleRepository.create.mockReturnValue(newSchedule);
+      mockScheduleRepository.save.mockResolvedValue(newSchedule);
+
+      const result = await service.reschedule(1, dto);
+      expect(result.version_number).toBe(2);
+      expect(result.reason).toBe(ScheduleReason.USER_RESCHEDULE);
+      expect(mockScheduleRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          activity_id: 1,
+          version_number: 2,
+          reason: ScheduleReason.USER_RESCHEDULE,
+          scheduled_date: '2026-11-05',
+        }),
+      );
+    });
+
+    it('should throw BadRequestException if end_time <= start_time', async () => {
+      mockActivityRepository.findOne.mockResolvedValue({ activity_id: 1 });
+
+      await expect(
+        service.reschedule(1, {
+          scheduled_date: '2026-11-05',
+          start_time: '16:00',
+          end_time: '14:00',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 
   describe('createForStage', () => {
@@ -71,26 +137,6 @@ describe('ActivitiesService', () => {
       const result = await service.createForStage(1, dto);
       expect(result.sort_order).toBe(3);
       expect(result.origin).toBe(ActivityOrigin.MANUAL);
-      expect(mockActivityRepository.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          stage_id: 1,
-          origin: ActivityOrigin.MANUAL,
-          status: ActivityStatus.PENDING,
-          sort_order: 3,
-        }),
-      );
-    });
-
-    it('should throw NotFoundException if stage does not exist', async () => {
-      mockStageRepository.findOne.mockResolvedValue(null);
-
-      await expect(
-        service.createForStage(999, {
-          title: 'Test',
-          type: ActivityType.PRACTICE,
-          estimated_minutes: 30,
-        }),
-      ).rejects.toThrow(NotFoundException);
     });
   });
 

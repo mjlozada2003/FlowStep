@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ActivitiesController } from './activities.controller';
 import { ActivitiesService } from './activities.service';
 import { ActivityStatus } from './enums/activity.enum';
+import { ScheduleReason } from './enums/schedule-reason.enum';
 
 describe('ActivitiesController', () => {
   let controller: ActivitiesController;
@@ -12,6 +13,8 @@ describe('ActivitiesController', () => {
     completeActivity: jest.fn(),
     markAsPending: jest.fn(),
     remove: jest.fn(),
+    reschedule: jest.fn(),
+    getScheduleHistory: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -30,6 +33,29 @@ describe('ActivitiesController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  describe('reschedule', () => {
+    it('should reschedule an activity (HU-14)', async () => {
+      const dto = {
+        scheduled_date: '2026-11-05',
+        start_time: '10:00',
+        end_time: '11:00',
+      };
+      const expectedResult = {
+        schedule_id: 2,
+        activity_id: 1,
+        version_number: 2,
+        reason: ScheduleReason.USER_RESCHEDULE,
+        ...dto,
+      };
+
+      mockActivitiesService.reschedule.mockResolvedValue(expectedResult);
+
+      const result = await controller.reschedule(1, dto);
+      expect(result).toEqual(expectedResult);
+      expect(mockActivitiesService.reschedule).toHaveBeenCalledWith(1, dto);
+    });
   });
 
   describe('update', () => {

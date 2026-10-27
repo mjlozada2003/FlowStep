@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Delete,
   Param,
@@ -10,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ActivitiesService } from './activities.service';
 import { UpdateActivityDto } from './dto/update-activity.dto';
+import { RescheduleActivityDto } from './dto/reschedule-activity.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('activities')
@@ -43,5 +45,18 @@ export class ActivitiesController {
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.activitiesService.remove(id);
+  }
+
+  @Post(':id/reschedule')
+  reschedule(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() rescheduleDto: RescheduleActivityDto,
+  ) {
+    return this.activitiesService.reschedule(id, rescheduleDto);
+  }
+
+  @Get(':id/schedules')
+  getScheduleHistory(@Param('id', ParseIntPipe) id: number) {
+    return this.activitiesService.getScheduleHistory(id);
   }
 }
