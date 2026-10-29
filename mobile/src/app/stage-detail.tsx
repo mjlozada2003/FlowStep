@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -14,22 +14,41 @@ import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
 import { useAuth } from '@/contexts/auth-context';
 import { ApiHttpError } from '@/services/api/client';
-import { getStageActivities } from '@/services/api/stages';
+import { getGoalProgress } from '@/services/api/goals';
+import type { GoalProgress } from '@/services/api/goals';
+import { completeActivity, getStageActivities } from '@/services/api/stages';
 import type { StageActivity } from '@/services/api/stages';
 
 export default function StageDetailScreen() {
-  const params = useLocalSearchParams<{ stageId?: string }>();
+  const params = useLocalSearchParams<{ stageId?: string; goalId?: string }>();
   const stageIdValue = Array.isArray(params.stageId)
     ? params.stageId[0]
     : params.stageId;
+  const goalIdValue = Array.isArray(params.goalId)
+    ? params.goalId[0]
+    : params.goalId;
   const stageId =
     stageIdValue && /^\d+$/.test(stageIdValue) && Number(stageIdValue) > 0
       ? Number(stageIdValue)
+      : null;
+  const parsedGoalId =
+    goalIdValue && /^\d+$/.test(goalIdValue) ? Number(goalIdValue) : null;
+  const goalId =
+    parsedGoalId !== null &&
+    Number.isSafeInteger(parsedGoalId) &&
+    parsedGoalId > 0
+      ? parsedGoalId
       : null;
   const { token } = useAuth();
   const [activities, setActivities] = useState<StageActivity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [completionError, setCompletionError] = useState<string | null>(null);
+  const [goalProgress, setGoalProgress] = useState<GoalProgress | null>(null);
+  const [isLoadingGoalProgress, setIsLoadingGoalProgress] = useState(false);
+  const [goalProgressError, setGoalProgressError] = useState<string | null>(null);
+  const [completingActivityId, setCompletingActivityId] = useState<number | null>(null);
+  const completionRequests = useRef(new Set<number>());
 
   useEffect(() => {
     if (!stageId) {
@@ -74,6 +93,61 @@ export default function StageDetailScreen() {
 
     return () => controller.abort();
   }, [stageId, token]);
+
+  const handleCompleteActivity = async (activityId: number) => {
+    if (!token || completionRequests.current.has(activityId)) {
+      return;
+    }
+
+    completionRequests.current.add(activityId);
+    setCompletingActivityId(activityId);
+    setCompletionError(null);
+
+    try {
+      const completedActivity = await completeActivity(activityId, token);
+      setActivities((currentActivities) =>
+        currentActivities.map((activity) =>
+          activity.activity_id === completedActivity.activity_id
+            ? completedActivity
+            : activity,
+        ),
+      );
+      if (!goalId) {
+        setGoalProgressError(
+          'No se recibió un identificador válido para actualizar el progreso del objetivo.',
+        );
+        return;
+      }
+
+      setIsLoadingGoalProgress(true);
+      setGoalProgressError(null);
+      try {
+        const updatedProgress = await getGoalProgress(goalId, token);
+        setGoalProgress(updatedProgress);
+      } catch (error) {
+        setGoalProgressError(
+          error instanceof ApiHttpError && error.status === 401
+            ? 'Tu sesión expiró. No se pudo actualizar el progreso del objetivo.'
+            : error instanceof Error
+              ? error.message
+              : 'No se pudo actualizar el progreso del objetivo. Inténtalo nuevamente.',
+        );
+      } finally {
+        setIsLoadingGoalProgress(false);
+      }
+    } catch (error) {
+      setCompletionError(
+        error instanceof ApiHttpError && error.status === 401
+          ? 'Tu sesión expiró. Inicia sesión nuevamente para completar la actividad.'
+          : error instanceof Error
+            ? error.message
+            : 'No se pudo completar la actividad. Inténtalo nuevamente.',
+      );
+    } finally {
+      completionRequests.current.delete(activityId);
+      setCompletingActivityId(null);
+    }
+  };
 
   const completedCount = activities.filter((activity) => activity.status === 'completed').length;
   const totalCount = activities.length;
@@ -121,6 +195,32 @@ export default function StageDetailScreen() {
           </View>
         </View>
 
+        <View style={styles.goalProgressCard}>
+          <View style={styles.goalProgressHeader}>
+            <Text style={styles.goalProgressLabel}>Progreso del objetivo</Text>
+            {isLoadingGoalProgress ? (
+              <ActivityIndicator size="small" color="#174A62" />
+            ) : goalProgress ? (
+              <Text style={styles.goalProgressValue}>
+                {goalProgress.progress_percentage}%
+              </Text>
+            ) : null}
+          </View>
+          {goalProgress ? (
+            <View style={styles.goalProgressBarBackground}>
+              <View
+                style={[
+                  styles.goalProgressBarFill,
+                  { width: `${goalProgress.progress_percentage}%` },
+                ]}
+              />
+            </View>
+          ) : null}
+          {goalProgressError ? (
+            <Text style={styles.goalProgressError}>{goalProgressError}</Text>
+          ) : null}
+        </View>
+
         <View style={styles.bodyContainer}>
           {isLoading ? (
             <View style={styles.stateCard}>
@@ -143,6 +243,9 @@ export default function StageDetailScreen() {
               </View>
 
               <View style={styles.activitiesList}>
+                {completionError ? (
+                  <Text style={styles.completionError}>{completionError}</Text>
+                ) : null}
                 {activities.map((activity) => (
                   <View
                     key={activity.activity_id}
@@ -151,16 +254,42 @@ export default function StageDetailScreen() {
                       activity.status === 'completed' && styles.activityCardCompleted,
                     ]}
                   >
-                    <View
-                      style={[
-                        styles.checkbox,
-                        activity.status === 'completed' && styles.checkboxCompleted,
-                      ]}
-                    >
-                      {activity.status === 'completed' ? (
-                        <Feather name="check" size={14} color="#FFFFFF" />
-                      ) : null}
-                    </View>
+                    {activity.status === 'pending' ? (
+                      <TouchableOpacity
+                        style={styles.completionControl}
+                        onPress={() => handleCompleteActivity(activity.activity_id)}
+                        disabled={completingActivityId !== null}
+                        accessibilityRole="checkbox"
+                        accessibilityLabel={`Completar actividad ${activity.title}`}
+                        accessibilityState={{
+                          checked: false,
+                          disabled: completingActivityId !== null,
+                          busy: completingActivityId === activity.activity_id,
+                        }}
+                      >
+                        {completingActivityId === activity.activity_id ? (
+                          <ActivityIndicator size="small" color="#174A62" />
+                        ) : (
+                          <View style={styles.checkbox} />
+                        )}
+                      </TouchableOpacity>
+                    ) : (
+                      <View
+                        style={[
+                          styles.checkbox,
+                          activity.status === 'completed' && styles.checkboxCompleted,
+                        ]}
+                        accessibilityRole="checkbox"
+                        accessibilityLabel={`Actividad ${activity.title}`}
+                        accessibilityState={{
+                          checked: activity.status === 'completed',
+                        }}
+                      >
+                        {activity.status === 'completed' ? (
+                          <Feather name="check" size={14} color="#FFFFFF" />
+                        ) : null}
+                      </View>
+                    )}
 
                     <View style={styles.activityInfo}>
                       <Text style={styles.activityBadge}>
@@ -297,6 +426,46 @@ const styles = StyleSheet.create({
     backgroundColor: '#174A62',
     borderRadius: 3,
   },
+  goalProgressCard: {
+    marginHorizontal: 20,
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 10,
+  },
+  goalProgressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  goalProgressLabel: {
+    fontSize: 13,
+    color: '#627D98',
+    fontWeight: '700',
+  },
+  goalProgressValue: {
+    fontSize: 14,
+    color: '#174A62',
+    fontWeight: '800',
+  },
+  goalProgressBarBackground: {
+    height: 6,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  goalProgressBarFill: {
+    height: '100%',
+    backgroundColor: '#174A62',
+    borderRadius: 3,
+  },
+  goalProgressError: {
+    fontSize: 12,
+    color: '#D97A7A',
+  },
   bodyContainer: {
     paddingHorizontal: 20,
     paddingTop: 24,
@@ -358,6 +527,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  completionControl: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  completionError: {
+    fontSize: 13,
+    color: '#D97A7A',
+    textAlign: 'center',
+    marginBottom: 4,
   },
   checkboxCompleted: {
     backgroundColor: '#174A62',

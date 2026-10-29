@@ -48,7 +48,16 @@ export default function GoalPlanScreen() {
   const goalDate = params.targetDate
     ? `Fecha límite: ${params.targetDate}`
     : 'Sin fecha límite';
-  const hasGoalId = /^\d+$/.test(params.goalId ?? '');
+  const parsedGoalId = /^\d+$/.test(params.goalId ?? '')
+    ? Number(params.goalId)
+    : null;
+  const goalId =
+    parsedGoalId !== null &&
+    Number.isSafeInteger(parsedGoalId) &&
+    parsedGoalId > 0
+      ? parsedGoalId
+      : null;
+  const hasGoalId = goalId !== null;
 
   let stages: GoalStagePreview[] = [];
   let hasInvalidStages = false;
@@ -131,7 +140,10 @@ export default function GoalPlanScreen() {
                       onPress={() =>
                         router.push({
                           pathname: '/stage-detail',
-                          params: { stageId: String(stage.stage_id) },
+                          params: {
+                            stageId: String(stage.stage_id),
+                            goalId: String(goalId),
+                          },
                         })
                       }
                     >
