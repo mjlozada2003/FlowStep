@@ -5,7 +5,6 @@ import DateTimePicker, {
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -19,24 +18,17 @@ import {
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
-import { useAuth } from '@/contexts/auth-context';
-import { ApiHttpError } from '@/services/api/client';
-import { createGoal } from '@/services/api/goals';
+
+type Priority = 'alta' | 'media' | 'baja';
+type TimeCommitment = 'poco' | 'moderado' | 'intenso';
 
 export default function CreateGoalScreen() {
   const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+  const [priority, setPriority] = useState<Priority>('media');
+  const [timeCommitment, setTimeCommitment] = useState<TimeCommitment>('moderado');
   const [targetDate, setTargetDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
-  const [isDescriptionFocused, setIsDescriptionFocused] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errors, setErrors] = useState<{
-    title?: string;
-    description?: string;
-    form?: string;
-  }>({});
-  const { token } = useAuth();
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -61,73 +53,30 @@ export default function CreateGoalScreen() {
     }
   };
 
-  const handleCreatePlan = async () => {
+  const handleCreatePlan = () => {
     const cleanTitle = title.trim();
-    const cleanDescription = description.trim();
-    const fieldErrors: typeof errors = {};
 
     if (!cleanTitle) {
-      fieldErrors.title = 'Cuéntanos qué quieres conseguir.';
-    }
-
-    if (!cleanDescription) {
-      fieldErrors.description = 'Describe un poco más tu objetivo.';
-    }
-
-    setErrors(fieldErrors);
-    if (Object.keys(fieldErrors).length > 0) {
+      alert('Por favor, cuéntanos qué quieres conseguir.');
       return;
     }
 
-    if (!token) {
-      setErrors({
-        form: 'Tu sesión no está disponible. Inicia sesión para registrar un objetivo.',
-      });
-      return;
-    }
-
-    const dueDate = targetDate
-      ? [
-          targetDate.getFullYear(),
-          String(targetDate.getMonth() + 1).padStart(2, '0'),
-          String(targetDate.getDate()).padStart(2, '0'),
-        ].join('-')
-      : undefined;
-
-    setIsSubmitting(true);
-    try {
-      const goal = await createGoal(token, {
+    // Pasamos los parámetros hacia la pantalla de transición o plan adaptado (Sprint 2)
+    router.push({
+      pathname: '/schedule', // O hacia la pantalla de generación del plan
+      params: {
         title: cleanTitle,
-        user_description: cleanDescription,
-        ...(dueDate ? { due_date: dueDate } : {}),
-      });
-
-      router.push({
-        pathname: '/goal-plan',
-        params: {
-          goalId: String(goal.goal_id),
-          title: goal.title,
-          targetDate: goal.due_date ?? '',
-          stages: JSON.stringify(
-            (goal.stages ?? []).map((stage) => ({
-              stage_id: stage.stage_id,
-              name: stage.name,
-              activity_count: stage.activities?.length ?? 0,
-            })),
-          ),
-        },
-      });
-    } catch (error) {
-      const message =
-        error instanceof ApiHttpError && error.status === 401
-          ? 'Tu sesión expiró. Inicia sesión nuevamente para continuar.'
-          : error instanceof Error
-            ? error.message
-            : 'No se pudo registrar el objetivo. Inténtalo nuevamente.';
-      setErrors({ form: message });
-    } finally {
-      setIsSubmitting(false);
-    }
+        priority,
+        timeCommitment,
+        targetDate: targetDate
+          ? [
+              targetDate.getFullYear(),
+              String(targetDate.getMonth() + 1).padStart(2, '0'),
+              String(targetDate.getDate()).padStart(2, '0'),
+            ].join('-')
+          : '',
+      },
+    });
   };
 
   return (
@@ -144,12 +93,12 @@ export default function CreateGoalScreen() {
           <View style={styles.container}>
             <View style={styles.topRow}>
               <BrandHeader showTagline={false} />
-              <Text style={styles.stepIndicator}>PASO 1 DE 1</Text>
+              <Text style={styles.stepIndicator}>PASO 1 DE 2</Text>
             </View>
 
             <View style={styles.avatarContainer}>
               <View style={styles.avatarCircle}>
-                <Feather name="smile" size={24} color="#174A62" />
+                <Feather name="smile" size={26} color="#174A62" />
               </View>
             </View>
 
@@ -162,21 +111,13 @@ export default function CreateGoalScreen() {
               </Text>
             </View>
 
+            {/* Tarjeta de Objetivo */}
             <View style={styles.card}>
               <Text style={styles.cardBadge}>MI OBJETIVO</Text>
               <TextInput
                 placeholder="Crear una aplicación web"
                 value={title}
-                onChangeText={(value) => {
-                  setTitle(value);
-                  if (value.trim()) {
-                    setErrors((current) => ({
-                      ...current,
-                      title: undefined,
-                      form: undefined,
-                    }));
-                  }
-                }}
+                onChangeText={setTitle}
                 onFocus={() => setIsInputFocused(true)}
                 onBlur={() => setIsInputFocused(false)}
                 multiline
@@ -188,42 +129,69 @@ export default function CreateGoalScreen() {
                 placeholderTextColor="#94A3B8"
               />
               <Text style={styles.inputHint}>Escríbelo con tus propias palabras</Text>
-              {errors.title ? <Text style={styles.errorText}>{errors.title}</Text> : null}
             </View>
 
-            <View style={styles.card}>
-              <Text style={styles.cardBadge}>DESCRIBE TU OBJETIVO</Text>
-              <TextInput
-                placeholder="¿Por qué es importante para ti y qué te gustaría lograr?"
-                value={description}
-                onChangeText={(value) => {
-                  setDescription(value);
-                  setErrors((current) => ({
-                    ...current,
-                    description: undefined,
-                    form: undefined,
-                  }));
-                }}
-                onFocus={() => setIsDescriptionFocused(true)}
-                onBlur={() => setIsDescriptionFocused(false)}
-                multiline
-                style={[
-                  styles.descriptionInput,
-                  isDescriptionFocused && styles.goalInputFocused,
-                ]}
-                placeholderTextColor="#94A3B8"
-              />
-              <Text style={styles.inputHint}>
-                Añade detalles para ayudar a personalizar tu plan.
-              </Text>
-              {errors.description ? (
-                <Text style={styles.errorText}>{errors.description}</Text>
-              ) : null}
+            {/* Selector de Prioridad (HU-06) */}
+            <View style={styles.sectionBlock}>
+              <Text style={styles.sectionLabel}>PRIORIDAD DEL OBJETIVO</Text>
+              <View style={styles.optionsRow}>
+                {(['alta', 'media', 'baja'] as Priority[]).map((p) => (
+                  <TouchableOpacity
+                    key={p}
+                    style={[
+                      styles.optionChip,
+                      priority === p && styles.optionChipSelected,
+                    ]}
+                    onPress={() => setPriority(p)}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.optionChipText,
+                        priority === p && styles.optionChipTextSelected,
+                      ]}
+                    >
+                      {p.charAt(0).toUpperCase() + p.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
 
+            {/* Selector de Tiempo Disponible (HU-07) */}
+            <View style={styles.sectionBlock}>
+              <Text style={styles.sectionLabel}>TIEMPO DISPONIBLE</Text>
+              <View style={styles.optionsRow}>
+                {[
+                  { key: 'poco', label: '1-2 h / sem' },
+                  { key: 'moderado', label: '3-4 h / sem' },
+                  { key: 'intenso', label: '5+ h / sem' },
+                ].map((item) => (
+                  <TouchableOpacity
+                    key={item.key}
+                    style={[
+                      styles.optionChip,
+                      timeCommitment === item.key && styles.optionChipSelected,
+                    ]}
+                    onPress={() => setTimeCommitment(item.key as TimeCommitment)}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.optionChipText,
+                        timeCommitment === item.key && styles.optionChipTextSelected,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Fecha Límite */}
             <View style={styles.fieldSection}>
               <Text style={styles.fieldLabel}>FECHA LÍMITE</Text>
-
               <Pressable
                 onPress={() => setShowDatePicker(true)}
                 style={styles.datePickerButton}
@@ -286,30 +254,18 @@ export default function CreateGoalScreen() {
                   Un objetivo claro es el primer paso.
                 </Text>
                 <Text style={styles.bannerSubtitle}>
-                  No te preocupes, podrás avanzar a tu ritmo.
+                  Adaptaremos las actividades a tu disponibilidad real.
                 </Text>
               </View>
             </View>
 
-            {errors.form ? <Text style={styles.formError}>{errors.form}</Text> : null}
-
             <TouchableOpacity
-              style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
+              style={styles.submitButton}
               onPress={handleCreatePlan}
               activeOpacity={0.85}
-              disabled={isSubmitting}
             >
-              {isSubmitting ? (
-                <>
-                  <ActivityIndicator color="#FFFFFF" />
-                  <Text style={styles.submitButtonText}>Creando objetivo...</Text>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.submitButtonText}>Crear mi plan</Text>
-                  <Feather name="arrow-right" size={20} color="#FFFFFF" style={styles.buttonArrow} />
-                </>
-              )}
+              <Text style={styles.submitButtonText}>Siguiente: Disponibilidad</Text>
+              <Feather name="arrow-right" size={20} color="#FFFFFF" style={styles.buttonArrow} />
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -330,7 +286,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 20,
     paddingVertical: 24,
-    justifyContent: 'center',
   },
   container: {
     width: '100%',
@@ -352,63 +307,62 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     alignItems: 'center',
-    marginVertical: 4,
+    marginVertical: 2,
   },
   avatarCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: '#D8ECF8',
     justifyContent: 'center',
     alignItems: 'center',
   },
   titleSection: {
     alignItems: 'center',
-    textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   badge: {
     fontSize: 11,
     fontWeight: '800',
     color: '#174A62',
     letterSpacing: 1.2,
-    marginBottom: 6,
+    marginBottom: 4,
     textAlign: 'center',
   },
   mainTitle: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '800',
     color: '#0F2C40',
-    marginBottom: 6,
+    marginBottom: 4,
     textAlign: 'center',
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#627D98',
     textAlign: 'center',
-    lineHeight: 20,
-    paddingHorizontal: 12,
+    lineHeight: 18,
+    paddingHorizontal: 8,
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 20,
+    borderRadius: 20,
+    padding: 16,
     boxShadow: '0px 8px 16px rgba(23, 74, 98, 0.08)',
     elevation: 4,
   },
   cardBadge: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     color: '#174A62',
     letterSpacing: 1.2,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   goalInput: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: '700',
     color: '#0F2C40',
-    minHeight: 60,
+    minHeight: 48,
     textAlignVertical: 'top',
     ...(Platform.OS === 'web'
       ? ({
@@ -422,33 +376,44 @@ const styles = StyleSheet.create({
     color: '#174A62',
   },
   inputHint: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#94A3B8',
-    marginTop: 8,
-  },
-  descriptionInput: {
-    minHeight: 88,
-    fontSize: 15,
-    lineHeight: 22,
-    color: '#0F2C40',
-    textAlignVertical: 'top',
-    ...(Platform.OS === 'web'
-      ? ({
-          outlineStyle: 'none',
-          outlineWidth: 0,
-          outlineColor: 'transparent',
-        } as any)
-      : {}),
-  },
-  errorText: {
-    fontSize: 12,
-    color: '#D97A7A',
     marginTop: 6,
   },
-  formError: {
+  sectionBlock: {
+    gap: 6,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#174A62',
+    letterSpacing: 1.2,
+  },
+  optionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  optionChip: {
+    flex: 1,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.2,
+    borderColor: '#E2E8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  optionChipSelected: {
+    backgroundColor: '#174A62',
+    borderColor: '#174A62',
+  },
+  optionChipText: {
     fontSize: 13,
-    color: '#D97A7A',
-    textAlign: 'center',
+    fontWeight: '700',
+    color: '#627D98',
+  },
+  optionChipTextSelected: {
+    color: '#FFFFFF',
   },
   fieldSection: {
     gap: 6,
@@ -463,18 +428,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1.2,
     borderColor: '#E2E8F0',
     paddingHorizontal: 16,
-    height: 52,
+    height: 48,
   },
   dateIcon: {
     marginRight: 10,
   },
   dateText: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#0F2C40',
   },
@@ -493,31 +458,31 @@ const styles = StyleSheet.create({
   },
   iosPickerContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 14,
     padding: 12,
-    marginTop: 8,
+    marginTop: 6,
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
   iosDoneBtn: {
     alignSelf: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     backgroundColor: '#D8ECF8',
-    borderRadius: 12,
+    borderRadius: 10,
   },
   iosDoneText: {
     color: '#174A62',
     fontWeight: '700',
-    fontSize: 13,
+    fontSize: 12,
   },
   infoBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#EBF5FB',
-    borderRadius: 18,
-    padding: 16,
-    gap: 12,
+    borderRadius: 16,
+    padding: 14,
+    gap: 10,
   },
   bannerIcon: {
     marginTop: 2,
@@ -526,33 +491,30 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   bannerTitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: '#0F2C40',
   },
   bannerSubtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#627D98',
     marginTop: 2,
   },
   submitButton: {
     backgroundColor: '#174A62',
-    height: 52,
-    borderRadius: 20,
+    height: 50,
+    borderRadius: 18,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 2,
     boxShadow: '0px 4px 8px rgba(23, 74, 98, 0.25)',
     elevation: 3,
   },
   submitButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-  },
-  submitButtonDisabled: {
-    opacity: 0.7,
   },
   buttonArrow: {
     marginLeft: 8,
