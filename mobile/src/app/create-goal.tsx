@@ -19,14 +19,13 @@ import {
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
 
-type Priority = 'alta' | 'media' | 'baja';
-type TimeCommitment = 'poco' | 'moderado' | 'intenso';
+type Priority = 'baja' | 'media' | 'alta';
 
 export default function CreateGoalScreen() {
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState('Crear una aplicación web');
   const [priority, setPriority] = useState<Priority>('media');
-  const [timeCommitment, setTimeCommitment] = useState<TimeCommitment>('moderado');
-  const [targetDate, setTargetDate] = useState<Date | null>(null);
+  const [hours, setHours] = useState(4);
+  const [targetDate, setTargetDate] = useState<Date | null>(new Date(2026, 11, 30));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -64,13 +63,12 @@ export default function CreateGoalScreen() {
 
     setErrorMessage('');
 
-    // Pasamos los parámetros hacia la pantalla de disponibilidad
     router.push({
       pathname: '/availability',
       params: {
         title: cleanTitle,
         priority,
-        timeCommitment,
+        hours,
         targetDate: targetDate
           ? [
               targetDate.getFullYear(),
@@ -96,12 +94,12 @@ export default function CreateGoalScreen() {
           <View style={styles.container}>
             <View style={styles.topRow}>
               <BrandHeader showTagline={false} />
-              <Text style={styles.stepIndicator}>PASO 1 DE 2</Text>
+              <Text style={styles.stepIndicator}>PASO 1 DE 1</Text>
             </View>
 
             <View style={styles.avatarContainer}>
               <View style={styles.avatarCircle}>
-                <Feather name="smile" size={26} color="#174A62" />
+                <Feather name="smile" size={24} color="#174A62" />
               </View>
             </View>
 
@@ -141,61 +139,56 @@ export default function CreateGoalScreen() {
               <Text style={styles.errorText}>{errorMessage}</Text>
             ) : null}
 
-            {/* Selector de Prioridad (HU-06) */}
-            <View style={styles.sectionBlock}>
-              <Text style={styles.sectionLabel}>PRIORIDAD DEL OBJETIVO</Text>
-              <View style={styles.optionsRow}>
-                {(['alta', 'media', 'baja'] as Priority[]).map((p) => (
-                  <TouchableOpacity
-                    key={p}
-                    style={[
-                      styles.optionChip,
-                      priority === p && styles.optionChipSelected,
-                    ]}
-                    onPress={() => setPriority(p)}
-                    activeOpacity={0.8}
-                  >
-                    <Text
+            {/* Bloque dividido: Prioridad y Tiempo Disponible */}
+            <View style={styles.rowCardsContainer}>
+              {/* Prioridad del objetivo */}
+              <View style={[styles.card, styles.halfCard]}>
+                <Text style={styles.cardBadge}>PRIORIDAD DEL OBJETIVO</Text>
+                <View style={styles.priorityChipsRow}>
+                  {(['baja', 'media', 'alta'] as Priority[]).map((p) => (
+                    <TouchableOpacity
+                      key={p}
                       style={[
-                        styles.optionChipText,
-                        priority === p && styles.optionChipTextSelected,
+                        styles.miniChip,
+                        priority === p && styles.miniChipSelected,
                       ]}
+                      onPress={() => setPriority(p)}
+                      activeOpacity={0.8}
                     >
-                      {p.charAt(0).toUpperCase() + p.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text
+                        style={[
+                          styles.miniChipText,
+                          priority === p && styles.miniChipTextSelected,
+                        ]}
+                      >
+                        {p.charAt(0).toUpperCase() + p.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
-            </View>
 
-            {/* Selector de Tiempo Disponible (HU-07) */}
-            <View style={styles.sectionBlock}>
-              <Text style={styles.sectionLabel}>TIEMPO DISPONIBLE</Text>
-              <View style={styles.optionsRow}>
-                {[
-                  { key: 'poco', label: '1-2 h / sem' },
-                  { key: 'moderado', label: '3-4 h / sem' },
-                  { key: 'intenso', label: '5+ h / sem' },
-                ].map((item) => (
+              {/* Tiempo disponible */}
+              <View style={[styles.card, styles.halfCard]}>
+                <Text style={styles.cardBadge}>TIEMPO DISPONIBLE</Text>
+                <View style={styles.counterRow}>
                   <TouchableOpacity
-                    key={item.key}
-                    style={[
-                      styles.optionChip,
-                      timeCommitment === item.key && styles.optionChipSelected,
-                    ]}
-                    onPress={() => setTimeCommitment(item.key as TimeCommitment)}
-                    activeOpacity={0.8}
+                    style={styles.counterBtn}
+                    onPress={() => setHours(Math.max(1, hours - 1))}
                   >
-                    <Text
-                      style={[
-                        styles.optionChipText,
-                        timeCommitment === item.key && styles.optionChipTextSelected,
-                      ]}
-                    >
-                      {item.label}
-                    </Text>
+                    <Feather name="minus" size={16} color="#174A62" />
                   </TouchableOpacity>
-                ))}
+                  <View style={styles.counterTextContainer}>
+                    <Text style={styles.counterValue}>{hours} horas</Text>
+                    <Text style={styles.counterSub}>por semana</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.counterBtn}
+                    onPress={() => setHours(hours + 1)}
+                  >
+                    <Feather name="plus" size={16} color="#174A62" />
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
 
@@ -258,13 +251,13 @@ export default function CreateGoalScreen() {
             </View>
 
             <View style={styles.infoBanner}>
-              <Feather name="star" size={18} color="#174A62" style={styles.bannerIcon} />
+              <Feather name="plus" size={16} color="#174A62" style={styles.bannerIcon} />
               <View style={styles.bannerTextContainer}>
                 <Text style={styles.bannerTitle}>
                   Un objetivo claro es el primer paso.
                 </Text>
                 <Text style={styles.bannerSubtitle}>
-                  Adaptaremos las actividades a tu disponibilidad real.
+                  No te preocupes, podrás avanzar a tu ritmo.
                 </Text>
               </View>
             </View>
@@ -274,7 +267,7 @@ export default function CreateGoalScreen() {
               onPress={handleCreatePlan}
               activeOpacity={0.85}
             >
-              <Text style={styles.submitButtonText}>Siguiente: Disponibilidad</Text>
+              <Text style={styles.submitButtonText}>Configurar disponibilidad</Text>
               <Feather name="arrow-right" size={20} color="#FFFFFF" style={styles.buttonArrow} />
             </TouchableOpacity>
           </View>
@@ -373,10 +366,10 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   cardBadge: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     color: '#174A62',
-    letterSpacing: 1.2,
+    letterSpacing: 1,
     marginBottom: 6,
   },
   goalInput: {
@@ -401,40 +394,70 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     marginTop: 6,
   },
-  sectionBlock: {
-    gap: 6,
-  },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#174A62',
-    letterSpacing: 1.2,
-  },
-  optionsRow: {
+  rowCardsContainer: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 12,
   },
-  optionChip: {
+  halfCard: {
     flex: 1,
-    height: 44,
-    borderRadius: 14,
+    padding: 12,
+    justifyContent: 'space-between',
+  },
+  priorityChipsRow: {
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: 4,
+  },
+  miniChip: {
+    flex: 1,
+    height: 32,
+    borderRadius: 10,
     backgroundColor: '#FFFFFF',
-    borderWidth: 1.2,
+    borderWidth: 1,
     borderColor: '#E2E8F0',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  optionChipSelected: {
-    backgroundColor: '#174A62',
+  miniChipSelected: {
+    backgroundColor: '#D8ECF8',
     borderColor: '#174A62',
   },
-  optionChipText: {
-    fontSize: 13,
+  miniChipText: {
+    fontSize: 10,
     fontWeight: '700',
     color: '#627D98',
   },
-  optionChipTextSelected: {
-    color: '#FFFFFF',
+  miniChipTextSelected: {
+    color: '#174A62',
+    fontWeight: '800',
+  },
+  counterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  counterBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#EBF5FB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D8ECF8',
+  },
+  counterTextContainer: {
+    alignItems: 'center',
+  },
+  counterValue: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F2C40',
+  },
+  counterSub: {
+    fontSize: 9,
+    color: '#627D98',
   },
   fieldSection: {
     gap: 6,
