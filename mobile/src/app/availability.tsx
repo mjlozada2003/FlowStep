@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import {
   ScrollView,
@@ -13,21 +13,22 @@ import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
 
 const DAYS = [
-  { key: 'L', label: 'Lunes' },
-  { key: 'M', label: 'Martes' },
-  { key: 'X', label: 'Miércoles' },
-  { key: 'J', label: 'Jueves' },
-  { key: 'V', label: 'Viernes' },
-  { key: 'S', label: 'Sábado' },
-  { key: 'D', label: 'Domingo' },
+  { key: 'L', label: 'Lun' },
+  { key: 'M', label: 'Mar' },
+  { key: 'X', label: 'Mié' },
+  { key: 'J', label: 'Jue' },
+  { key: 'V', label: 'Vie' },
+  { key: 'S', label: 'Sáb' },
+  { key: 'D', label: 'Dom' },
 ];
 
-type Intensity = 'flexible' | 'equilibrado' | 'intenso';
+const SESSION_TIMES = ['30 min', '1 hora', '2 horas'];
 
 export default function AvailabilityScreen() {
-  const params = useLocalSearchParams();
-  const [selectedDays, setSelectedDays] = useState<string[]>(['L', 'M', 'X', 'J', 'V']);
-  const [intensity, setIntensity] = useState<Intensity>('equilibrado');
+  const [selectedDays, setSelectedDays] = useState<string[]>(['L', 'X', 'S']);
+  const [startHour, setStartHour] = useState(18);
+  const [endHour, setEndHour] = useState(20);
+  const [sessionTime, setSessionTime] = useState('1 hora');
 
   const toggleDay = (key: string) => {
     setSelectedDays((prev) =>
@@ -36,15 +37,7 @@ export default function AvailabilityScreen() {
   };
 
   const handleNext = () => {
-    // Pasamos los datos hacia la pantalla de generación del plan (o schedule)
-    router.push({
-      pathname: '/schedule',
-      params: {
-        ...params,
-        days: selectedDays.join(','),
-        intensity,
-      },
-    });
+    router.push('/generating-plan');
   };
 
   return (
@@ -54,6 +47,7 @@ export default function AvailabilityScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.container}>
+          {/* Header Superior */}
           <View style={styles.topRow}>
             <TouchableOpacity
               style={styles.backButton}
@@ -62,32 +56,50 @@ export default function AvailabilityScreen() {
             >
               <Feather name="chevron-left" size={24} color="#0F2C40" />
             </TouchableOpacity>
-            <Text style={styles.stepIndicator}>PASO 2 DE 2</Text>
+
+            <Text style={styles.headerTitleTag}>DISPONIBILIDAD</Text>
+
+            <BrandHeader showTagline={false} />
           </View>
 
+          {/* Título Principal */}
           <View style={styles.titleSection}>
-            <Text style={styles.badge}>TU RITMO IDEAL</Text>
+            <Text style={styles.badge}>TU RITMO REAL</Text>
             <Text style={styles.mainTitle}>¿Cuándo puedes avanzar?</Text>
             <Text style={styles.subtitle}>
-              Selecciona los días y la intensidad para adaptar las actividades a tu rutina.
+              Selecciona tus días y franja horaria para organizar tu semana.
             </Text>
           </View>
 
-          {/* Días disponibles (HU-35) */}
+          {/* Card 1: Días Disponibles */}
           <View style={styles.card}>
-            <Text style={styles.cardLabel}>SELECCIONA TUS DÍAS</Text>
+            <View style={styles.cardHeaderRow}>
+              <Text style={styles.cardLabel}>DÍAS DISPONIBLES</Text>
+              <View style={styles.badgeCount}>
+                <Text style={styles.badgeCountText}>{selectedDays.length} días</Text>
+              </View>
+            </View>
+
+            <Text style={styles.cardTitle}>Selecciona tus días</Text>
+
             <View style={styles.daysRow}>
               {DAYS.map((day) => {
                 const isSelected = selectedDays.includes(day.key);
                 return (
                   <TouchableOpacity
                     key={day.key}
-                    style={[styles.dayCircle, isSelected && styles.dayCircleSelected]}
+                    style={[
+                      styles.dayCircle,
+                      isSelected && styles.dayCircleSelected,
+                    ]}
                     onPress={() => toggleDay(day.key)}
                     activeOpacity={0.8}
                   >
                     <Text
-                      style={[styles.dayText, isSelected && styles.dayTextSelected]}
+                      style={[
+                        styles.dayText,
+                        isSelected && styles.dayTextSelected,
+                      ]}
                     >
                       {day.key}
                     </Text>
@@ -97,41 +109,79 @@ export default function AvailabilityScreen() {
             </View>
           </View>
 
-          {/* Franja de trabajo / Ritmo */}
+          {/* Card 2: Franja Horaria con Botones + / - */}
           <View style={styles.card}>
-            <Text style={styles.cardLabel}>RITMO DE DEDICACIÓN</Text>
-            <View style={styles.intensityRow}>
-              {[
-                { key: 'flexible', label: 'Flexible', desc: 'Poco a poco' },
-                { key: 'equilibrado', label: 'Equilibrado', desc: 'Ritmo constante' },
-                { key: 'intenso', label: 'Intenso', desc: 'Acelerado' },
-              ].map((item) => {
-                const isSelected = intensity === item.key;
+            <Text style={styles.cardLabel}>HORARIO HABITUAL</Text>
+            <Text style={styles.cardTitle}>Franja de trabajo</Text>
+
+            <View style={styles.timeControlRow}>
+              {/* Hora Inicio */}
+              <View style={styles.timeBox}>
+                <Text style={styles.timeBoxLabel}>DESDE</Text>
+                <View style={styles.stepperRow}>
+                  <TouchableOpacity
+                    style={styles.stepBtn}
+                    onPress={() => setStartHour(Math.max(0, startHour - 1))}
+                  >
+                    <Feather name="minus" size={14} color="#174A62" />
+                  </TouchableOpacity>
+                  <Text style={styles.timeValue}>{String(startHour).padStart(2, '0')}:00</Text>
+                  <TouchableOpacity
+                    style={styles.stepBtn}
+                    onPress={() => setStartHour(Math.min(23, startHour + 1))}
+                  >
+                    <Feather name="plus" size={14} color="#174A62" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <Text style={styles.timeDash}>—</Text>
+
+              {/* Hora Fin */}
+              <View style={styles.timeBox}>
+                <Text style={styles.timeBoxLabel}>HASTA</Text>
+                <View style={styles.stepperRow}>
+                  <TouchableOpacity
+                    style={styles.stepBtn}
+                    onPress={() => setEndHour(Math.max(0, endHour - 1))}
+                  >
+                    <Feather name="minus" size={14} color="#174A62" />
+                  </TouchableOpacity>
+                  <Text style={styles.timeValue}>{String(endHour).padStart(2, '0')}:00</Text>
+                  <TouchableOpacity
+                    style={styles.stepBtn}
+                    onPress={() => setEndHour(Math.min(23, endHour + 1))}
+                  >
+                    <Feather name="plus" size={14} color="#174A62" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* Tiempo por sesión */}
+            <Text style={styles.sessionLabel}>Tiempo por sesión</Text>
+            <View style={styles.sessionTimesRow}>
+              {SESSION_TIMES.map((time) => {
+                const isSelected = sessionTime === time;
                 return (
                   <TouchableOpacity
-                    key={item.key}
+                    key={time}
                     style={[
-                      styles.intensityOption,
-                      isSelected && styles.intensityOptionSelected,
+                      styles.sessionBtn,
+                      isSelected && styles.sessionBtnSelected,
                     ]}
-                    onPress={() => setIntensity(item.key as Intensity)}
+                    onPress={() => setSessionTime(time)}
                     activeOpacity={0.8}
                   >
                     <Text
                       style={[
-                        styles.intensityTitle,
-                        isSelected && styles.intensityTitleSelected,
+                        styles.sessionBtnText,
+                        isSelected && styles.sessionBtnTextSelected,
                       ]}
                     >
-                      {item.label}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.intensityDesc,
-                        isSelected && styles.intensityDescSelected,
-                      ]}
-                    >
-                      {item.desc}
+                      {time}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -139,23 +189,32 @@ export default function AvailabilityScreen() {
             </View>
           </View>
 
-          <View style={styles.infoBanner}>
-            <Feather name="check-circle" size={18} color="#174A62" style={styles.bannerIcon} />
-            <View style={styles.bannerTextContainer}>
-              <Text style={styles.bannerTitle}>Tu disponibilidad se guardará</Text>
-              <Text style={styles.bannerSubtitle}>
-                El plan distribuirá las tareas de forma inteligente sin sobrecargarte.
+          {/* Banner Resumen */}
+          <View style={styles.summaryBanner}>
+            <View style={styles.avatarCircle}>
+              <Feather name="smile" size={20} color="#174A62" />
+            </View>
+            <View style={styles.summaryTextContainer}>
+              <Text style={styles.summaryTitle}>Tu disponibilidad semanal</Text>
+              <Text style={styles.summarySubtitle}>
+                {selectedDays.length > 0 ? selectedDays.join(', ') : 'Sin días'} · {String(startHour).padStart(2, '0')}:00–{String(endHour).padStart(2, '0')}:00
               </Text>
             </View>
           </View>
 
+          {/* Botón Acción Principal */}
           <TouchableOpacity
             style={styles.submitButton}
-            onPress={()=> router.push('/generating-plan')}
+            onPress={handleNext}
             activeOpacity={0.85}
           >
-            <Text style={styles.submitButtonText}>Generar mi plan adaptado</Text>
-            <Feather name="arrow-right" size={20} color="#FFFFFF" style={styles.buttonArrow} />
+            <Text style={styles.submitButtonText}>Crear mi plan</Text>
+            <Feather
+              name="arrow-right"
+              size={20}
+              color="#FFFFFF"
+              style={styles.buttonArrow}
+            />
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -195,24 +254,24 @@ const styles = StyleSheet.create({
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.05)',
     elevation: 2,
   },
-  stepIndicator: {
-    fontSize: 11,
+  headerTitleTag: {
+    fontSize: 10,
     fontWeight: '800',
     color: '#627D98',
-    letterSpacing: 1,
+    letterSpacing: 1.2,
   },
   titleSection: {
-    marginBottom: 4,
+    marginBottom: 2,
   },
   badge: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     color: '#174A62',
     letterSpacing: 1.2,
     marginBottom: 4,
   },
   mainTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '800',
     color: '#0F2C40',
     marginBottom: 4,
@@ -225,27 +284,50 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 22,
     padding: 18,
     boxShadow: '0px 8px 16px rgba(23, 74, 98, 0.08)',
-    elevation: 4,
-    gap: 12,
+    elevation: 3,
+    gap: 10,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   cardLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     color: '#174A62',
     letterSpacing: 1.2,
+  },
+  badgeCount: {
+    backgroundColor: '#EBF5FB',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  badgeCountText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#174A62',
+  },
+  cardTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0F2C40',
+    marginTop: -2,
+    marginBottom: 4,
   },
   daysRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
   dayCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#FAF6F0',
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1.2,
     borderColor: '#E2E8F0',
     justifyContent: 'center',
@@ -257,75 +339,131 @@ const styles = StyleSheet.create({
   },
   dayText: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#627D98',
   },
   dayTextSelected: {
     color: '#FFFFFF',
   },
-  intensityRow: {
+  timeControlRow: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 4,
   },
-  intensityOption: {
+  timeBox: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 14,
     backgroundColor: '#FAF6F0',
+    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderWidth: 1.2,
     borderColor: '#E2E8F0',
     alignItems: 'center',
+    gap: 4,
   },
-  intensityOptionSelected: {
-    backgroundColor: '#D8ECF8',
-    borderColor: '#174A62',
-  },
-  intensityTitle: {
-    fontSize: 12,
+  timeBoxLabel: {
+    fontSize: 9,
     fontWeight: '800',
-    color: '#0F2C40',
-    marginBottom: 2,
-  },
-  intensityTitleSelected: {
-    color: '#174A62',
-  },
-  intensityDesc: {
-    fontSize: 10,
     color: '#627D98',
-    textAlign: 'center',
+    letterSpacing: 1,
   },
-  intensityDescSelected: {
-    color: '#174A62',
-  },
-  infoBanner: {
+  stepperRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  stepBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: '#EBF5FB',
-    borderRadius: 16,
-    padding: 14,
-    gap: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D8ECF8',
   },
-  bannerIcon: {
-    marginTop: 2,
+  timeValue: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F2C40',
   },
-  bannerTextContainer: {
-    flex: 1,
+  timeDash: {
+    fontSize: 16,
+    color: '#94A3B8',
+    fontWeight: '600',
   },
-  bannerTitle: {
+  divider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginVertical: 4,
+  },
+  sessionLabel: {
     fontSize: 12,
     fontWeight: '700',
     color: '#0F2C40',
   },
-  bannerSubtitle: {
+  sessionTimesRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  sessionBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#FAF6F0',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sessionBtnSelected: {
+    backgroundColor: '#D8ECF8',
+    borderColor: '#174A62',
+  },
+  sessionBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#627D98',
+  },
+  sessionBtnTextSelected: {
+    color: '#174A62',
+    fontWeight: '800',
+  },
+  summaryBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EBF5FB',
+    borderRadius: 18,
+    padding: 14,
+    gap: 12,
+  },
+  avatarCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#D8ECF8',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  summaryTextContainer: {
+    flex: 1,
+  },
+  summaryTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F2C40',
+  },
+  summarySubtitle: {
     fontSize: 11,
     color: '#627D98',
     marginTop: 2,
   },
   submitButton: {
     backgroundColor: '#174A62',
-    height: 50,
-    borderRadius: 18,
+    height: 52,
+    borderRadius: 20,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
@@ -335,7 +473,7 @@ const styles = StyleSheet.create({
   },
   submitButtonText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
   },
   buttonArrow: {
