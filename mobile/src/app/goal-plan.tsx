@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import {
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -124,9 +125,15 @@ export default function GoalPlanScreen() {
                 <View style={styles.timelineLine} />
                 {stages.map((stage, index) => {
                   return (
-                    <View
+                    <Pressable
                       key={stage.stage_id}
                       style={[styles.stageCard, styles.stageCardPending]}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/stage-detail',
+                          params: { stageId: String(stage.stage_id) },
+                        })
+                      }
                     >
                       <View style={styles.stageHeader}>
                         <View
@@ -151,7 +158,7 @@ export default function GoalPlanScreen() {
                           </Text>
                         </View>
                       </View>
-                    </View>
+                    </Pressable>
                   );
                 })}
               </View>
