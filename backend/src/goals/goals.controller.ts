@@ -105,6 +105,13 @@ export class GoalsController {
   @ApiOperation({
     summary: 'Establecer o modificar la prioridad del objetivo (HU-06)',
     description: 'Permite actualizar el nivel de prioridad de un objetivo existente (high, medium, low).',
+    return this.goalsService.findOne(id, req.user.userId);
+  }
+
+  @Get(':id/progress')
+  @ApiOperation({
+    summary: 'Consultar progreso ponderado del objetivo (HU-03)',
+    description: 'Consulta la vista calculada de base de datos (v_goal_progress) retornando porcentaje y métricas ponderadas por minutos de actividades.',
   })
   @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
   @ApiResponse({

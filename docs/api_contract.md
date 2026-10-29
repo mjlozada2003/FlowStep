@@ -1,31 +1,42 @@
-# Contrato de Comunicación de la API (FlowStep Backend - Sprints 1 y 2)
+# Contrato de Comunicación de la API (Backend ⇄ Frontend) - FlowStep
 
-Este documento define las rutas, modelos de datos, formatos de entrada y respuesta de la API REST de FlowStep para la integración con la aplicación móvil y el consumo mediante Swagger / OpenAPI.
+Este documento define el **contrato de comunicación oficial (OpenAPI / REST)** entre el Backend (NestJS + PostgreSQL) y el Frontend (React Native + Expo) de FlowStep.
 
 ---
 
-## 1. Información General y Acceso
+## 1. Información General y Entorno
 
-- **Entorno Local:** `http://localhost:3000`
+- **Versión de la API:** `1.0.0`
+- **Formato de Intercambio:** `application/json`
 - **Documentación Interactiva (Swagger UI):** `http://localhost:3000/api/docs`
-- **Dispositivo Físico (Expo Go):** `http://<TU_IP_LOCAL>:3000` (ambos dispositivos en la misma red Wi-Fi)
+- **Especificación OpenAPI (JSON):** `http://localhost:3000/api/docs-json`
+
+### URLs Base según el entorno de prueba:
+| Entorno | Base URL | Observaciones |
+| :--- | :--- | :--- |
+| **Web Browser / Postman** | `http://localhost:3000` | Pruebas locales directas |
+| **Android Emulator** | `http://10.0.2.2:3000` | IP de puente del emulador de Android Studio |
+| **Dispositivo Físico (Expo Go)** | `http://<TU_IP_LOCAL>:3000` | Ej. `http://192.168.1.15:3000` (Ambos dispositivos deben estar en la misma red Wi-Fi) |
 
 ---
 
 ## 2. Convenciones Globales y Autenticación
 
 ### Cabecera de Autorización
-Los endpoints protegidos requieren el token JWT obtenido tras iniciar sesión:
+Los endpoints protegidos requieren el token JWT obtenido tras iniciar sesión en la cabecera HTTP:
 ```http
 Authorization: Bearer <access_token>
 ```
 
 ### Estructura Estándar de Errores
+Si una petición falla por validación o reglas de negocio, el backend responde con el formato estándar de NestJS:
 ```json
 {
   "statusCode": 400,
   "message": [
     "La prioridad debe ser high, medium o low"
+    "El formato del correo es inválido",
+    "La contraseña debe tener al menos 6 caracteres"
   ],
   "error": "Bad Request"
 }
@@ -39,7 +50,7 @@ Authorization: Bearer <access_token>
 
 #### Registrar Usuario (HU-53)
 - **Ruta:** `POST /users/register`
-- **Autenticación:** Pública
+- **Autenticación:** Pública (No requiere token)
 - **Body:**
 ```json
 {

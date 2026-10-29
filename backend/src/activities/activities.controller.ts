@@ -85,6 +85,10 @@ export class ActivitiesController {
     status: 404,
     description: 'Actividad no encontrada.',
   })
+  @ApiResponse({
+    status: 401,
+    description: 'No autorizado. Se requiere un token Bearer válido.',
+  })
   completeActivity(@Param('id', ParseIntPipe) id: number) {
     return this.activitiesService.completeActivity(id);
   }
