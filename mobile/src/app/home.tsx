@@ -1,15 +1,21 @@
+import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
 import { Colors, Spacing } from '@/constants/theme';
+import { useAuth } from '@/contexts/auth-context';
+import { getUserGoals, type CreatedGoal } from '@/services/api/goals';
 
 const mockGoals = [
   {
@@ -27,27 +33,82 @@ const mockGoals = [
 ];
 
 export default function HomeScreen() {
+  const { user, token, clearSession } = useAuth();
+  const [goals, setGoals] = useState<CreatedGoal[]>([]);
+  const [isLoadingGoals, setIsLoadingGoals] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+
+    setIsLoadingGoals(true);
+    getUserGoals(token)
+      .then((serverGoals) => {
+        if (serverGoals && serverGoals.length > 0) {
+          setGoals(serverGoals);
+        }
+      })
+      .catch((err) => {
+        console.warn('No se pudieron cargar los objetivos del servidor:', err);
+      })
+      .finally(() => {
+        setIsLoadingGoals(false);
+      });
+  }, [token]);
+
+  const displayName = user?.name ? user.name.split(' ')[0] : 'Flora';
+  const initial = displayName.charAt(0).toUpperCase();
+
+  const firstGoal = goals.length > 0 ? goals[0] : null;
+  const nextActivity = firstGoal?.stages?.[0]?.activities?.[0];
+  const nextStepTitle = nextActivity?.title || 'Practicar saludos en francés';
+  const nextStepStage = firstGoal?.stages?.[0]?.name || 'Fundamentos';
+  const nextStepDuration = nextActivity?.estimated_minutes
+    ? `${nextActivity.estimated_minutes} min`
+    : '20 min';
+
+  const displayGoals =
+    goals.length > 0
+      ? goals.map((g) => ({
+          id: g.goal_id,
+          title: g.title,
+          progress: 25,
+          stages: `${g.stages?.length || 0} etapas`,
+        }))
+      : mockGoals;
+
   return (
     <Screen style={styles.screen}>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}>
         
-        {/* Encabezado */}
+        {/* Encabezado con Logout */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Hola, Flora 👋</Text>
+            <Text style={styles.greeting}>Hola, {displayName} 👋</Text>
             <Text style={styles.question}>
               ¿Qué quieres lograr hoy?
             </Text>
           </View>
 
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>F</Text>
+          <View style={styles.headerRight}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{initial}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.logoutBtn}
+              onPress={() => {
+                clearSession();
+                router.replace('/login');
+              }}
+              accessibilityLabel="Cerrar sesión"
+            >
+              <Feather name="log-out" size={16} color="#627D98" />
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* Próximo paso */}
+        {/* Próximo paso dinámico */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Tu próximo paso</Text>
 
@@ -59,7 +120,7 @@ export default function HomeScreen() {
             </View>
 
             <Text style={styles.nextStepTitle}>
-              Practicar saludos en francés
+              {nextStepTitle}
             </Text>
 
             <Text style={styles.nextStepDescription}>
@@ -67,9 +128,9 @@ export default function HomeScreen() {
             </Text>
 
             <View style={styles.activityInfo}>
-              <Text style={styles.infoText}>⏱ 20 min</Text>
+              <Text style={styles.infoText}>⏱ {nextStepDuration}</Text>
               <Text style={styles.infoText}>•</Text>
-              <Text style={styles.infoText}>Fundamentos</Text>
+              <Text style={styles.infoText}>{nextStepStage}</Text>
             </View>
 
             <Pressable
@@ -77,7 +138,19 @@ export default function HomeScreen() {
                 styles.primaryButton,
                 pressed && styles.pressed,
               ]}
-              onPress={() => router.push('/goal-plan')}>
+              onPress={() =>
+                router.push(
+                  firstGoal
+                    ? {
+                        pathname: '/goal-plan',
+                        params: {
+                          goalId: String(firstGoal.goal_id),
+                          title: firstGoal.title,
+                        },
+                      }
+                    : '/goal-plan',
+                )
+              }>
               <Text style={styles.primaryButtonText}>
                 Continuar
               </Text>
@@ -90,15 +163,40 @@ export default function HomeScreen() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Mis objetivos</Text>
 
-            <Pressable onPress={() => router.push('/goal-plan')}>
-              <Text style={styles.seeAll}>Ver todos</Text>
-            </Pressable>
+            {isLoadingGoals ? (
+              <ActivityIndicator size="small" color={Colors.light.primary} />
+            ) : (
+              <Pressable
+                onPress={() =>
+                  router.push(
+                    firstGoal
+                      ? {
+                          pathname: '/goal-plan',
+                          params: {
+                            goalId: String(firstGoal.goal_id),
+                            title: firstGoal.title,
+                          },
+                        }
+                      : '/goal-plan',
+                  )
+                }>
+                <Text style={styles.seeAll}>Ver todos</Text>
+              </Pressable>
+            )}
           </View>
 
-          {mockGoals.map((goal) => (
+          {displayGoals.map((goal) => (
             <Pressable
               key={goal.id}
-              onPress={() => router.push('/goal-plan')}
+              onPress={() =>
+                router.push({
+                  pathname: '/goal-plan',
+                  params: {
+                    goalId: String(goal.id),
+                    title: goal.title,
+                  },
+                })
+              }
               style={({ pressed }) => pressed && styles.pressedCard}>
               <Card style={styles.goalCard}>
                 <View style={styles.goalHeader}>
@@ -189,8 +287,14 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
     color: Colors.light.text,
-    maxWidth: 280,
+    maxWidth: 240,
     letterSpacing: -0.5,
+  },
+
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
 
   avatar: {
@@ -208,14 +312,26 @@ const styles = StyleSheet.create({
     color: Colors.light.primary,
   },
 
+  logoutBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
   section: {
-    gap: 12,
+    gap: Spacing.two,
   },
 
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: Spacing.one,
   },
 
   sectionTitle: {
@@ -231,62 +347,64 @@ const styles = StyleSheet.create({
   },
 
   nextStepCard: {
-    padding: 16,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    backgroundColor: Colors.light.cardBackground,
+    borderRadius: 24,
+    padding: Spacing.four,
+    borderWidth: 1.2,
+    borderColor: Colors.light.border,
+    boxShadow: '0px 4px 12px rgba(23, 74, 98, 0.05)',
+    elevation: 3,
   },
 
   nextStepBadge: {
     alignSelf: 'flex-start',
     backgroundColor: '#D8ECF8',
-    borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    marginBottom: 10,
+    borderRadius: 8,
+    marginBottom: Spacing.two,
   },
 
   nextStepBadgeText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     color: Colors.light.primary,
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
 
   nextStepTitle: {
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '700',
     color: Colors.light.text,
+    marginBottom: Spacing.one,
   },
 
   nextStepDescription: {
-    fontSize: 13,
+    fontSize: 14,
     color: Colors.light.textSecondary,
-    marginTop: 4,
-    lineHeight: 18,
+    lineHeight: 20,
+    marginBottom: Spacing.three,
   },
 
   activityInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 12,
+    gap: Spacing.two,
+    marginBottom: Spacing.three,
   },
 
   infoText: {
-    fontSize: 12,
-    color: Colors.light.textSecondary,
-    fontWeight: '600',
+    fontSize: 13,
+    color: Colors.light.textMuted,
+    fontWeight: '500',
   },
 
   primaryButton: {
-    minHeight: 48,
-    borderRadius: 16,
     backgroundColor: Colors.light.primary,
-    justifyContent: 'center',
+    borderRadius: 16,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 16,
+    justifyContent: 'center',
   },
 
   primaryButtonText: {
@@ -296,85 +414,89 @@ const styles = StyleSheet.create({
   },
 
   goalCard: {
-    padding: 16,
+    backgroundColor: Colors.light.cardBackground,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    padding: Spacing.three,
+    marginBottom: Spacing.two,
+    borderWidth: 1.2,
+    borderColor: Colors.light.border,
+    boxShadow: '0px 4px 10px rgba(23, 74, 98, 0.04)',
+    elevation: 2,
   },
 
   goalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: Spacing.two,
   },
 
   goalIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#D8ECF8',
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: '#FAF6F0',
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: Spacing.two,
   },
 
   goalIconText: {
-    fontSize: 18,
+    fontSize: 20,
   },
 
   goalInfo: {
     flex: 1,
-    marginLeft: 12,
   },
 
   goalTitle: {
     fontSize: 15,
     fontWeight: '700',
     color: Colors.light.text,
+    marginBottom: 2,
   },
 
   goalStages: {
     fontSize: 12,
     color: Colors.light.textSecondary,
-    marginTop: 2,
   },
 
   progressText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '800',
     color: Colors.light.primary,
   },
 
   progressBackground: {
     height: 6,
-    borderRadius: 3,
     backgroundColor: '#E2E8F0',
+    borderRadius: 3,
     overflow: 'hidden',
-    marginTop: 12,
   },
 
   progressBar: {
     height: '100%',
-    borderRadius: 3,
     backgroundColor: Colors.light.primary,
+    borderRadius: 3,
   },
 
   createButton: {
-    minHeight: 64,
-    borderRadius: 20,
+    backgroundColor: Colors.light.cardBackground,
+    borderRadius: 22,
+    padding: Spacing.three,
     borderWidth: 1.5,
-    borderColor: Colors.light.primary,
+    borderColor: Colors.light.border,
     borderStyle: 'dashed',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    backgroundColor: 'rgba(23, 74, 98, 0.02)',
+    gap: Spacing.two,
+    marginTop: Spacing.one,
   },
 
   createButtonIcon: {
     fontSize: 24,
-    fontWeight: '600',
     color: Colors.light.primary,
-    marginRight: 12,
+    fontWeight: '600',
+    marginLeft: Spacing.one,
   },
 
   createButtonTextContainer: {
@@ -383,21 +505,21 @@ const styles = StyleSheet.create({
 
   createButtonTitle: {
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '700',
     color: Colors.light.text,
+    marginBottom: 2,
   },
 
   createButtonDescription: {
     fontSize: 12,
     color: Colors.light.textSecondary,
-    marginTop: 2,
   },
 
   pressed: {
-    opacity: 0.8,
+    opacity: 0.85,
   },
 
   pressedCard: {
-    opacity: 0.8,
+    transform: [{ scale: 0.99 }],
   },
 });

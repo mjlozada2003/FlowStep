@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import {
   ScrollView,
@@ -25,6 +25,13 @@ const DAYS = [
 const SESSION_TIMES = ['30 min', '1 hora', '2 horas'];
 
 export default function AvailabilityScreen() {
+  const params = useLocalSearchParams<{
+    title?: string;
+    description?: string;
+    priority?: string;
+    hours?: string;
+    targetDate?: string;
+  }>();
   const [selectedDays, setSelectedDays] = useState<string[]>(['L', 'X', 'S']);
   const [startHour, setStartHour] = useState(18);
   const [endHour, setEndHour] = useState(20);
@@ -37,7 +44,30 @@ export default function AvailabilityScreen() {
   };
 
   const handleNext = () => {
-    router.push('/generating-plan');
+    const DAY_MAP: Record<string, string> = {
+      L: 'monday',
+      M: 'tuesday',
+      X: 'wednesday',
+      J: 'thursday',
+      V: 'friday',
+      S: 'saturday',
+      D: 'sunday',
+    };
+    const formattedStartTime = `${String(startHour).padStart(2, '0')}:00`;
+    const formattedEndTime = `${String(endHour).padStart(2, '0')}:00`;
+    const availabilitiesPayload = (selectedDays.length > 0 ? selectedDays : ['L', 'X', 'S']).map((d) => ({
+      day_of_week: DAY_MAP[d] || 'monday',
+      start_time: formattedStartTime,
+      end_time: formattedEndTime,
+    }));
+
+    router.push({
+      pathname: '/generating-plan',
+      params: {
+        ...params,
+        availabilities: JSON.stringify(availabilitiesPayload),
+      },
+    });
   };
 
   return (

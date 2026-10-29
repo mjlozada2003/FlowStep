@@ -8,6 +8,24 @@ export interface UserAvailabilitySlot {
   end_time: string;
 }
 
+export interface PlanActivity {
+  title: string;
+  type: string;
+  estimated_minutes: number;
+  sort_order: number;
+}
+
+export interface PlanStage {
+  name: string;
+  description: string;
+  sort_order: number;
+  activities: PlanActivity[];
+}
+
+export interface InitialPlanResponse {
+  stages: PlanStage[];
+}
+
 @Injectable()
 export class AiService {
   private ai: GoogleGenAI;
@@ -20,11 +38,126 @@ export class AiService {
     this.ai = new GoogleGenAI({ apiKey });
   }
 
+  private cleanJsonText(rawText?: string): string | null {
+    if (!rawText) return null;
+    let text = rawText.trim();
+    if (text.startsWith('```')) {
+      text = text.replace(/^```[a-z]*\s*/i, '').replace(/\s*```$/i, '').trim();
+    }
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      text = text.slice(firstBrace, lastBrace + 1);
+    }
+    return text;
+  }
+
+  private generateFallbackPlan(
+    goalTitle: string,
+    goalDescription: string,
+    userAvailabilities?: UserAvailabilitySlot[],
+  ): InitialPlanResponse {
+    let defaultDuration = 30;
+    if (userAvailabilities && userAvailabilities.length > 0) {
+      const slot = userAvailabilities[0];
+      if (slot.start_time && slot.end_time) {
+        const [sh, sm] = slot.start_time.split(':').map(Number);
+        const [eh, em] = slot.end_time.split(':').map(Number);
+        const diffMinutes = eh * 60 + em - (sh * 60 + sm);
+        if (diffMinutes > 0 && diffMinutes <= 180) {
+          defaultDuration = Math.min(diffMinutes, 60);
+        }
+      }
+    }
+
+    const cleanTitle = (goalTitle || 'Objetivo').trim();
+
+    return {
+      stages: [
+        {
+          name: `Fundamentos de ${cleanTitle}`,
+          description: 'Bases teóricas, conceptos esenciales y configuración inicial.',
+          sort_order: 1,
+          activities: [
+            {
+              title: `Introducción y conceptos clave de ${cleanTitle}`,
+              type: 'learning',
+              estimated_minutes: defaultDuration,
+              sort_order: 1,
+            },
+            {
+              title: 'Configuración de herramientas y entorno de práctica',
+              type: 'practice',
+              estimated_minutes: defaultDuration,
+              sort_order: 2,
+            },
+            {
+              title: 'Primer ejercicio guiado de asimilación',
+              type: 'exercise',
+              estimated_minutes: defaultDuration,
+              sort_order: 3,
+            },
+          ],
+        },
+        {
+          name: `Desarrollo y Práctica de ${cleanTitle}`,
+          description: 'Aplicación práctica de conocimientos y resolución de problemas.',
+          sort_order: 2,
+          activities: [
+            {
+              title: 'Práctica guiada: Ejercicios de nivel intermedio',
+              type: 'practice',
+              estimated_minutes: defaultDuration,
+              sort_order: 1,
+            },
+            {
+              title: 'Desarrollo de un caso práctico o proyecto base',
+              type: 'exercise',
+              estimated_minutes: defaultDuration,
+              sort_order: 2,
+            },
+            {
+              title: 'Revisión y corrección de dudas comunes',
+              type: 'learning',
+              estimated_minutes: defaultDuration,
+              sort_order: 3,
+            },
+          ],
+        },
+        {
+          name: `Consolidación y Evaluación de ${cleanTitle}`,
+          description: 'Evaluación final, optimización y consolidación del aprendizaje.',
+          sort_order: 3,
+          activities: [
+            {
+              title: 'Autoevaluación de conocimientos adquiridos',
+              type: 'assessment',
+              estimated_minutes: defaultDuration,
+              sort_order: 1,
+            },
+            {
+              title: 'Refuerzo de conceptos y optimización del proyecto',
+              type: 'reinforcement',
+              estimated_minutes: defaultDuration,
+              sort_order: 2,
+            },
+            {
+              title: 'Cierre y consolidación del objetivo',
+              type: 'assessment',
+              estimated_minutes: defaultDuration,
+              sort_order: 3,
+            },
+          ],
+        },
+      ],
+    };
+  }
+
   async generateInitialPlan(
     goalTitle: string,
     goalDescription: string,
     userAvailabilities?: UserAvailabilitySlot[],
-  ) {
+  ): Promise<InitialPlanResponse | null> {
     const availabilitySection =
       userAvailabilities && userAvailabilities.length > 0
         ? `
@@ -73,20 +206,33 @@ export class AiService {
       }
     `;
 
-    try {
-      const response = await this.ai.models.generateContent({
-        model: 'gemini-3.5-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-        },
-      });
+    // Modelos candidatos en orden de preferencia y resiliencia ante alta demanda
+    const candidateModels = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.5-flash'];
 
-      if (!response.text) return null;
-      return JSON.parse(response.text);
-    } catch (error) {
-      console.error('Error generando plan con IA adaptado a disponibilidad:', error);
-      throw new InternalServerErrorException('No se pudo generar el plan personalizado');
+    for (const model of candidateModels) {
+      try {
+        const response = await this.ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+          },
+        });
+
+        const cleaned = this.cleanJsonText(response?.text);
+        if (cleaned) {
+          const parsed = JSON.parse(cleaned);
+          if (Array.isArray(parsed?.stages) && parsed.stages.length > 0) {
+            return parsed;
+          }
+        }
+      } catch (error: any) {
+        console.warn(`Aviso de IA (${model}): ${error?.message || error}. Probando alternativa...`);
+      }
     }
+
+    // Si la API de Gemini tiene picos de saturación (503/429) o fallas de red, aplicamos el plan pedagógico base adaptable
+    console.warn('Gemini experimenta alta demanda o inaccesibilidad temporal. Aplicando plan pedagógico adaptable base.');
+    return this.generateFallbackPlan(goalTitle, goalDescription, userAvailabilities);
   }
 }

@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,6 +15,17 @@ import {
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { AppModal } from '@/components/ui/Modal';
 import { Screen } from '@/components/ui/Screen';
+import { useAuth } from '@/contexts/auth-context';
+import {
+  completeActivity,
+  createStageActivity,
+  getStageActivities,
+  markActivityPending,
+  rescheduleActivity,
+  updateActivity,
+  type StageActivity,
+} from '@/services/api/stages';
+import { getGoalProgress, type GoalProgress } from '@/services/api/goals';
 
 interface Activity {
   id: number;
@@ -60,64 +72,177 @@ const INITIAL_ACTIVITIES: Activity[] = [
 ];
 
 export default function StageDetailScreen() {
-  const params = useLocalSearchParams<{ stageId?: string; title?: string }>();
+  const params = useLocalSearchParams<{
+    stageId?: string;
+    goalId?: string;
+    title?: string;
+  }>();
+  const { token } = useAuth();
+
   const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
+  const [isLoading, setIsLoading] = useState(false);
+  const [goalProgress, setGoalProgress] = useState<GoalProgress | null>(null);
 
   // Modales
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
 
-  // Form states (Asegurados estrictamente como strings)
+  // Form states
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [editTitle, setEditTitle] = useState('');
   const [editDate, setEditDate] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const toggleActivity = (id: number) => {
-    setActivities((prev) =>
-      prev.map((act) => {
-        if (act.id === id) {
-          const nextState = !act.completed;
-          if (nextState) {
-            setTimeout(() => {
-              router.push('/goal-success');
-            }, 400);
-          }
-          return { ...act, completed: nextState };
+  const stageId = params.stageId && /^\d+$/.test(params.stageId) ? Number(params.stageId) : null;
+  const goalId = params.goalId && /^\d+$/.test(params.goalId) ? Number(params.goalId) : null;
+  const stageTitle = params.title || 'Aprendizaje';
+
+  // 1. Cargar actividades desde el backend si stageId y token están disponibles
+  useEffect(() => {
+    if (!stageId || !token) return;
+
+    setIsLoading(true);
+    getStageActivities(stageId, token)
+      .then((serverActivities) => {
+        if (serverActivities && serverActivities.length > 0) {
+          const mapped: Activity[] = serverActivities.map((act, idx) => ({
+            id: act.activity_id,
+            title: act.title,
+            duration: act.estimated_minutes ? `${act.estimated_minutes} min` : '30 min',
+            type: act.type || 'Práctica',
+            date: act.date || `Sesión ${idx + 1}`,
+            completed: act.status === 'completed',
+          }));
+          setActivities(mapped);
         }
-        return act;
       })
-    );
-  };
+      .catch((err) => {
+        console.warn('No se pudieron obtener las actividades del servidor, usando locales:', err);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, [stageId, token]);
 
-  const handleAddActivity = () => {
-    if (!newTitle.trim()) return;
-    const newAct: Activity = {
-      id: activities.length + 1,
-      title: newTitle.trim(),
-      duration: '30 min',
-      type: 'Práctica',
-      date: 'Lun 23 · 18:00',
-      completed: false,
-    };
-    setActivities([...activities, newAct]);
-    setNewTitle('');
-    setNewDesc('');
-    setAddModalVisible(false);
-  };
+  // 2. Cargar progreso general de la meta si goalId y token están disponibles (HU-03)
+  useEffect(() => {
+    if (!goalId || !token) return;
 
-  const handleSaveEdit = () => {
-    if (!selectedActivity || !editTitle.trim()) return;
+    getGoalProgress(goalId, token)
+      .then(setGoalProgress)
+      .catch((err) => {
+        console.warn('No se pudo obtener el progreso de la meta:', err);
+      });
+  }, [goalId, token]);
+
+  const toggleActivity = async (id: number) => {
+    const currentActivity = activities.find((a) => a.id === id);
+    if (!currentActivity) return;
+
+    const nextCompleted = !currentActivity.completed;
+
+    // Actualización optimista local
     setActivities((prev) =>
-      prev.map((act) =>
-        act.id === selectedActivity.id
-          ? { ...act, title: editTitle.trim(), date: editDate.trim() || act.date }
-          : act
-      )
+      prev.map((act) => (act.id === id ? { ...act, completed: nextCompleted } : act)),
     );
-    setEditModalVisible(false);
-    setSelectedActivity(null);
+
+    // Si completó, redirigimos tras una pequeña animación
+    if (nextCompleted) {
+      setTimeout(() => {
+        router.push('/goal-success');
+      }, 400);
+    }
+
+    // Sincronizar con el backend
+    if (token && id > 0) {
+      try {
+        if (nextCompleted) {
+          await completeActivity(id, token);
+        } else {
+          await markActivityPending(id, token);
+        }
+      } catch (e) {
+        console.error('Error sincronizando estado de actividad:', e);
+      }
+    }
+  };
+
+  const handleAddActivity = async () => {
+    if (!newTitle.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      let createdId = Date.now();
+
+      if (token && stageId) {
+        try {
+          const res = await createStageActivity(stageId, token, {
+            title: newTitle.trim(),
+            description: newDesc.trim() || undefined,
+            type: 'practice',
+            estimated_minutes: 30,
+          });
+          createdId = res.activity_id;
+        } catch (e) {
+          console.warn('Error al guardar actividad en el servidor, agregando localmente:', e);
+        }
+      }
+
+      const newAct: Activity = {
+        id: createdId,
+        title: newTitle.trim(),
+        duration: '30 min',
+        type: 'Práctica',
+        date: 'Próxima sesión',
+        completed: false,
+      };
+
+      setActivities([...activities, newAct]);
+      setNewTitle('');
+      setNewDesc('');
+      setAddModalVisible(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedActivity || !editTitle.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      if (token && selectedActivity.id > 0) {
+        try {
+          await updateActivity(selectedActivity.id, token, {
+            title: editTitle.trim(),
+          });
+
+          // HU-14: Reprogramar actividad con trazabilidad si se ingresó fecha YYYY-MM-DD
+          const dateMatch = editDate.match(/\d{4}-\d{2}-\d{2}/);
+          if (dateMatch) {
+            await rescheduleActivity(selectedActivity.id, token, {
+              scheduled_date: dateMatch[0],
+            });
+          }
+        } catch (e) {
+          console.warn('Error al actualizar en el servidor, guardando localmente:', e);
+        }
+      }
+
+      setActivities((prev) =>
+        prev.map((act) =>
+          act.id === selectedActivity.id
+            ? { ...act, title: editTitle.trim(), date: editDate.trim() || act.date }
+            : act,
+        ),
+      );
+      setEditModalVisible(false);
+      setSelectedActivity(null);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const completedCount = activities.filter((a) => a.completed).length;
@@ -147,10 +272,10 @@ export default function StageDetailScreen() {
 
           {/* Hero Header */}
           <View style={styles.headerHero}>
-            <Text style={styles.stageBadge}>ETAPA 01</Text>
-            <Text style={styles.stageTitle}>Aprendizaje</Text>
+            <Text style={styles.stageBadge}>ETAPA ACTIVA</Text>
+            <Text style={styles.stageTitle}>{stageTitle}</Text>
             <Text style={styles.stageSubtitle}>
-              Construye las bases que necesitas para empezar a desarrollar con confianza.
+              Construye las bases que necesitas para empezar a avanzar con confianza.
             </Text>
 
             <View style={styles.progressRow}>
@@ -176,8 +301,8 @@ export default function StageDetailScreen() {
             <View style={styles.bannerLeft}>
               <Feather name="calendar" size={18} color="#174A62" />
               <View>
-                <Text style={styles.bannerTitle}>Adaptada a 4 h/semana</Text>
-                <Text style={styles.bannerSub}>Lun, mié y sáb · 18:00–20:00</Text>
+                <Text style={styles.bannerTitle}>Plan adaptado a tu disponibilidad</Text>
+                <Text style={styles.bannerSub}>Sesiones organizadas para evitar sobrecargas</Text>
               </View>
             </View>
             <Text style={styles.bannerAction}>Ver agenda</Text>
@@ -187,9 +312,13 @@ export default function StageDetailScreen() {
           <View style={styles.bodyContainer}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Tus actividades</Text>
-              <Text style={styles.counterHeader}>
-                {completedCount} de {totalCount} completadas
-              </Text>
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#174A62" />
+              ) : (
+                <Text style={styles.counterHeader}>
+                  {completedCount} de {totalCount} completadas
+                </Text>
+              )}
             </View>
 
             <View style={styles.activitiesList}>
@@ -277,13 +406,13 @@ export default function StageDetailScreen() {
         </View>
       </ScrollView>
 
-      {/* Modal Reutilizable: Agregar Actividad (Idéntico al prototipo) */}
+      {/* Modal Reutilizable: Agregar Actividad (HU-13) */}
       <AppModal
         visible={addModalVisible}
         onClose={() => setAddModalVisible(false)}
         category="NUEVA ACTIVIDAD"
         title="Añade una actividad"
-        primaryButtonText="Guardar cambios"
+        primaryButtonText={isSubmitting ? 'Guardando...' : 'Guardar cambios'}
         onPrimaryAction={handleAddActivity}
       >
         <View style={styles.inputGroup}>
@@ -312,18 +441,18 @@ export default function StageDetailScreen() {
         <View style={styles.infoMiniBox}>
           <Feather name="calendar" size={14} color="#174A62" />
           <Text style={styles.infoMiniText}>
-            Horario disponible: lunes, miércoles y sábado
+            Horario sincronizado con tu disponibilidad
           </Text>
         </View>
       </AppModal>
 
-      {/* Modal Reutilizable: Editar Actividad Unificado */}
+      {/* Modal Reutilizable: Editar Actividad Unificado (HU-11, HU-16) */}
       <AppModal
         visible={editModalVisible}
         onClose={() => setEditModalVisible(false)}
         category="EDITAR ACTIVIDAD"
         title={selectedActivity?.title || ''}
-        primaryButtonText="Guardar cambios"
+        primaryButtonText={isSubmitting ? 'Guardando...' : 'Guardar cambios'}
         onPrimaryAction={handleSaveEdit}
       >
         <View style={styles.inputGroup}>
@@ -348,7 +477,7 @@ export default function StageDetailScreen() {
           <View style={styles.infoMiniBox}>
             <Feather name="calendar" size={14} color="#174A62" />
             <Text style={styles.infoMiniText}>
-              Horario disponible: lunes, miércoles y sábado
+              Horario sincronizado con tu disponibilidad
             </Text>
           </View>
         </View>
