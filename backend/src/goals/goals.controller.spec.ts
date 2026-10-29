@@ -10,6 +10,8 @@ describe('GoalsController', () => {
     create: jest.fn(),
     findAllByUser: jest.fn(),
     findOneByUser: jest.fn(),
+    findOne: jest.fn(),
+    getProgress: jest.fn(),
     updatePriority: jest.fn(),
     update: jest.fn(),
   };
@@ -43,6 +45,23 @@ describe('GoalsController', () => {
       const result = await controller.updatePriority(req, 1, dto);
       expect(result).toEqual(expectedResult);
       expect(mockGoalsService.updatePriority).toHaveBeenCalledWith(1, 1, PriorityLevel.HIGH);
+    });
+  });
+
+  describe('getProgress', () => {
+    it('should return goal progress (HU-03)', async () => {
+      const req = { user: { userId: 1 } };
+      const expectedProgress = {
+        goal_id: 1,
+        user_id: 1,
+        progress_percentage: '50.00',
+      };
+
+      mockGoalsService.getProgress.mockResolvedValue(expectedProgress);
+
+      const result = await controller.getProgress(req, 1);
+      expect(result).toEqual(expectedProgress);
+      expect(mockGoalsService.getProgress).toHaveBeenCalledWith(1, 1);
     });
   });
 });

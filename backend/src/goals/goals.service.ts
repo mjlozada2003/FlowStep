@@ -173,6 +173,14 @@ export class GoalsService {
           },
         },
       },
+      order: {
+        stages: {
+          sort_order: 'ASC',
+          activities: {
+            sort_order: 'ASC',
+          },
+        },
+      },
     });
   }
 
@@ -193,6 +201,14 @@ export class GoalsService {
           },
         },
       },
+      order: {
+        stages: {
+          sort_order: 'ASC',
+          activities: {
+            sort_order: 'ASC',
+          },
+        },
+      },
     });
 
     if (!goal) {
@@ -200,6 +216,18 @@ export class GoalsService {
     }
 
     return goal;
+  }
+
+  async findOne(goalId: number, userId: number): Promise<Goal> {
+    return this.findOneByUser(userId, goalId);
+  }
+
+  async getProgress(goalId: number, userId: number): Promise<any> {
+    const result = await this.goalsRepository.query(
+      'SELECT * FROM v_goal_progress WHERE goal_id = $1 AND user_id = $2',
+      [goalId, userId],
+    );
+    return result[0] || null;
   }
 
   async updatePriority(userId: number, goalId: number, priority: PriorityLevel): Promise<Goal> {

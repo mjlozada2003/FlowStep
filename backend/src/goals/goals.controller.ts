@@ -101,17 +101,41 @@ export class GoalsController {
     return this.goalsService.findOneByUser(req.user.userId, id);
   }
 
-  @Patch(':id/priority')
-  @ApiOperation({
-    summary: 'Establecer o modificar la prioridad del objetivo (HU-06)',
-    description: 'Permite actualizar el nivel de prioridad de un objetivo existente (high, medium, low).',
-    return this.goalsService.findOne(id, req.user.userId);
-  }
-
   @Get(':id/progress')
   @ApiOperation({
     summary: 'Consultar progreso ponderado del objetivo (HU-03)',
     description: 'Consulta la vista calculada de base de datos (v_goal_progress) retornando porcentaje y métricas ponderadas por minutos de actividades.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Progreso y estadísticas del objetivo.',
+    schema: {
+      example: {
+        goal_id: 1,
+        user_id: 1,
+        goal_title: 'Aprender Francés Básico',
+        goal_status: 'active',
+        total_activities: 8,
+        completed_activities: 4,
+        total_estimated_minutes: 240,
+        completed_estimated_minutes: 120,
+        progress_percentage: '50.00',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Objetivo no encontrado.',
+  })
+  getProgress(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.goalsService.getProgress(id, req.user.userId);
+  }
+
+  @Patch(':id/priority')
+  @ApiOperation({
+    summary: 'Establecer o modificar la prioridad del objetivo (HU-06)',
+    description: 'Permite actualizar el nivel de prioridad de un objetivo existente (high, medium, low).',
   })
   @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
   @ApiResponse({

@@ -34,7 +34,7 @@ Si una petición falla por validación o reglas de negocio, el backend responde 
 {
   "statusCode": 400,
   "message": [
-    "La prioridad debe ser high, medium o low"
+    "La prioridad debe ser high, medium o low",
     "El formato del correo es inválido",
     "La contraseña debe tener al menos 6 caracteres"
   ],
