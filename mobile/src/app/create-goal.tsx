@@ -63,7 +63,7 @@ export default function CreateGoalScreen() {
 
     // Pasamos los parámetros hacia la pantalla de transición o plan adaptado (Sprint 2)
     router.push({
-      pathname: '/schedule', // O hacia la pantalla de generación del plan
+      pathname: '/availability', // O hacia la pantalla de generación del plan
       params: {
         title: cleanTitle,
         priority,
