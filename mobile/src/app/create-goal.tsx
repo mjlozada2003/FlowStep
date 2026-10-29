@@ -5,6 +5,7 @@ import DateTimePicker, {
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -18,12 +19,24 @@ import {
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
+import { useAuth } from '@/contexts/auth-context';
+import { ApiHttpError } from '@/services/api/client';
+import { createGoal } from '@/services/api/goals';
 
 export default function CreateGoalScreen() {
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [targetDate, setTargetDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const [isDescriptionFocused, setIsDescriptionFocused] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors, setErrors] = useState<{
+    title?: string;
+    description?: string;
+    form?: string;
+  }>({});
+  const { token } = useAuth();
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -48,27 +61,73 @@ export default function CreateGoalScreen() {
     }
   };
 
-  const handleCreatePlan = () => {
+  const handleCreatePlan = async () => {
     const cleanTitle = title.trim();
+    const cleanDescription = description.trim();
+    const fieldErrors: typeof errors = {};
 
     if (!cleanTitle) {
-      alert('Cuéntanos qué quieres conseguir para preparar tu plan.');
+      fieldErrors.title = 'Cuéntanos qué quieres conseguir.';
+    }
+
+    if (!cleanDescription) {
+      fieldErrors.description = 'Describe un poco más tu objetivo.';
+    }
+
+    setErrors(fieldErrors);
+    if (Object.keys(fieldErrors).length > 0) {
       return;
     }
 
-    router.push({
-      pathname: '/goal-plan',
-      params: {
+    if (!token) {
+      setErrors({
+        form: 'Tu sesión no está disponible. Inicia sesión para registrar un objetivo.',
+      });
+      return;
+    }
+
+    const dueDate = targetDate
+      ? [
+          targetDate.getFullYear(),
+          String(targetDate.getMonth() + 1).padStart(2, '0'),
+          String(targetDate.getDate()).padStart(2, '0'),
+        ].join('-')
+      : undefined;
+
+    setIsSubmitting(true);
+    try {
+      const goal = await createGoal(token, {
         title: cleanTitle,
-        targetDate: targetDate
-          ? [
-              targetDate.getFullYear(),
-              String(targetDate.getMonth() + 1).padStart(2, '0'),
-              String(targetDate.getDate()).padStart(2, '0'),
-            ].join('-')
-          : '',
-      },
-    });
+        user_description: cleanDescription,
+        ...(dueDate ? { due_date: dueDate } : {}),
+      });
+
+      router.push({
+        pathname: '/goal-plan',
+        params: {
+          goalId: String(goal.goal_id),
+          title: goal.title,
+          targetDate: goal.due_date ?? '',
+          stages: JSON.stringify(
+            (goal.stages ?? []).map((stage) => ({
+              stage_id: stage.stage_id,
+              name: stage.name,
+              activity_count: stage.activities?.length ?? 0,
+            })),
+          ),
+        },
+      });
+    } catch (error) {
+      const message =
+        error instanceof ApiHttpError && error.status === 401
+          ? 'Tu sesión expiró. Inicia sesión nuevamente para continuar.'
+          : error instanceof Error
+            ? error.message
+            : 'No se pudo registrar el objetivo. Inténtalo nuevamente.';
+      setErrors({ form: message });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -108,7 +167,16 @@ export default function CreateGoalScreen() {
               <TextInput
                 placeholder="Crear una aplicación web"
                 value={title}
-                onChangeText={setTitle}
+                onChangeText={(value) => {
+                  setTitle(value);
+                  if (value.trim()) {
+                    setErrors((current) => ({
+                      ...current,
+                      title: undefined,
+                      form: undefined,
+                    }));
+                  }
+                }}
                 onFocus={() => setIsInputFocused(true)}
                 onBlur={() => setIsInputFocused(false)}
                 multiline
@@ -120,6 +188,37 @@ export default function CreateGoalScreen() {
                 placeholderTextColor="#94A3B8"
               />
               <Text style={styles.inputHint}>Escríbelo con tus propias palabras</Text>
+              {errors.title ? <Text style={styles.errorText}>{errors.title}</Text> : null}
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.cardBadge}>DESCRIBE TU OBJETIVO</Text>
+              <TextInput
+                placeholder="¿Por qué es importante para ti y qué te gustaría lograr?"
+                value={description}
+                onChangeText={(value) => {
+                  setDescription(value);
+                  setErrors((current) => ({
+                    ...current,
+                    description: undefined,
+                    form: undefined,
+                  }));
+                }}
+                onFocus={() => setIsDescriptionFocused(true)}
+                onBlur={() => setIsDescriptionFocused(false)}
+                multiline
+                style={[
+                  styles.descriptionInput,
+                  isDescriptionFocused && styles.goalInputFocused,
+                ]}
+                placeholderTextColor="#94A3B8"
+              />
+              <Text style={styles.inputHint}>
+                Añade detalles para ayudar a personalizar tu plan.
+              </Text>
+              {errors.description ? (
+                <Text style={styles.errorText}>{errors.description}</Text>
+              ) : null}
             </View>
 
             <View style={styles.fieldSection}>
@@ -192,13 +291,25 @@ export default function CreateGoalScreen() {
               </View>
             </View>
 
+            {errors.form ? <Text style={styles.formError}>{errors.form}</Text> : null}
+
             <TouchableOpacity
-              style={styles.submitButton}
+              style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
               onPress={handleCreatePlan}
               activeOpacity={0.85}
+              disabled={isSubmitting}
             >
-              <Text style={styles.submitButtonText}>Crear mi plan</Text>
-              <Feather name="arrow-right" size={20} color="#FFFFFF" style={styles.buttonArrow} />
+              {isSubmitting ? (
+                <>
+                  <ActivityIndicator color="#FFFFFF" />
+                  <Text style={styles.submitButtonText}>Creando objetivo...</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.submitButtonText}>Crear mi plan</Text>
+                  <Feather name="arrow-right" size={20} color="#FFFFFF" style={styles.buttonArrow} />
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -315,6 +426,30 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     marginTop: 8,
   },
+  descriptionInput: {
+    minHeight: 88,
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#0F2C40',
+    textAlignVertical: 'top',
+    ...(Platform.OS === 'web'
+      ? ({
+          outlineStyle: 'none',
+          outlineWidth: 0,
+          outlineColor: 'transparent',
+        } as any)
+      : {}),
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#D97A7A',
+    marginTop: 6,
+  },
+  formError: {
+    fontSize: 13,
+    color: '#D97A7A',
+    textAlign: 'center',
+  },
   fieldSection: {
     gap: 6,
   },
@@ -415,6 +550,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  submitButtonDisabled: {
+    opacity: 0.7,
   },
   buttonArrow: {
     marginLeft: 8,

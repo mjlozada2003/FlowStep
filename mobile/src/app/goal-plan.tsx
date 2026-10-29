@@ -1,7 +1,6 @@
 import { Feather } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import {
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,48 +11,65 @@ import {
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
 
-const mockStages = [
-  {
-    id: 1,
-    number: '01',
-    badge: 'LISTA PARA EMPEZAR',
-    title: 'Etapa 1 — Aprendizaje',
-    activitiesCount: '4 actividades',
-    duration: '1 semana',
-    status: 'active',
-  },
-  {
-    id: 2,
-    number: '02',
-    badge: 'SIGUIENTE',
-    title: 'Etapa 2 — Desarrollo',
-    activitiesCount: '5 actividades',
-    duration: '2 semanas',
-    status: 'pending',
-  },
-  {
-    id: 3,
-    number: '03',
-    badge: 'DESPUÉS',
-    title: 'Etapa 3 — Pruebas',
-    activitiesCount: '3 actividades',
-    duration: '1 semana',
-    status: 'pending',
-  },
-];
+interface GoalStagePreview {
+  stage_id: number;
+  name: string;
+  activity_count: number;
+}
+
+function isGoalStagePreview(value: unknown): value is GoalStagePreview {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('stage_id' in value) ||
+    typeof value.stage_id !== 'number' ||
+    !('name' in value) ||
+    typeof value.name !== 'string' ||
+    !('activity_count' in value) ||
+    typeof value.activity_count !== 'number' ||
+    !Number.isInteger(value.activity_count) ||
+    value.activity_count < 0
+  ) {
+    return false;
+  }
+
+  return true;
+}
 
 export default function GoalPlanScreen() {
-  const params = useLocalSearchParams<{ title?: string; targetDate?: string }>();
+  const params = useLocalSearchParams<{
+    goalId?: string;
+    title?: string;
+    targetDate?: string;
+    stages?: string;
+  }>();
+  const goalTitle = params.title || 'Objetivo';
+  const goalDate = params.targetDate
+    ? `Fecha límite: ${params.targetDate}`
+    : 'Sin fecha límite';
+  const hasGoalId = /^\d+$/.test(params.goalId ?? '');
 
-  const goalTitle = params.title || 'Crear una aplicación web';
-  const goalDate = params.targetDate ? `Fecha límite: ${params.targetDate}` : 'Fecha límite: 30 Jun 2025';
+  let stages: GoalStagePreview[] = [];
+  let hasInvalidStages = false;
+  if (params.stages) {
+    try {
+      const parsedStages: unknown = JSON.parse(params.stages);
+      if (Array.isArray(parsedStages) && parsedStages.every(isGoalStagePreview)) {
+        stages = parsedStages;
+      } else {
+        hasInvalidStages = true;
+      }
+    } catch {
+      hasInvalidStages = true;
+    }
+  }
 
-  const handleStagePress = (stageId: number) => {
-    router.push({
-      pathname: '/stage-detail',
-      params: { stageId, title: goalTitle },
-    });
-  };
+  const activityCount = stages.reduce(
+    (count, stage) => count + stage.activity_count,
+    0,
+  );
+  const hasPlan =
+    hasGoalId && !hasInvalidStages && stages.length > 0 && activityCount > 0;
 
   return (
     <Screen style={styles.screen}>
@@ -74,7 +90,9 @@ export default function GoalPlanScreen() {
 
           <View style={styles.titleSection}>
             <Text style={styles.badge}>TU PLAN PERSONALIZADO</Text>
-            <Text style={styles.mainTitle}>Tu camino está listo</Text>
+            <Text style={styles.mainTitle}>
+              {hasPlan ? 'Tu camino está listo' : 'Tu objetivo fue registrado'}
+            </Text>
           </View>
 
           <View style={styles.goalCard}>
@@ -88,85 +106,68 @@ export default function GoalPlanScreen() {
             </View>
           </View>
 
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryText}>
-              <Text style={styles.summaryBold}>3</Text> etapas
-            </Text>
-            <Text style={styles.summaryDot}>•</Text>
-            <Text style={styles.summaryText}>
-              <Text style={styles.summaryBold}>12</Text> actividades
-            </Text>
-            <Text style={styles.summaryDot}>•</Text>
-            <Text style={styles.summaryText}>
-              <Text style={styles.summaryBold}>4</Text> semanas
-            </Text>
-          </View>
-
-          <View style={styles.timelineContainer}>
-            <View style={styles.timelineLine} />
-
-            {mockStages.map((stage) => {
-              const isActive = stage.status === 'active';
-
-              return (
-                <Pressable
-                  key={stage.id}
-                  onPress={() => handleStagePress(stage.id)}
-                  style={({ pressed }) => [
-                    styles.stageCard,
-                    isActive ? styles.stageCardActive : styles.stageCardPending,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <View style={styles.stageHeader}>
-                    <View
-                      style={[
-                        styles.numberCircle,
-                        isActive ? styles.numberCircleActive : styles.numberCirclePending,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.numberText,
-                          isActive ? styles.numberTextActive : styles.numberTextPending,
-                        ]}
-                      >
-                        {stage.number}
-                      </Text>
-                    </View>
-
-                    <View style={styles.stageInfo}>
-                      <Text
-                        style={[
-                          styles.stageBadge,
-                          isActive ? styles.stageBadgeActive : styles.stageBadgePending,
-                        ]}
-                      >
-                        {stage.badge}
-                      </Text>
-                      <Text style={styles.stageTitle}>{stage.title}</Text>
-                      <Text style={styles.stageSubtitle}>
-                        {stage.activitiesCount} • {stage.duration}
-                      </Text>
-                    </View>
-
-                    <Feather
-                      name={isActive ? 'arrow-right' : 'chevron-right'}
-                      size={20}
-                      color={isActive ? '#174A62' : '#8FA3B8'}
-                    />
-                  </View>
-                </Pressable>
-              );
-            })}
-
-            <View style={styles.finishNode}>
-              <View style={styles.finishCheckCircle}>
-                <Feather name="check" size={16} color="#FFFFFF" />
+          {hasPlan ? (
+            <>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryText}>
+                  <Text style={styles.summaryBold}>{stages.length}</Text>{' '}
+                  {stages.length === 1 ? 'etapa' : 'etapas'}
+                </Text>
+                <Text style={styles.summaryDot}>•</Text>
+                <Text style={styles.summaryText}>
+                  <Text style={styles.summaryBold}>{activityCount}</Text>{' '}
+                  {activityCount === 1 ? 'actividad' : 'actividades'}
+                </Text>
               </View>
-              <Text style={styles.finishText}>OBJETIVO ALCANZADO</Text>
+
+              <View style={styles.timelineContainer}>
+                <View style={styles.timelineLine} />
+                {stages.map((stage, index) => {
+                  return (
+                    <View
+                      key={stage.stage_id}
+                      style={[styles.stageCard, styles.stageCardPending]}
+                    >
+                      <View style={styles.stageHeader}>
+                        <View
+                          style={[
+                            styles.numberCircle,
+                            styles.numberCirclePending,
+                          ]}
+                        >
+                          <Text style={[styles.numberText, styles.numberTextPending]}>
+                            {String(index + 1).padStart(2, '0')}
+                          </Text>
+                        </View>
+
+                        <View style={styles.stageInfo}>
+                          <Text style={[styles.stageBadge, styles.stageBadgePending]}>
+                            ETAPA {String(index + 1).padStart(2, '0')}
+                          </Text>
+                          <Text style={styles.stageTitle}>{stage.name}</Text>
+                          <Text style={styles.stageSubtitle}>
+                            {stage.activity_count}{' '}
+                            {stage.activity_count === 1 ? 'actividad' : 'actividades'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          ) : (
+            <View style={styles.emptyPlanCard}>
+              <Feather name="info" size={22} color="#174A62" />
+              <Text style={styles.emptyPlanText}>
+                {hasInvalidStages
+                  ? 'No se pudieron leer las etapas recibidas para este objetivo.'
+                  : !hasGoalId
+                    ? 'No se recibió un identificador válido para este objetivo.'
+                    : 'El objetivo se registró, pero la respuesta no incluye etapas y actividades para mostrar.'}
+              </Text>
             </View>
-          </View>
+          )}
         </View>
       </ScrollView>
 
@@ -311,11 +312,6 @@ const styles = StyleSheet.create({
     boxShadow: '0px 4px 12px rgba(23, 74, 98, 0.05)',
     elevation: 2,
   },
-  stageCardActive: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: '#174A62',
-  },
   stageCardPending: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
@@ -333,18 +329,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  numberCircleActive: {
-    backgroundColor: '#174A62',
-  },
   numberCirclePending: {
     backgroundColor: '#E2E8F0',
   },
   numberText: {
     fontSize: 14,
     fontWeight: '800',
-  },
-  numberTextActive: {
-    color: '#FFFFFF',
   },
   numberTextPending: {
     color: '#627D98',
@@ -357,9 +347,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1,
     marginBottom: 2,
-  },
-  stageBadgeActive: {
-    color: '#174A62',
   },
   stageBadgePending: {
     color: '#94A3B8',
@@ -374,26 +361,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#627D98',
   },
-  finishNode: {
+  emptyPlanCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 18,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingLeft: 12,
-    marginTop: 4,
   },
-  finishCheckCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#8FA3B8',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  finishText: {
-    fontSize: 11,
-    fontWeight: '800',
+  emptyPlanText: {
+    flex: 1,
+    fontSize: 13,
     color: '#627D98',
-    letterSpacing: 1,
+    lineHeight: 19,
   },
   floatingMapBtn: {
     position: 'absolute',
@@ -413,8 +395,5 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 14,
-  },
-  pressed: {
-    opacity: 0.8,
   },
 });
