@@ -386,7 +386,7 @@ export default function StageDetailScreen() {
 
           <TouchableOpacity
             style={styles.returnButton}
-            onPress={() => router.back()}
+            onPress={() => router.push('/goal-plan')}
             activeOpacity={0.8}
           >
             <Text style={styles.returnButtonText}>Volver al plan</Text>
