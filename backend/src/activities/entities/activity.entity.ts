@@ -2,6 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 import { Stage } from '../../stages/entities/stage.entity';
 import { ActivityType, ActivityStatus, ActivityOrigin } from '../enums/activity.enum';
 import { PriorityLevel } from '../../goals/enums/goal.enum';
+import { ActivitySchedule } from './activity-schedule.entity';
 
 @Entity('ACTIVITY')
 export class Activity {
@@ -63,4 +64,7 @@ export class Activity {
 
   @DeleteDateColumn({ type: 'timestamp', nullable: true })
   deleted_at: Date;
+
+  @OneToMany(() => ActivitySchedule, (schedule) => schedule.activity)
+  schedules: ActivitySchedule[];
 }
