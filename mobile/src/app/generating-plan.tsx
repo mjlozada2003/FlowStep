@@ -105,7 +105,7 @@ export default function GeneratingPlanScreen() {
           </View>
 
           <View style={styles.infoBanner}>
-            <Feather name="sparkles" size={18} color="#174A62" style={styles.bannerIcon} />
+            <Feather name="star" size={18} color="#174A62" style={styles.bannerIcon} />
             <View style={styles.bannerTextContainer}>
               <Text style={styles.bannerTitle}>Flujo adaptado en curso</Text>
               <Text style={styles.bannerSubtitle}>
