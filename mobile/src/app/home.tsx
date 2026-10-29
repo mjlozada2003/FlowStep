@@ -28,7 +28,7 @@ const mockGoals = [
 
 export default function HomeScreen() {
   return (
-    <Screen>
+    <Screen style={styles.screen}>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}>
@@ -36,14 +36,14 @@ export default function HomeScreen() {
         {/* Encabezado */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Hola, Juan 👋</Text>
+            <Text style={styles.greeting}>Hola, Flora 👋</Text>
             <Text style={styles.question}>
               ¿Qué quieres lograr hoy?
             </Text>
           </View>
 
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>J</Text>
+            <Text style={styles.avatarText}>F</Text>
           </View>
         </View>
 
@@ -98,7 +98,7 @@ export default function HomeScreen() {
           {mockGoals.map((goal) => (
             <Pressable
               key={goal.id}
-              onPress={() => {}}
+              onPress={() => router.push('/goal-plan')}
               style={({ pressed }) => pressed && styles.pressedCard}>
               <Card style={styles.goalCard}>
                 <View style={styles.goalHeader}>
@@ -160,10 +160,16 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: '#FAF6F0',
+    flex: 1,
+  },
+
   content: {
-    paddingTop: Spacing.three,
-    paddingBottom: Spacing.six,
-    gap: Spacing.four,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 40,
+    gap: 20,
   },
 
   header: {
@@ -173,36 +179,37 @@ const styles = StyleSheet.create({
   },
 
   greeting: {
-    fontSize: 16,
+    fontSize: 15,
     color: Colors.light.textSecondary,
-    marginBottom: Spacing.one,
+    marginBottom: 2,
+    fontWeight: '600',
   },
 
   question: {
     fontSize: 24,
-    fontWeight: '700',
+    fontWeight: '800',
     color: Colors.light.text,
     maxWidth: 280,
-    lineHeight: 30,
+    letterSpacing: -0.5,
   },
 
   avatar: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     borderRadius: 16,
-    backgroundColor: Colors.light.backgroundSelected,
+    backgroundColor: '#D8ECF8',
     justifyContent: 'center',
     alignItems: 'center',
   },
 
   avatarText: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
     color: Colors.light.primary,
   },
 
   section: {
-    gap: Spacing.two,
+    gap: 12,
   },
 
   sectionHeader: {
@@ -212,70 +219,74 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
-    fontSize: 19,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
     color: Colors.light.text,
   },
 
   seeAll: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
     color: Colors.light.primary,
   },
 
   nextStepCard: {
-    padding: Spacing.four,
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
 
   nextStepBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: Colors.light.backgroundSelected,
+    backgroundColor: '#D8ECF8',
     borderRadius: 8,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.one,
-    marginBottom: Spacing.two,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: 10,
   },
 
   nextStepBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '800',
     color: Colors.light.primary,
     letterSpacing: 0.5,
   },
 
   nextStepTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
     color: Colors.light.text,
-    lineHeight: 26,
   },
 
   nextStepDescription: {
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.light.textSecondary,
-    lineHeight: 21,
-    marginTop: Spacing.two,
+    marginTop: 4,
+    lineHeight: 18,
   },
 
   activityInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.one,
-    marginTop: Spacing.three,
+    gap: 8,
+    marginTop: 12,
   },
 
   infoText: {
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.light.textSecondary,
+    fontWeight: '600',
   },
 
   primaryButton: {
     minHeight: 48,
-    borderRadius: 14,
+    borderRadius: 16,
     backgroundColor: Colors.light.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: Spacing.three,
+    marginTop: 16,
   },
 
   primaryButtonText: {
@@ -285,7 +296,11 @@ const styles = StyleSheet.create({
   },
 
   goalCard: {
-    padding: Spacing.three,
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
 
   goalHeader: {
@@ -294,71 +309,72 @@ const styles = StyleSheet.create({
   },
 
   goalIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: Colors.light.backgroundSelected,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#D8ECF8',
     justifyContent: 'center',
     alignItems: 'center',
   },
 
   goalIconText: {
-    fontSize: 20,
+    fontSize: 18,
   },
 
   goalInfo: {
     flex: 1,
-    marginLeft: Spacing.two,
+    marginLeft: 12,
   },
 
   goalTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: Colors.light.text,
   },
 
   goalStages: {
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.light.textSecondary,
     marginTop: 2,
   },
 
   progressText: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '800',
     color: Colors.light.primary,
   },
 
   progressBackground: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.light.backgroundSelected,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#E2E8F0',
     overflow: 'hidden',
-    marginTop: Spacing.three,
+    marginTop: 12,
   },
 
   progressBar: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 3,
     backgroundColor: Colors.light.primary,
   },
 
   createButton: {
-    minHeight: 72,
+    minHeight: 64,
     borderRadius: 20,
     borderWidth: 1.5,
     borderColor: Colors.light.primary,
     borderStyle: 'dashed',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(23, 74, 98, 0.02)',
   },
 
   createButtonIcon: {
-    fontSize: 28,
-    fontWeight: '300',
+    fontSize: 24,
+    fontWeight: '600',
     color: Colors.light.primary,
-    marginRight: Spacing.three,
+    marginRight: 12,
   },
 
   createButtonTextContainer: {
@@ -366,13 +382,13 @@ const styles = StyleSheet.create({
   },
 
   createButtonTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
     color: Colors.light.text,
   },
 
   createButtonDescription: {
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.light.textSecondary,
     marginTop: 2,
   },
