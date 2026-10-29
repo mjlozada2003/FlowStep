@@ -29,6 +29,7 @@ export default function CreateGoalScreen() {
   const [targetDate, setTargetDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -57,13 +58,15 @@ export default function CreateGoalScreen() {
     const cleanTitle = title.trim();
 
     if (!cleanTitle) {
-      alert('Por favor, cuéntanos qué quieres conseguir.');
+      setErrorMessage('Por favor, cuéntanos qué quieres conseguir.');
       return;
     }
 
-    // Pasamos los parámetros hacia la pantalla de transición o plan adaptado (Sprint 2)
+    setErrorMessage('');
+
+    // Pasamos los parámetros hacia la pantalla de disponibilidad
     router.push({
-      pathname: '/availability', // O hacia la pantalla de generación del plan
+      pathname: '/availability',
       params: {
         title: cleanTitle,
         priority,
@@ -112,12 +115,15 @@ export default function CreateGoalScreen() {
             </View>
 
             {/* Tarjeta de Objetivo */}
-            <View style={styles.card}>
+            <View style={[styles.card, errorMessage ? styles.cardError : null]}>
               <Text style={styles.cardBadge}>MI OBJETIVO</Text>
               <TextInput
                 placeholder="Crear una aplicación web"
                 value={title}
-                onChangeText={setTitle}
+                onChangeText={(text) => {
+                  setTitle(text);
+                  if (errorMessage) setErrorMessage('');
+                }}
                 onFocus={() => setIsInputFocused(true)}
                 onBlur={() => setIsInputFocused(false)}
                 multiline
@@ -130,6 +136,10 @@ export default function CreateGoalScreen() {
               />
               <Text style={styles.inputHint}>Escríbelo con tus propias palabras</Text>
             </View>
+
+            {errorMessage ? (
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            ) : null}
 
             {/* Selector de Prioridad (HU-06) */}
             <View style={styles.sectionBlock}>
@@ -350,6 +360,17 @@ const styles = StyleSheet.create({
     padding: 16,
     boxShadow: '0px 8px 16px rgba(23, 74, 98, 0.08)',
     elevation: 4,
+  },
+  cardError: {
+    borderColor: '#D97A7A',
+    borderWidth: 1.5,
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#D97A7A',
+    fontWeight: '600',
+    marginTop: -8,
+    marginLeft: 4,
   },
   cardBadge: {
     fontSize: 10,
