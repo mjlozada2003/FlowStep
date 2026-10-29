@@ -1,8 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Pressable,
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,93 +12,76 @@ import {
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
-
-interface Activity {
-  id: number;
-  title: string;
-  duration: string;
-  type: string;
-  completed: boolean;
-}
-
-const STAGE_DATA: Record<
-  string,
-  {
-    badge: string;
-    title: string;
-    description: string;
-    activities: Activity[];
-  }
-> = {
-  '1': {
-    badge: 'ETAPA 01',
-    title: 'Aprendizaje',
-    description:
-      'Construye las bases que necesitas para empezar a desarrollar con confianza.',
-    activities: [
-      {
-        id: 1,
-        title: 'Introducción a React',
-        duration: '20 min',
-        type: 'Lectura',
-        completed: false,
-      },
-      {
-        id: 2,
-        title: 'Componentes de React',
-        duration: '30 min',
-        type: 'Práctica',
-        completed: false,
-      },
-      {
-        id: 3,
-        title: 'Hooks',
-        duration: '30 min',
-        type: 'Práctica',
-        completed: false,
-      },
-      {
-        id: 4,
-        title: 'Consumo de APIs',
-        duration: '35 min',
-        type: 'Práctica',
-        completed: false,
-      },
-    ],
-  },
-  '2': {
-    badge: 'ETAPA 02',
-    title: 'Desarrollo',
-    description: 'Aplica tus conocimientos construyendo los módulos principales de tu meta.',
-    activities: [],
-  },
-  '3': {
-    badge: 'ETAPA 03',
-    title: 'Pruebas',
-    description: 'Refina, valida y asegura la calidad del resultado final.',
-    activities: [],
-  },
-};
+import { useAuth } from '@/contexts/auth-context';
+import { ApiHttpError } from '@/services/api/client';
+import { getStageActivities } from '@/services/api/stages';
+import type { StageActivity } from '@/services/api/stages';
 
 export default function StageDetailScreen() {
-  const params = useLocalSearchParams<{ stageId?: string; title?: string }>();
-  const currentStageId = params.stageId || '1';
-  const stageInfo = STAGE_DATA[currentStageId] || STAGE_DATA['1'];
+  const params = useLocalSearchParams<{ stageId?: string }>();
+  const stageIdValue = Array.isArray(params.stageId)
+    ? params.stageId[0]
+    : params.stageId;
+  const stageId =
+    stageIdValue && /^\d+$/.test(stageIdValue) && Number(stageIdValue) > 0
+      ? Number(stageIdValue)
+      : null;
+  const { token } = useAuth();
+  const [activities, setActivities] = useState<StageActivity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const [activities, setActivities] = useState<Activity[]>(stageInfo.activities);
+  useEffect(() => {
+    if (!stageId) {
+      setActivities([]);
+      setErrorMessage('No se recibió un identificador válido para la etapa.');
+      setIsLoading(false);
+      return;
+    }
 
-  const toggleActivity = (id: number) => {
-    setActivities((prev) =>
-      prev.map((act) =>
-        act.id === id ? { ...act, completed: !act.completed } : act
-      )
-    );
-  };
+    if (!token) {
+      setActivities([]);
+      setErrorMessage('Tu sesión no está disponible. Inicia sesión para consultar esta etapa.');
+      setIsLoading(false);
+      return;
+    }
 
-  const completedCount = activities.filter((a) => a.completed).length;
+    const controller = new AbortController();
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    getStageActivities(stageId, token, controller.signal)
+      .then(setActivities)
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setActivities([]);
+        setErrorMessage(
+          error instanceof ApiHttpError && error.status === 401
+            ? 'Tu sesión expiró. Inicia sesión nuevamente para continuar.'
+            : error instanceof Error
+              ? error.message
+              : 'No se pudieron cargar las actividades. Inténtalo nuevamente.',
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [stageId, token]);
+
+  const completedCount = activities.filter((activity) => activity.status === 'completed').length;
   const totalCount = activities.length;
   const progressPercent =
     totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+  const stageBadge = stageId
+    ? `ETAPA ${String(stageId).padStart(2, '0')}`
+    : 'ETAPA';
 
   return (
     <Screen style={styles.screen}>
@@ -118,9 +101,11 @@ export default function StageDetailScreen() {
         </View>
 
         <View style={styles.headerHero}>
-          <Text style={styles.stageBadge}>{stageInfo.badge}</Text>
-          <Text style={styles.stageTitle}>{stageInfo.title}</Text>
-          <Text style={styles.stageSubtitle}>{stageInfo.description}</Text>
+          <Text style={styles.stageBadge}>{stageBadge}</Text>
+          <Text style={styles.stageTitle}>Actividades</Text>
+          <Text style={styles.stageSubtitle}>
+            Actividades asociadas a esta etapa de tu objetivo.
+          </Text>
 
           <View style={styles.progressRow}>
             <Text style={styles.progressLabel}>Progreso de la etapa</Text>
@@ -137,7 +122,18 @@ export default function StageDetailScreen() {
         </View>
 
         <View style={styles.bodyContainer}>
-          {totalCount > 0 ? (
+          {isLoading ? (
+            <View style={styles.stateCard}>
+              <ActivityIndicator size="large" color="#174A62" />
+              <Text style={styles.stateText}>Cargando actividades...</Text>
+            </View>
+          ) : errorMessage ? (
+            <View style={styles.stateCard}>
+              <Feather name="alert-circle" size={26} color="#D97A7A" />
+              <Text style={styles.emptyTitle}>No se pudieron mostrar las actividades</Text>
+              <Text style={styles.emptySubtitle}>{errorMessage}</Text>
+            </View>
+          ) : totalCount > 0 ? (
             <>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Tus actividades</Text>
@@ -148,55 +144,61 @@ export default function StageDetailScreen() {
 
               <View style={styles.activitiesList}>
                 {activities.map((activity) => (
-                  <Pressable
-                    key={activity.id}
+                  <View
+                    key={activity.activity_id}
                     style={[
                       styles.activityCard,
-                      activity.completed && styles.activityCardCompleted,
+                      activity.status === 'completed' && styles.activityCardCompleted,
                     ]}
-                    onPress={() => toggleActivity(activity.id)}
                   >
                     <View
                       style={[
                         styles.checkbox,
-                        activity.completed && styles.checkboxCompleted,
+                        activity.status === 'completed' && styles.checkboxCompleted,
                       ]}
                     >
-                      {activity.completed ? (
+                      {activity.status === 'completed' ? (
                         <Feather name="check" size={14} color="#FFFFFF" />
                       ) : null}
                     </View>
 
                     <View style={styles.activityInfo}>
                       <Text style={styles.activityBadge}>
-                        ACTIVIDAD {activity.id}
+                        ACTIVIDAD {activity.activity_id}
                       </Text>
                       <Text
                         style={[
                           styles.activityTitle,
-                          activity.completed && styles.activityTitleCompleted,
+                          activity.status === 'completed' && styles.activityTitleCompleted,
                         ]}
                       >
                         {activity.title}
                       </Text>
-                      <Text style={styles.activityMeta}>
-                        {activity.duration} · {activity.type}
-                      </Text>
+                      {typeof activity.estimated_minutes === 'number' || activity.type ? (
+                        <Text style={styles.activityMeta}>
+                          {typeof activity.estimated_minutes === 'number'
+                            ? `${activity.estimated_minutes} min`
+                            : ''}
+                          {typeof activity.estimated_minutes === 'number' && activity.type
+                            ? ' · '
+                            : ''}
+                          {activity.type}
+                        </Text>
+                      ) : null}
                     </View>
 
-                    <Feather name="chevron-right" size={18} color="#94A3B8" />
-                  </Pressable>
+                  </View>
                 ))}
               </View>
             </>
           ) : (
             <View style={styles.emptyCard}>
               <View style={styles.emptyIconCircle}>
-                <Feather name="lock" size={26} color="#174A62" />
+                <Feather name="inbox" size={26} color="#174A62" />
               </View>
-              <Text style={styles.emptyTitle}>Próximamente</Text>
+              <Text style={styles.emptyTitle}>Sin actividades</Text>
               <Text style={styles.emptySubtitle}>
-                Esta etapa se activará cuando completes la etapa anterior. ¡Sigue avanzando paso a paso!
+                Esta etapa todavía no tiene actividades disponibles.
               </Text>
             </View>
           )}
@@ -317,6 +319,19 @@ const styles = StyleSheet.create({
   },
   activitiesList: {
     gap: 12,
+  },
+  stateCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 28,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 12,
+  },
+  stateText: {
+    fontSize: 14,
+    color: '#627D98',
   },
   activityCard: {
     flexDirection: 'row',
