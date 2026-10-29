@@ -34,6 +34,7 @@ Si una petición falla por validación o reglas de negocio, el backend responde 
 {
   "statusCode": 400,
   "message": [
+    "La prioridad debe ser high, medium o low",
     "El formato del correo es inválido",
     "La contraseña debe tener al menos 6 caracteres"
   ],
@@ -43,281 +44,205 @@ Si una petición falla por validación o reglas de negocio, el backend responde 
 
 ---
 
-## 3. Endpoints de la API
+## 3. Catálogo de Endpoints
 
-### Módulo: Autenticación y Usuarios
+### 3.1 Módulo: Autenticación y Usuarios
 
-#### 3.1 Registrar Usuario
+#### Registrar Usuario (HU-53)
 - **Ruta:** `POST /users/register`
-- **Historia de Usuario:** HU-53
 - **Autenticación:** Pública (No requiere token)
-- **Cuerpo de la Petición (`Request Body`):**
+- **Body:**
 ```json
 {
-  "name": "Juan Pérez",
-  "email": "juan.perez@example.com",
+  "name": "Maria",
+  "email": "maria@example.com",
   "password": "Password123!"
 }
 ```
-- **Respuesta Exitosa (`201 Created`):**
+- **Respuesta (`201 Created`):**
 ```json
 {
   "message": "Usuario registrado exitosamente",
   "user": {
     "user_id": 1,
-    "name": "Juan Pérez",
-    "email": "juan.perez@example.com",
-    "created_at": "2026-10-15T12:00:00.000Z"
+    "name": "Maria",
+    "email": "maria@example.com",
+    "created_at": "2026-10-28T12:00:00.000Z"
   }
 }
 ```
-- **Códigos de Error:**
-  - `400 Bad Request`: Formato de correo incorrecto, contraseña corta o el correo ya se encuentra en uso.
 
----
-
-#### 3.2 Iniciar Sesión
+#### Iniciar Sesión (HU-54)
 - **Ruta:** `POST /auth/login`
-- **Historia de Usuario:** HU-54
-- **Autenticación:** Pública (No requiere token)
-- **Cuerpo de la Petición (`Request Body`):**
+- **Autenticación:** Pública
+- **Body:**
 ```json
 {
-  "email": "juan.perez@example.com",
+  "email": "maria@example.com",
   "password": "Password123!"
 }
 ```
-- **Respuesta Exitosa (`200 OK`):**
+- **Respuesta (`200 OK`):**
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "access_token": "eyJhbGciOiJIUzI1NiIsIn...",
   "user": {
     "user_id": 1,
-    "name": "Juan Pérez",
-    "email": "juan.perez@example.com"
+    "name": "Maria",
+    "email": "maria@example.com"
   }
 }
 ```
-- **Códigos de Error:**
-  - `401 Unauthorized`: "Credenciales inválidas" (correo o contraseña no coinciden).
 
 ---
 
-### Módulo: Objetivos (Goals)
+### 3.2 Módulo: Metas y Objetivos (Goals)
 
-#### 3.3 Registrar Objetivo y Generar Plan con IA
+#### Registrar Objetivo y Generar Plan con IA (HU-01, HU-02, HU-09, HU-36)
 - **Ruta:** `POST /goals`
-- **Historias de Usuario:** HU-01, HU-02, HU-09
-- **Autenticación:** Requiere `Bearer Token`
-- **Cuerpo de la Petición (`Request Body`):**
+- **Autenticación:** Bearer Token
+- **Body:**
 ```json
 {
   "title": "Aprender Francés Básico",
-  "user_description": "Quiero aprender frases esenciales para viajar y comunicarme en tiendas y hoteles.",
-  "due_date": "2026-12-31",
-  "priority": "medium"
+  "user_description": "Quiero aprender frases esenciales para viajar a París.",
+  "priority": "high",
+  "due_date": "2026-12-31"
 }
 ```
-*Campos opcionales:* `due_date` (YYYY-MM-DD), `priority` (`"high"` | `"medium"` | `"low"`, por defecto `"medium"`).
+- **Respuesta (`201 Created`):** Retorna el objetivo con sus etapas, actividades y cronograma inicial adaptado a la disponibilidad del usuario.
 
-- **Respuesta Exitosa (`201 Created`):**
-> **Nota:** La respuesta incluye el objetivo guardado junto con la estructura de etapas y actividades desglosadas por la Inteligencia Artificial (Gemini).
+#### Listar Objetivos
+- **Ruta:** `GET /goals`
+- **Autenticación:** Bearer Token
+
+#### Consultar Detalle de Objetivo
+- **Ruta:** `GET /goals/:id`
+- **Autenticación:** Bearer Token
+
+#### Establecer o Modificar Prioridad (HU-06)
+- **Ruta:** `PATCH /goals/:id/priority`
+- **Autenticación:** Bearer Token
+- **Body:**
 ```json
 {
-  "goal_id": 1,
-  "user_id": 1,
-  "title": "Aprender Francés Básico",
-  "user_description": "Quiero aprender frases esenciales para viajar y comunicarme en tiendas y hoteles.",
-  "start_date": "2026-10-15",
-  "due_date": "2026-12-31",
-  "priority": "medium",
-  "status": "active",
-  "created_at": "2026-10-15T12:05:00.000Z",
-  "stages": [
-    {
-      "stage_id": 1,
-      "goal_id": 1,
-      "name": "Etapa 1: Fundamentos y Saludos",
-      "description": "Bases de pronunciación y vocabulario básico.",
-      "sort_order": 1,
-      "activities": [
-        {
-          "activity_id": 1,
-          "stage_id": 1,
-          "title": "Aprender el alfabeto y sonidos vocálicos",
-          "type": "learning",
-          "priority": "medium",
-          "status": "pending",
-          "estimated_minutes": 30,
-          "sort_order": 1,
-          "origin": "initial_plan"
-        },
-        {
-          "activity_id": 2,
-          "stage_id": 1,
-          "title": "Practicar saludos y despedidas básicas",
-          "type": "practice",
-          "priority": "medium",
-          "status": "pending",
-          "estimated_minutes": 20,
-          "sort_order": 2,
-          "origin": "initial_plan"
-        }
-      ]
-    }
+  "priority": "high"
+}
+```
+
+#### Actualizar Objetivo Parcialmente
+- **Ruta:** `PATCH /goals/:id`
+- **Autenticación:** Bearer Token
+- **Body:**
+```json
+{
+  "title": "Aprender Francés Intermedio",
+  "priority": "low"
+}
+```
+
+---
+
+### 3.3 Módulo: Disponibilidad de Tiempo (Availability)
+
+#### Registrar Franja Horaria (HU-35, HU-07)
+- **Ruta:** `POST /availability`
+- **Autenticación:** Bearer Token
+- **Body:**
+```json
+{
+  "day_of_week": "monday",
+  "start_time": "18:00",
+  "end_time": "20:00"
+}
+```
+
+#### Configurar Disponibilidad Semanal en Lote (HU-35, HU-07)
+- **Ruta:** `POST /availability/bulk`
+- **Autenticación:** Bearer Token
+- **Body:**
+```json
+{
+  "availabilities": [
+    { "day_of_week": "monday", "start_time": "18:00", "end_time": "20:00" },
+    { "day_of_week": "thursday", "start_time": "19:00", "end_time": "21:00" }
   ]
 }
 ```
 
----
+#### Consultar Disponibilidad Semanal
+- **Ruta:** `GET /availability`
+- **Autenticación:** Bearer Token
 
-#### 3.4 Listar Objetivos del Usuario
-- **Ruta:** `GET /goals`
-- **Autenticación:** Requiere `Bearer Token`
-- **Respuesta Exitosa (`200 OK`):**
-```json
-[
-  {
-    "goal_id": 1,
-    "user_id": 1,
-    "title": "Aprender Francés Básico",
-    "user_description": "Quiero aprender frases esenciales para viajar...",
-    "start_date": "2026-10-15",
-    "due_date": "2026-12-31",
-    "priority": "medium",
-    "status": "active",
-    "created_at": "2026-10-15T12:05:00.000Z"
-  }
-]
-```
+#### Eliminar Franja Horaria
+- **Ruta:** `DELETE /availability/:id`
+- **Autenticación:** Bearer Token
 
 ---
 
-#### 3.5 Consultar Detalle de un Objetivo (con Etapas y Actividades)
-- **Ruta:** `GET /goals/:id`
-- **Autenticación:** Requiere `Bearer Token`
-- **Parámetros de Ruta:** `id` (entero, ID del objetivo)
-- **Respuesta Exitosa (`200 OK`):** Retorna el árbol completo de la meta con sus etapas y actividades ordenadas por `sort_order`.
+### 3.4 Módulo: Etapas (Stages)
 
----
-
-#### 3.6 Consultar Progreso del Objetivo (Vista SQL)
-- **Ruta:** `GET /goals/:id/progress`
-- **Historia de Usuario:** HU-03 (Registrar y calcular progreso)
-- **Autenticación:** Requiere `Bearer Token`
-- **Parámetros de Ruta:** `id` (entero, ID del objetivo)
-- **Respuesta Exitosa (`200 OK`):**
-```json
-{
-  "goal_id": 1,
-  "user_id": 1,
-  "goal_title": "Aprender Francés Básico",
-  "goal_status": "active",
-  "total_activities": 8,
-  "completed_activities": 4,
-  "total_estimated_minutes": 240,
-  "completed_estimated_minutes": 120,
-  "progress_percentage": "50.00"
-}
-```
-
----
-
-### Módulo: Etapas (Stages)
-
-#### 3.7 Consultar Actividades por Etapa
+#### Consultar Actividades por Etapa (HU-10)
 - **Ruta:** `GET /stages/:id/activities`
-- **Historia de Usuario:** HU-10
-- **Autenticación:** Requiere `Bearer Token`
-- **Parámetros de Ruta:** `id` (entero, ID de la etapa)
-- **Respuesta Exitosa (`200 OK`):**
-```json
-[
-  {
-    "activity_id": 1,
-    "stage_id": 1,
-    "title": "Aprender el alfabeto y sonidos vocálicos",
-    "description": null,
-    "type": "learning",
-    "priority": "medium",
-    "status": "pending",
-    "estimated_minutes": 30,
-    "sort_order": 1,
-    "completed_at": null
-  }
-]
-```
+- **Autenticación:** Bearer Token
 
----
-
-### Módulo: Actividades (Activities)
-
-#### 3.8 Completar Actividad
-- **Ruta:** `PATCH /activities/:id/complete`
-- **Historia de Usuario:** HU-15
-- **Autenticación:** Requiere `Bearer Token`
-- **Parámetros de Ruta:** `id` (entero, ID de la actividad)
-- **Respuesta Exitosa (`200 OK`):**
+#### Agregar Actividad Manual Propia (HU-13)
+- **Ruta:** `POST /stages/:id/activities`
+- **Autenticación:** Bearer Token
+- **Body:**
 ```json
 {
-  "activity_id": 1,
-  "stage_id": 1,
-  "title": "Aprender el alfabeto y sonidos vocálicos",
-  "status": "completed",
-  "completed_at": "2026-10-15T12:30:00.000Z",
-  "updated_at": "2026-10-15T12:30:00.000Z"
+  "title": "Repasar tarjetas de vocabulario",
+  "description": "Sesión de 30 minutos",
+  "type": "practice",
+  "priority": "medium",
+  "estimated_minutes": 30
 }
 ```
 
 ---
 
-## 4. Guía de Integración para el Frontend (Mobile)
+### 3.5 Módulo: Actividades (Activities)
 
-Para que el equipo de frontend reemplace los datos simulados por llamadas reales, se sugiere la siguiente estructura en `mobile/src/services/api.ts`:
+#### Consultar Detalle de Actividad
+- **Ruta:** `GET /activities/:id`
+- **Autenticación:** Bearer Token
 
-```typescript
-// mobile/src/services/api.ts
-const BASE_URL = 'http://localhost:3000'; // O tu IP local para dispositivos físicos
-
-let authToken: string | null = null;
-
-export function setAuthToken(token: string | null) {
-  authToken = token;
-}
-
-export async function apiRequest<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string>),
-  };
-
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`;
-  }
-
-  const response = await fetch(`${BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.message || 'Error en la petición');
-  }
-
-  return data;
+#### Modificar Actividad (HU-11)
+- **Ruta:** `PATCH /activities/:id`
+- **Autenticación:** Bearer Token
+- **Body:**
+```json
+{
+  "title": "Pronunciación avanzada",
+  "estimated_minutes": 45
 }
 ```
 
-### Mapeo de Pantallas a Endpoints:
-| Pantalla en `mobile/src/app/` | Estado Actual | Endpoint a Conectar |
-| :--- | :--- | :--- |
-| `login.tsx` | Mock en `demoAuth.ts` | `POST /auth/login` |
-| `register.tsx` | Mock en `demoAuth.ts` | `POST /users/register` |
-| `home.tsx` | Lista vacía o estática | `GET /goals` |
-| `create-goal.tsx` | Envía parámetros por URL | `POST /goals` |
-| `goal-plan.tsx` | `mockStages` en memoria | `GET /goals/:id` y `PATCH /activities/:id/complete` |
+#### Completar Actividad (HU-15)
+- **Ruta:** `PATCH /activities/:id/complete`
+- **Autenticación:** Bearer Token
+
+#### Mantener Actividad Pendiente (HU-16)
+- **Ruta:** `PATCH /activities/:id/pending`
+- **Autenticación:** Bearer Token
+
+#### Reprogramar Actividad sin Perder Historial (HU-14)
+- **Ruta:** `POST /activities/:id/reschedule`
+- **Autenticación:** Bearer Token
+- **Body:**
+```json
+{
+  "scheduled_date": "2026-11-15",
+  "start_time": "15:00",
+  "end_time": "16:30"
+}
+```
+
+#### Consultar Historial de Reprogramaciones (HU-14)
+- **Ruta:** `GET /activities/:id/schedules`
+- **Autenticación:** Bearer Token
+
+#### Eliminar Actividad
+- **Ruta:** `DELETE /activities/:id`
+- **Autenticación:** Bearer Token

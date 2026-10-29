@@ -1,5 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, OneToMany } from 'typeorm';
 import { Goal } from '../../goals/entities/goal.entity';
+import { Availability } from '../../availability/entities/availability.entity';
 
 @Entity('APP_USER')
 export class User {
@@ -32,4 +33,7 @@ export class User {
 
   @OneToMany(() => Goal, (goal) => goal.user)
   goals: Goal[];
+
+  @OneToMany(() => Availability, (availability) => availability.user)
+  availabilities: Availability[];
 }
