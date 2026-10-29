@@ -94,6 +94,58 @@ export default function StageDetailScreen() {
     return () => controller.abort();
   }, [stageId, token]);
 
+  useEffect(() => {
+    if (!goalId) {
+      setGoalProgress(null);
+      setGoalProgressError(
+        'No se recibió un identificador válido para consultar el progreso del objetivo.',
+      );
+      setIsLoadingGoalProgress(false);
+      return;
+    }
+
+    if (!token) {
+      setGoalProgress(null);
+      setGoalProgressError(
+        'Tu sesión no está disponible. Inicia sesión para consultar el progreso del objetivo.',
+      );
+      setIsLoadingGoalProgress(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setGoalProgress(null);
+    setGoalProgressError(null);
+    setIsLoadingGoalProgress(true);
+
+    getGoalProgress(goalId, token, controller.signal)
+      .then((progress) => {
+        if (!controller.signal.aborted) {
+          setGoalProgress(progress);
+        }
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setGoalProgressError(
+          error instanceof ApiHttpError && error.status === 401
+            ? 'Tu sesión expiró. Inicia sesión nuevamente para consultar el progreso del objetivo.'
+            : error instanceof Error
+              ? error.message
+              : 'No se pudo consultar el progreso del objetivo. Inténtalo nuevamente.',
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsLoadingGoalProgress(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [goalId, token]);
+
   const handleCompleteActivity = async (activityId: number) => {
     if (!token || completionRequests.current.has(activityId)) {
       return;
