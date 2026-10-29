@@ -151,7 +151,7 @@ export default function AvailabilityScreen() {
 
           <TouchableOpacity
             style={styles.submitButton}
-            onPress={handleNext}
+            onPress={()=> router.push('/generating-plan')}
             activeOpacity={0.85}
           >
             <Text style={styles.submitButtonText}>Generar mi plan adaptado</Text>
