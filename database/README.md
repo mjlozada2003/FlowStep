@@ -22,7 +22,9 @@ erDiagram
     STAGE ||--o{ ACTIVITY : "contiene (1:N)"
     ACTIVITY ||--o{ ACTIVITY : "sub-actividad (1:N reflexiva)"
     APP_USER ||--o{ AVAILABILITY : "dispone de franjas"
+    APP_USER ||--o| USER_AVAILABILITY_PREFERENCE : "configura duracion de sesion"
     ACTIVITY ||--o{ ACTIVITY_SCHEDULE : "conserva versiones"
+    ACTIVITY ||--o{ ACTIVITY_STATUS_HISTORY : "conserva transiciones"
 
     AVAILABILITY {
         int availability_id PK
@@ -30,6 +32,11 @@ erDiagram
         enum day_of_week
         time start_time
         time end_time
+    }
+
+    USER_AVAILABILITY_PREFERENCE {
+        int user_id PK, FK
+        int session_duration_minutes
     }
 
     ACTIVITY_SCHEDULE {
@@ -42,6 +49,15 @@ erDiagram
         time end_time
         enum reason
         timestamp created_at
+    }
+
+    ACTIVITY_STATUS_HISTORY {
+        int activity_status_history_id PK
+        int activity_id FK
+        enum previous_status
+        enum new_status
+        timestamp previous_completed_at
+        timestamp changed_at
     }
 
     APP_USER {
@@ -193,11 +209,7 @@ Para asegurar una integración perfecta entre el equipo de Base de Datos y el eq
    Se mantienen los nombres que ya usa TypeORM, incluidos `GOAL_priority_enum` y `ACTIVITY_priority_enum`. Los tipos nuevos son `AVAILABILITY_day_of_week_enum` y `ACTIVITY_SCHEDULE_reason_enum`. El dominio lógico del ER es el mismo; no se renombra un tipo que el backend ya utiliza.
 
 3. **Configuración de `synchronize`:**  
-   En `app.module.ts`, la sincronización automática está desactivada por defecto y solo se activa explícitamente con:
-   ```typescript
-   synchronize: process.env.DB_SYNCHRONIZE === 'true'
-   ```
-   Mantener `DB_SYNCHRONIZE=false` (o sin definir) al usar los scripts SQL para evitar que TypeORM altere objetos administrados por BD. El backend requiere que el esquema se haya inicializado antes de arrancar.
+   El `app.module.ts` actual usa `synchronize: true`. Al administrar el esquema con scripts SQL, desactivar esa opción antes de arrancar el backend para evitar que TypeORM modifique el esquema automáticamente. La aplicación requiere que el esquema se haya inicializado antes de arrancar.
 
 ## 6. Actualizar una base existente al Sprint 2
 
@@ -213,18 +225,18 @@ docker compose -f backend/docker-compose.yml exec -T db psql -v ON_ERROR_STOP=1 
 
 Si el contenedor existente aún no tiene el nuevo montaje, `up -d` lo recrea conservando su volumen. También se pueden ejecutar los mismos archivos con `psql -f` desde el equipo.
 
-`04` y `05` se pueden volver a aplicar. `04` añade las tablas si faltan y agrega los CHECKs incluso si TypeORM había creado las tablas del Sprint 2. No modifica filas existentes: si encuentra intervalos o valores inválidos, revierte toda esa migración para que puedan revisarse. No convierte esquemas arbitrarios ni enums con valores diferentes; presupone el Sprint 1 y las entidades actuales del backend. `06` evita duplicar su usuario, objetivo, etapa, actividades, franjas y versiones al repetirlo; se reserva exclusivamente para desarrollo y demostración.
+`04` y `05` se pueden volver a aplicar. `04` añade las tablas si faltan para disponibilidad, preferencias de duración de sesión, cronogramas e historial de estados, y agrega los CHECKs incluso si TypeORM había creado previamente algunas tablas Sprint 2. No modifica filas existentes: si encuentra intervalos o valores inválidos, revierte toda esa migración para que puedan revisarse. No convierte esquemas arbitrarios ni enums con valores diferentes; presupone el Sprint 1 y las entidades actuales del backend. `06` evita duplicar su usuario, objetivo, etapa, actividades, franjas y versiones al repetirlo; se reserva exclusivamente para desarrollo y demostración.
 
 ## 7. Cobertura del Sprint 2
 
 | Historia | Soporte de base de datos |
 | --- | --- |
 | HU-06 | `GOAL.priority` admite `high`, `medium`, `low`; reutiliza el enum del Sprint 1. |
-| HU-07 | `v_availability_detail` deriva minutos por franja; `v_user_available_time` suma minutos semanales. |
+| HU-07 | `v_availability_detail` deriva minutos por franja; `v_user_available_time` suma minutos semanales. `USER_AVAILABILITY_PREFERENCE` persiste la duración elegida por sesión (30, 60 o 120 minutos), no un total semanal redundante. |
 | HU-11 | `ACTIVITY` permite editar campos, duración y orden; se conservan CHECKs y vistas de progreso. |
 | HU-13 | `ACTIVITY.origin = 'manual'`, estado inicial `pending` y relación con `STAGE`. |
 | HU-14 | `ACTIVITY_SCHEDULE` conserva filas por versión, con unicidad `(activity_id, version_number)`, versión positiva y fecha obligatoria. |
-| HU-16 | `ACTIVITY.status = 'pending'` y `completed_at = NULL`, como escribe el servicio del backend. |
+| HU-16 | `ACTIVITY.status = 'pending'` y `completed_at = NULL` reflejan el estado actual. `ACTIVITY_STATUS_HISTORY` conserva las transiciones y el valor previo de `completed_at`. |
 | HU-35 | `AVAILABILITY`, enum de siete días de lunes a domingo, FK a usuario, fin posterior al inicio y unicidad por usuario/día/inicio. |
 | HU-36 | Programación inicial y ajustes, duraciones en actividades y vista de compatibilidad con la disponibilidad real. |
 
@@ -235,7 +247,7 @@ No se agregan tablas de otros sprints del ER. `recommendation_id` queda nullable
 Todas tienen un alias equivalente entre comillas en mayúsculas. También hay alias `availability` y `activity_schedule` para las dos tablas.
 
 * `v_availability_detail`: franjas de usuarios no eliminados y `available_minutes`, calculados con precisión de segundos.
-* `v_user_available_time`: `user_id`, `total_slots`, `available_days`, `weekly_available_minutes`. Incluye usuarios sin franjas con ceros. La suma es nominal: el backend actual permite franjas que se solapen si empiezan a horas distintas; este sprint conserva ese contrato y no calcula la unión de intervalos.
+* `v_user_available_time`: `user_id`, `total_slots`, `available_days`, `weekly_available_minutes`. Incluye usuarios sin franjas con ceros. El servicio del backend rechaza franjas solapadas; la vista suma las franjas persistidas directamente y no calcula la unión de intervalos.
 * `v_activity_current_schedule`: una fila por actividad programada, eligiendo el mayor `version_number`. Excluye actividades, objetivos y usuarios eliminados lógicamente; una actividad aún sin programación no aparece.
 * `v_activity_availability_fit`: programación vigente y `fits_availability`. Es `true` si día, horas y minutos estimados caben en una franja; `false` si no caben; `NULL` si falta disponibilidad, duración u horario completo. Verifica cada actividad, no conflictos entre actividades diferentes. No realiza llamadas a IA ni reprograma.
 
