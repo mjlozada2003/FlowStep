@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import DateTimePicker, {
-  DateTimePickerChangeEvent,
+  DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { useState } from 'react';
@@ -42,7 +42,7 @@ export default function CreateGoalScreen() {
     : '';
 
   const handleDateValueChange = (
-    _event: DateTimePickerChangeEvent,
+    _event: DateTimePickerEvent,
     selectedDate?: Date,
   ) => {
     if (Platform.OS === 'android') {
