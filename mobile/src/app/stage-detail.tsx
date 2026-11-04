@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -19,57 +19,80 @@ import { useAuth } from '@/contexts/auth-context';
 import {
   completeActivity,
   createStageActivity,
+  getActivitySchedules,
   getStageActivities,
   markActivityPending,
   rescheduleActivity,
   updateActivity,
-  type StageActivity,
+  type RescheduleActivityRequest,
 } from '@/services/api/stages';
-import { getGoalProgress, type GoalProgress } from '@/services/api/goals';
 
 interface Activity {
   id: number;
   title: string;
-  duration: string;
+  duration: number | null;
   type: string;
   date: string;
   completed: boolean;
 }
 
-const INITIAL_ACTIVITIES: Activity[] = [
-  {
-    id: 1,
-    title: 'Introducción a React',
-    duration: '20 min',
-    type: 'Lectura',
-    date: 'Lun 16 · 18:00',
-    completed: true,
-  },
-  {
-    id: 2,
-    title: 'Componentes de React',
-    duration: '30 min',
-    type: 'Práctica',
-    date: 'Mié 18 · 18:00',
-    completed: false,
-  },
-  {
-    id: 3,
-    title: 'Hooks',
-    duration: '30 min',
-    type: 'Práctica',
-    date: 'Sáb 21 · 10:00',
-    completed: false,
-  },
-  {
-    id: 4,
-    title: 'Consumo de APIs',
-    duration: '35 min',
-    type: 'Práctica',
-    date: 'Lun 23 · 18:00',
-    completed: false,
-  },
-];
+async function loadStageActivities(stageId: number, token: string) {
+  const serverActivities = await getStageActivities(stageId, token);
+  let scheduleError: string | null = null;
+  const activities = await Promise.all(
+    serverActivities.map(async (activity) => {
+      let schedules = activity.schedules ?? [];
+      try {
+        schedules = await getActivitySchedules(activity.activity_id, token);
+      } catch {
+        scheduleError = 'No se pudo cargar el historial de horarios de algunas actividades.';
+      }
+
+      const sortedSchedules = [...schedules].sort(
+        (left, right) => left.version_number - right.version_number,
+      );
+      const schedule = sortedSchedules[sortedSchedules.length - 1];
+      const date = schedule
+        ? `${schedule.scheduled_date}${schedule.start_time ? ` · ${schedule.start_time.slice(0, 5)}` : ''}`
+        : '';
+
+      return {
+        id: activity.activity_id,
+        title: activity.title,
+        duration: activity.estimated_minutes,
+        type: activity.type,
+        date,
+        completed: activity.status === 'completed',
+      };
+    }),
+  );
+  return { activities, scheduleError };
+}
+
+function parseRescheduleInput(value: string): RescheduleActivityRequest | null {
+  const match =
+    /^(\d{4}-\d{2}-\d{2})(?:\s+([01]\d|2[0-3]):([0-5]\d)(?:\s*[-–]\s*([01]\d|2[0-3]):([0-5]\d))?)?$/.exec(
+      value.trim(),
+    );
+  if (!match) return null;
+
+  const date = new Date(`${match[1]}T00:00:00`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== match[1]) {
+    return null;
+  }
+
+  const request: RescheduleActivityRequest = { scheduled_date: match[1] };
+  if (match[2] && match[3]) request.start_time = `${match[2]}:${match[3]}`;
+  if (match[4] && match[5]) request.end_time = `${match[4]}:${match[5]}`;
+  if (
+    request.start_time &&
+    request.end_time &&
+    request.end_time <= request.start_time
+  ) {
+    return null;
+  }
+  return request;
+}
 
 export default function StageDetailScreen() {
   const params = useLocalSearchParams<{
@@ -79,9 +102,11 @@ export default function StageDetailScreen() {
   }>();
   const { token } = useAuth();
 
-  const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
-  const [isLoading, setIsLoading] = useState(false);
-  const [goalProgress, setGoalProgress] = useState<GoalProgress | null>(null);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingError, setIsLoadingError] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Modales
   const [addModalVisible, setAddModalVisible] = useState(false);
@@ -94,152 +119,167 @@ export default function StageDetailScreen() {
   const [editTitle, setEditTitle] = useState('');
   const [editDate, setEditDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [busyActivityId, setBusyActivityId] = useState<number | null>(null);
 
   const stageId = params.stageId && /^\d+$/.test(params.stageId) ? Number(params.stageId) : null;
   const goalId = params.goalId && /^\d+$/.test(params.goalId) ? Number(params.goalId) : null;
-  const stageTitle = params.title || 'Aprendizaje';
+  const stageTitle = params.title || 'Etapa';
+  const isStageLoading = isLoading && Boolean(stageId && token);
+  const displayLoadingError =
+    isLoadingError ??
+    (!stageId || !token
+      ? 'Inicia sesión y abre una etapa válida para consultar sus actividades.'
+      : null);
 
-  // 1. Cargar actividades desde el backend si stageId y token están disponibles
-  useEffect(() => {
-    if (!stageId || !token) return;
+  useFocusEffect(
+    useCallback(() => {
+    let active = true;
+    if (!stageId || !token) return undefined;
 
-    setIsLoading(true);
-    getStageActivities(stageId, token)
-      .then((serverActivities) => {
-        if (serverActivities && serverActivities.length > 0) {
-          const mapped: Activity[] = serverActivities.map((act, idx) => ({
-            id: act.activity_id,
-            title: act.title,
-            duration: act.estimated_minutes ? `${act.estimated_minutes} min` : '30 min',
-            type: act.type || 'Práctica',
-            date: act.date || `Sesión ${idx + 1}`,
-            completed: act.status === 'completed',
-          }));
-          setActivities(mapped);
-        }
+    loadStageActivities(stageId, token)
+      .then(({ activities: serverActivities, scheduleError }) => {
+        if (!active) return;
+        setActivities(serverActivities);
+        setIsLoadingError(scheduleError);
       })
-      .catch((err) => {
-        console.warn('No se pudieron obtener las actividades del servidor, usando locales:', err);
+      .catch((error: unknown) => {
+        if (!active) return;
+        setActivities([]);
+        setIsLoadingError(
+          error instanceof Error ? error.message : 'No se pudieron cargar las actividades.',
+        );
       })
       .finally(() => {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       });
-  }, [stageId, token]);
 
-  // 2. Cargar progreso general de la meta si goalId y token están disponibles (HU-03)
-  useEffect(() => {
-    if (!goalId || !token) return;
-
-    getGoalProgress(goalId, token)
-      .then(setGoalProgress)
-      .catch((err) => {
-        console.warn('No se pudo obtener el progreso de la meta:', err);
-      });
-  }, [goalId, token]);
+    return () => {
+      active = false;
+    };
+    }, [stageId, token]),
+  );
 
   const toggleActivity = async (id: number) => {
     const currentActivity = activities.find((a) => a.id === id);
-    if (!currentActivity) return;
+    if (!currentActivity || !token || !stageId || busyActivityId !== null) return;
 
     const nextCompleted = !currentActivity.completed;
-
-    // Actualización optimista local
-    setActivities((prev) =>
-      prev.map((act) => (act.id === id ? { ...act, completed: nextCompleted } : act)),
-    );
-
-    // Si completó, redirigimos tras una pequeña animación
-    if (nextCompleted) {
-      setTimeout(() => {
-        router.push('/goal-success');
-      }, 400);
-    }
-
-    // Sincronizar con el backend
-    if (token && id > 0) {
-      try {
-        if (nextCompleted) {
-          await completeActivity(id, token);
-        } else {
-          await markActivityPending(id, token);
-        }
-      } catch (e) {
-        console.error('Error sincronizando estado de actividad:', e);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setBusyActivityId(id);
+    try {
+      if (nextCompleted) {
+        await completeActivity(id, token);
+      } else {
+        await markActivityPending(id, token);
       }
+      const refreshed = await loadStageActivities(stageId, token);
+      setActivities(refreshed.activities);
+      setIsLoadingError(refreshed.scheduleError);
+      if (nextCompleted) {
+        router.push({
+          pathname: '/goal-success',
+          params: {
+            activityId: String(id),
+            stageId: String(stageId),
+            goalId: goalId ? String(goalId) : '',
+            stageTitle,
+          },
+        });
+      } else {
+        setSuccessMessage('Actividad marcada como pendiente.');
+      }
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'No se pudo actualizar la actividad.',
+      );
+      try {
+        const refreshed = await loadStageActivities(stageId, token);
+        setActivities(refreshed.activities);
+        setIsLoadingError(refreshed.scheduleError);
+      } catch {
+        // Keep the last server-confirmed list when reconciliation is unavailable.
+      }
+    } finally {
+      setBusyActivityId(null);
     }
   };
 
   const handleAddActivity = async () => {
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim() || !token || !stageId || isSubmitting) return;
 
+    setErrorMessage(null);
+    setSuccessMessage(null);
     setIsSubmitting(true);
     try {
-      let createdId = Date.now();
-
-      if (token && stageId) {
-        try {
-          const res = await createStageActivity(stageId, token, {
-            title: newTitle.trim(),
-            description: newDesc.trim() || undefined,
-            type: 'practice',
-            estimated_minutes: 30,
-          });
-          createdId = res.activity_id;
-        } catch (e) {
-          console.warn('Error al guardar actividad en el servidor, agregando localmente:', e);
-        }
-      }
-
-      const newAct: Activity = {
-        id: createdId,
+      await createStageActivity(stageId, token, {
         title: newTitle.trim(),
-        duration: '30 min',
-        type: 'Práctica',
-        date: 'Próxima sesión',
-        completed: false,
-      };
-
-      setActivities([...activities, newAct]);
+        description: newDesc.trim() || undefined,
+        type: 'practice',
+        estimated_minutes: 30,
+      });
+      const refreshed = await loadStageActivities(stageId, token);
+      setActivities(refreshed.activities);
+      setIsLoadingError(refreshed.scheduleError);
       setNewTitle('');
       setNewDesc('');
       setAddModalVisible(false);
+      setSuccessMessage('Actividad agregada y sincronizada.');
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'No se pudo guardar la actividad.',
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleSaveEdit = async () => {
-    if (!selectedActivity || !editTitle.trim()) return;
+    if (
+      !selectedActivity ||
+      !editTitle.trim() ||
+      !token ||
+      !stageId ||
+      isSubmitting
+    ) return;
 
+    const reschedule = editDate.trim()
+      ? parseRescheduleInput(editDate)
+      : undefined;
+    if (editDate.trim() && !reschedule) {
+      setErrorMessage('Usa AAAA-MM-DD, opcionalmente seguido de la hora HH:mm.');
+      return;
+    }
+
+    setErrorMessage(null);
+    setSuccessMessage(null);
     setIsSubmitting(true);
     try {
-      if (token && selectedActivity.id > 0) {
-        try {
-          await updateActivity(selectedActivity.id, token, {
-            title: editTitle.trim(),
-          });
-
-          // HU-14: Reprogramar actividad con trazabilidad si se ingresó fecha YYYY-MM-DD
-          const dateMatch = editDate.match(/\d{4}-\d{2}-\d{2}/);
-          if (dateMatch) {
-            await rescheduleActivity(selectedActivity.id, token, {
-              scheduled_date: dateMatch[0],
-            });
-          }
-        } catch (e) {
-          console.warn('Error al actualizar en el servidor, guardando localmente:', e);
-        }
+      if (editTitle.trim() !== selectedActivity.title) {
+        await updateActivity(selectedActivity.id, token, {
+          title: editTitle.trim(),
+        });
       }
-
-      setActivities((prev) =>
-        prev.map((act) =>
-          act.id === selectedActivity.id
-            ? { ...act, title: editTitle.trim(), date: editDate.trim() || act.date }
-            : act,
-        ),
-      );
+      if (reschedule) {
+        await rescheduleActivity(selectedActivity.id, token, reschedule);
+      }
+      const refreshed = await loadStageActivities(stageId, token);
+      setActivities(refreshed.activities);
+      setIsLoadingError(refreshed.scheduleError);
       setEditModalVisible(false);
       setSelectedActivity(null);
+      setSuccessMessage('Cambios guardados y sincronizados.');
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'No se pudieron guardar los cambios.',
+      );
+      try {
+        const refreshed = await loadStageActivities(stageId, token);
+        setActivities(refreshed.activities);
+        setIsLoadingError(refreshed.scheduleError);
+      } catch {
+        // Keep the last server-confirmed list when reconciliation is unavailable.
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -290,12 +330,18 @@ export default function StageDetailScreen() {
                 ]}
               />
             </View>
+            {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
           </View>
 
           {/* Banner Adaptado a Disponibilidad */}
           <TouchableOpacity
             style={styles.adaptedBanner}
-            onPress={() => router.push('/schedule')}
+            onPress={() =>
+              router.push({
+                pathname: '/schedule',
+                params: { goalId: goalId ? String(goalId) : '' },
+              })
+            }
             activeOpacity={0.8}
           >
             <View style={styles.bannerLeft}>
@@ -312,7 +358,7 @@ export default function StageDetailScreen() {
           <View style={styles.bodyContainer}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Tus actividades</Text>
-              {isLoading ? (
+              {isStageLoading ? (
                 <ActivityIndicator size="small" color="#174A62" />
               ) : (
                 <Text style={styles.counterHeader}>
@@ -322,6 +368,18 @@ export default function StageDetailScreen() {
             </View>
 
             <View style={styles.activitiesList}>
+              {displayLoadingError ? (
+                <Text style={styles.errorText}>{displayLoadingError}</Text>
+              ) : null}
+              {errorMessage ? (
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              ) : null}
+              {successMessage ? (
+                <Text style={styles.successText}>{successMessage}</Text>
+              ) : null}
+              {!isStageLoading && activities.length === 0 && !displayLoadingError ? (
+                <Text style={styles.emptyText}>Esta etapa aún no tiene actividades.</Text>
+              ) : null}
               {activities.map((activity, index) => (
                 <View
                   key={activity.id}
@@ -333,6 +391,7 @@ export default function StageDetailScreen() {
                   <Pressable
                     style={styles.cardMainClickable}
                     onPress={() => toggleActivity(activity.id)}
+                    disabled={busyActivityId !== null}
                   >
                     <View
                       style={[
@@ -340,7 +399,9 @@ export default function StageDetailScreen() {
                         activity.completed && styles.checkboxCompleted,
                       ]}
                     >
-                      {activity.completed ? (
+                      {busyActivityId === activity.id ? (
+                        <ActivityIndicator size="small" color="#174A62" />
+                      ) : activity.completed ? (
                         <Feather name="check" size={14} color="#FFFFFF" />
                       ) : null}
                     </View>
@@ -359,7 +420,9 @@ export default function StageDetailScreen() {
                       </Text>
                       <View style={styles.dateRowMeta}>
                         <Feather name="calendar" size={12} color="#94A3B8" />
-                        <Text style={styles.activityMeta}>{activity.date}</Text>
+                        <Text style={styles.activityMeta}>
+                          {activity.date || 'Sin fecha programada'}
+                        </Text>
                       </View>
                     </View>
                   </Pressable>
@@ -367,10 +430,11 @@ export default function StageDetailScreen() {
                   {/* Único botón de Editar */}
                   <TouchableOpacity
                     style={styles.singleEditBtn}
+                    disabled={isSubmitting || busyActivityId !== null}
                     onPress={() => {
                       setSelectedActivity(activity);
                       setEditTitle(activity.title);
-                      setEditDate(activity.date);
+                      setEditDate(activity.date.replace(' · ', ' '));
                       setEditModalVisible(true);
                     }}
                   >
@@ -397,7 +461,16 @@ export default function StageDetailScreen() {
 
             <TouchableOpacity
               style={styles.returnButton}
-              onPress={() => router.push('/goal-plan')}
+              onPress={() => {
+                if (goalId) {
+                  router.push({
+                    pathname: '/goal-plan',
+                    params: { goalId: String(goalId) },
+                  });
+                } else {
+                  router.back();
+                }
+              }}
               activeOpacity={0.85}
             >
               <Text style={styles.returnButtonText}>Volver al plan</Text>
@@ -471,7 +544,7 @@ export default function StageDetailScreen() {
             style={styles.textInput}
             value={typeof editDate === 'string' ? editDate : ''}
             onChangeText={(text) => setEditDate(text)}
-            placeholder="Ej. Lun 16 · 18:00"
+            placeholder="AAAA-MM-DD HH:mm"
             placeholderTextColor="#94A3B8"
           />
           <View style={styles.infoMiniBox}>
@@ -481,6 +554,7 @@ export default function StageDetailScreen() {
             </Text>
           </View>
         </View>
+        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
       </AppModal>
     </Screen>
   );
@@ -799,5 +873,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#174A62',
     fontWeight: '600',
+  },
+  errorText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#C53030',
+    fontWeight: '600',
+  },
+  successText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#137333',
+    fontWeight: '600',
+  },
+  emptyText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#627D98',
+    textAlign: 'center',
+    paddingVertical: 16,
   },
 });

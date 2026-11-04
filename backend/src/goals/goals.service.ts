@@ -95,6 +95,7 @@ export class GoalsService {
 
     // 2. Consultar la disponibilidad del usuario (HU-36 & HU-07)
     const userAvailabilities = await this.availabilityService.findAllByUser(userId);
+    const availabilityPreferences = await this.availabilityService.getPreferences(userId);
 
     // 3. Generar el plan con IA adaptado a la disponibilidad (HU-02, HU-09, HU-36)
     try {
@@ -102,6 +103,7 @@ export class GoalsService {
         savedGoal.title,
         savedGoal.user_description,
         userAvailabilities,
+        availabilityPreferences.session_duration_minutes,
       );
 
       // 4. Guardar las etapas y actividades

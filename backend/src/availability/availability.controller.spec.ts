@@ -10,6 +10,7 @@ describe('AvailabilityController', () => {
     create: jest.fn(),
     bulkSet: jest.fn(),
     findAllByUser: jest.fn(),
+    getPreferences: jest.fn(),
     remove: jest.fn(),
   };
 
@@ -67,6 +68,15 @@ describe('AvailabilityController', () => {
       const result = await controller.findAll(req);
       expect(result).toEqual(expectedList);
       expect(mockAvailabilityService.findAllByUser).toHaveBeenCalledWith(1);
+    });
+
+    it('returns the authenticated user’s availability preferences', async () => {
+      const req = { user: { userId: 7 } };
+      const preferences = { user_id: 7, session_duration_minutes: 60 };
+      mockAvailabilityService.getPreferences.mockResolvedValue(preferences);
+
+      await expect(controller.getPreferences(req)).resolves.toEqual(preferences);
+      expect(mockAvailabilityService.getPreferences).toHaveBeenCalledWith(7);
     });
   });
 });

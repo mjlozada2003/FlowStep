@@ -7,6 +7,9 @@ export class RescheduleActivityDto {
     description: 'Nueva fecha programada para la actividad (formato YYYY-MM-DD)',
   })
   @IsNotEmpty({ message: 'La nueva fecha programada es obligatoria' })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'La fecha programada debe tener formato YYYY-MM-DD',
+  })
   @IsDateString({}, { message: 'La fecha programada debe tener formato YYYY-MM-DD' })
   scheduled_date: string;
 

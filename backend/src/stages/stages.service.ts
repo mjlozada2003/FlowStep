@@ -11,9 +11,9 @@ export class StagesService {
     private stagesRepository: Repository<Stage>,
   ) {}
 
-  async getActivitiesByStage(stageId: number): Promise<Activity[]> {
+  async getActivitiesByStage(userId: number, stageId: number): Promise<Activity[]> {
     const stage = await this.stagesRepository.findOne({
-      where: { stage_id: stageId },
+      where: { stage_id: stageId, goal: { user_id: userId } },
       relations: {
         activities: true,
       },

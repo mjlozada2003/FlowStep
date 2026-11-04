@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -13,7 +13,12 @@ import {
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
 import { useAuth } from '@/contexts/auth-context';
-import { saveBulkAvailability, type AvailabilitySlot } from '@/services/api/availability';
+import {
+  getAvailability,
+  getAvailabilityPreferences,
+  saveBulkAvailability,
+  type AvailabilitySlot,
+} from '@/services/api/availability';
 import { createGoal, type CreatedGoal } from '@/services/api/goals';
 
 const STEPS = [
@@ -28,9 +33,9 @@ export default function GeneratingPlanScreen() {
     title?: string;
     description?: string;
     priority?: string;
-    hours?: string;
     targetDate?: string;
     availabilities?: string;
+    sessionDurationMinutes?: string;
   }>();
 
   const { token } = useAuth();
@@ -39,123 +44,132 @@ export default function GeneratingPlanScreen() {
   const [isRetrying, setIsRetrying] = useState(false);
   const hasTriggered = useRef(false);
 
-  const startPlanGeneration = async () => {
+  const startPlanGeneration = useCallback(async () => {
     setErrorMessage(null);
 
-    const goalTitle = (params.title || 'Mi objetivo').trim();
-    const goalDescription = (params.description || goalTitle).trim();
+    const goalTitle = (params.title || '').trim();
+    const goalDescription = (params.description || '').trim();
     const dueDate = params.targetDate?.trim() || undefined;
+    if (!token) {
+      setErrorMessage('Inicia sesión para guardar tu disponibilidad y crear el plan.');
+      return;
+    }
+    if (!goalTitle || !goalDescription) {
+      setErrorMessage('Falta el objetivo o su descripción. Vuelve al formulario e inténtalo de nuevo.');
+      return;
+    }
 
     const priorityMap: Record<string, 'high' | 'medium' | 'low'> = {
       alta: 'high',
       high: 'high',
-      baja: 'low',
-      low: 'low',
-      media: 'medium',
-      medium: 'medium',
-    };
+        baja: 'low',
+        low: 'low',
+        media: 'medium',
+        medium: 'medium',
+      };
     const mappedPriority = priorityMap[params.priority || 'media'] || 'medium';
 
     try {
       setCurrentStepIndex(0);
-
-      // Si tenemos token y disponibilidad, persistimos disponibilidad (Paso 1)
-      if (token && params.availabilities) {
-        try {
-          const parsedAvailabilities: AvailabilitySlot[] = JSON.parse(
-            params.availabilities,
-          );
-          if (Array.isArray(parsedAvailabilities) && parsedAvailabilities.length > 0) {
-            await saveBulkAvailability(token, parsedAvailabilities);
-          }
-        } catch (e) {
-          console.warn('No se pudo guardar la disponibilidad en lote:', e);
-        }
+      if (!params.availabilities) {
+        throw new Error('No se recibieron los horarios seleccionados.');
+      }
+      let parsedAvailabilities: unknown;
+      try {
+        parsedAvailabilities = JSON.parse(params.availabilities);
+      } catch {
+        throw new Error('Los horarios seleccionados no tienen un formato válido.');
+      }
+      if (
+        !Array.isArray(parsedAvailabilities) ||
+        parsedAvailabilities.length === 0 ||
+        !parsedAvailabilities.every(
+          (slot): slot is AvailabilitySlot =>
+            typeof slot === 'object' &&
+            slot !== null &&
+            typeof slot.day_of_week === 'string' &&
+            [
+              'monday',
+              'tuesday',
+              'wednesday',
+              'thursday',
+              'friday',
+              'saturday',
+              'sunday',
+            ].includes(slot.day_of_week) &&
+            typeof slot.start_time === 'string' &&
+            typeof slot.end_time === 'string',
+        )
+      ) {
+        throw new Error('Selecciona al menos un horario válido antes de continuar.');
+      }
+      const slots = parsedAvailabilities as AvailabilitySlot[];
+      const sessionDurationMinutes = Number(params.sessionDurationMinutes);
+      if (![30, 60, 120].includes(sessionDurationMinutes)) {
+        throw new Error('Selecciona una duración de sesión válida.');
       }
 
       setCurrentStepIndex(1);
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      await saveBulkAvailability(
+        token,
+        slots,
+        sessionDurationMinutes as 30 | 60 | 120,
+      );
+      const persistedAvailability = await getAvailability(token);
+      if (persistedAvailability.length === 0) {
+        throw new Error('La API no devolvió la disponibilidad después de guardarla.');
+      }
+      const persistedPreferences = await getAvailabilityPreferences(token);
+      if (persistedPreferences.session_duration_minutes !== sessionDurationMinutes) {
+        throw new Error('La API no confirmó la duración de sesión guardada.');
+      }
 
       setCurrentStepIndex(2);
 
-      let createdGoal: CreatedGoal | null = null;
-
-      if (token) {
-        createdGoal = await createGoal(token, {
-          title: goalTitle,
-          user_description: goalDescription,
-          priority: mappedPriority,
-          due_date: dueDate,
-        });
-      } else {
-        // Simulación offline si no hay token
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-      }
+      const createdGoal: CreatedGoal = await createGoal(token, {
+        title: goalTitle,
+        user_description: goalDescription,
+        priority: mappedPriority,
+        due_date: dueDate,
+      });
 
       setCurrentStepIndex(3);
-      await new Promise((resolve) => setTimeout(resolve, 800));
-
-      if (createdGoal) {
-        router.replace({
-          pathname: '/goal-plan',
-          params: {
-            goalId: String(createdGoal.goal_id),
-            title: createdGoal.title,
-            targetDate: createdGoal.due_date ?? '',
-            priority: params.priority || 'media',
-            hours: String(params.hours || '4'),
-            stages: JSON.stringify(
-              (createdGoal.stages ?? []).map((stage) => ({
-                stage_id: stage.stage_id,
-                name: stage.name,
-                activity_count: stage.activities?.length ?? 0,
-              })),
-            ),
-          },
-        });
-      } else {
-        router.replace({
-          pathname: '/goal-plan',
-          params: {
-            title: goalTitle,
-            targetDate: dueDate ?? '',
-            priority: params.priority || 'media',
-            hours: String(params.hours || '4'),
-          },
-        });
-      }
+      router.replace({
+        pathname: '/goal-plan',
+        params: {
+          goalId: String(createdGoal.goal_id),
+          title: createdGoal.title,
+          targetDate: createdGoal.due_date ?? '',
+          priority: createdGoal.priority ?? mappedPriority,
+        },
+      });
     } catch (error) {
-      console.error('Error generando plan:', error);
       const msg =
         error instanceof Error
           ? error.message
-          : 'Ocurrió un error al generar tu plan. Verifica tu conexión.';
+          : 'No se pudo guardar la disponibilidad o crear el plan.';
       setErrorMessage(msg);
     }
-  };
+  }, [
+    params.availabilities,
+    params.description,
+    params.priority,
+    params.sessionDurationMinutes,
+    params.targetDate,
+    params.title,
+    token,
+  ]);
 
   useEffect(() => {
     if (!hasTriggered.current) {
       hasTriggered.current = true;
       startPlanGeneration();
     }
-  }, []);
+  }, [startPlanGeneration]);
 
   const handleRetry = () => {
     setIsRetrying(true);
     startPlanGeneration().finally(() => setIsRetrying(false));
-  };
-
-  const handleSkipOffline = () => {
-    router.replace({
-      pathname: '/goal-plan',
-      params: {
-        title: params.title || 'Mi objetivo',
-        targetDate: params.targetDate || '',
-        priority: params.priority || 'media',
-        hours: String(params.hours || '4'),
-      },
-    });
   };
 
   return (
@@ -234,21 +248,15 @@ export default function GeneratingPlanScreen() {
                     {isRetrying ? 'Reintentando...' : 'Reintentar'}
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.skipBtn}
-                  onPress={handleSkipOffline}
-                >
-                  <Text style={styles.skipBtnText}>Continuar en modo demo</Text>
-                </TouchableOpacity>
               </View>
             </View>
           ) : (
             <View style={styles.infoBanner}>
               <Feather name="star" size={18} color="#174A62" style={styles.bannerIcon} />
               <View style={styles.bannerTextContainer}>
-                <Text style={styles.bannerTitle}>Flujo adaptado en curso</Text>
+                <Text style={styles.bannerTitle}>Guardando tu plan</Text>
                 <Text style={styles.bannerSubtitle}>
-                  El sistema conecta con la IA y sincroniza tu disponibilidad horaria.
+                Se guarda tu disponibilidad antes de crear el objetivo.
                 </Text>
               </View>
             </View>
@@ -417,17 +425,6 @@ const styles = StyleSheet.create({
   retryBtnText: {
     color: '#FFFFFF',
     fontWeight: '700',
-    fontSize: 13,
-  },
-  skipBtn: {
-    backgroundColor: '#E2E8F0',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-  },
-  skipBtnText: {
-    color: '#0F2C40',
-    fontWeight: '600',
     fontSize: 13,
   },
 });

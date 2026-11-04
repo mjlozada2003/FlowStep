@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -15,66 +15,96 @@ import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
 import { Colors, Spacing } from '@/constants/theme';
 import { useAuth } from '@/contexts/auth-context';
-import { getUserGoals, type CreatedGoal } from '@/services/api/goals';
+import {
+  getGoalById,
+  getGoalProgress,
+  getUserGoals,
+  type CreatedGoal,
+  type GoalProgress,
+} from '@/services/api/goals';
 
-const mockGoals = [
-  {
-    id: 1,
-    title: 'Aprender francés',
-    progress: 70,
-    stages: '3 de 5 etapas',
-  },
-  {
-    id: 2,
-    title: 'Crear una aplicación web',
-    progress: 40,
-    stages: '2 de 6 etapas',
-  },
-];
+interface HomeGoal {
+  goal: CreatedGoal;
+  detail: CreatedGoal | null;
+  progress: GoalProgress | null;
+}
 
 export default function HomeScreen() {
   const { user, token, clearSession } = useAuth();
-  const [goals, setGoals] = useState<CreatedGoal[]>([]);
+  const [goalRows, setGoalRows] = useState<HomeGoal[]>([]);
   const [isLoadingGoals, setIsLoadingGoals] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!token) return;
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      if (!token) {
+        setGoalRows([]);
+        setLoadError('Inicia sesión para consultar tus objetivos.');
+        return () => {
+          active = false;
+        };
+      }
 
-    setIsLoadingGoals(true);
-    getUserGoals(token)
-      .then((serverGoals) => {
-        if (serverGoals && serverGoals.length > 0) {
-          setGoals(serverGoals);
-        }
-      })
-      .catch((err) => {
-        console.warn('No se pudieron cargar los objetivos del servidor:', err);
-      })
-      .finally(() => {
-        setIsLoadingGoals(false);
-      });
-  }, [token]);
+      setIsLoadingGoals(true);
+      setLoadError(null);
+      getUserGoals(token)
+        .then(async (serverGoals) => {
+          const rows = await Promise.all(
+            serverGoals.map(async (goal): Promise<HomeGoal> => {
+              const [detailResult, progressResult] = await Promise.allSettled([
+                getGoalById(goal.goal_id, token),
+                getGoalProgress(goal.goal_id, token),
+              ]);
+              return {
+                goal,
+                detail: detailResult.status === 'fulfilled' ? detailResult.value : null,
+                progress: progressResult.status === 'fulfilled' ? progressResult.value : null,
+              };
+            }),
+          );
+          if (!active) return;
+          setGoalRows(rows);
+          if (rows.some((row) => row.detail === null || row.progress === null)) {
+            setLoadError('Algunos datos de progreso o etapas no están disponibles.');
+          }
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          setGoalRows([]);
+          setLoadError(
+            error instanceof Error ? error.message : 'No se pudieron cargar tus objetivos.',
+          );
+        })
+        .finally(() => {
+          if (active) setIsLoadingGoals(false);
+        });
 
-  const displayName = user?.name ? user.name.split(' ')[0] : 'Flora';
-  const initial = displayName.charAt(0).toUpperCase();
+      return () => {
+        active = false;
+      };
+    }, [token]),
+  );
 
-  const firstGoal = goals.length > 0 ? goals[0] : null;
-  const nextActivity = firstGoal?.stages?.[0]?.activities?.[0];
-  const nextStepTitle = nextActivity?.title || 'Practicar saludos en francés';
-  const nextStepStage = firstGoal?.stages?.[0]?.name || 'Fundamentos';
-  const nextStepDuration = nextActivity?.estimated_minutes
-    ? `${nextActivity.estimated_minutes} min`
-    : '20 min';
+  const displayName = user?.name ? user.name.split(' ')[0] : '';
+  const initial = displayName ? displayName.charAt(0).toUpperCase() : '?';
 
-  const displayGoals =
-    goals.length > 0
-      ? goals.map((g) => ({
-          id: g.goal_id,
-          title: g.title,
-          progress: 25,
-          stages: `${g.stages?.length || 0} etapas`,
-        }))
-      : mockGoals;
+  const firstGoal = goalRows[0] ?? null;
+  const nextActivity = firstGoal?.detail?.stages
+    ?.flatMap((stage) => stage.activities ?? [])
+    .find((activity) => activity.status !== 'completed');
+  const nextStepTitle = isLoadingGoals
+    ? 'Cargando tus objetivos…'
+    : nextActivity?.title ??
+      (firstGoal
+        ? firstGoal.detail
+          ? 'Sin actividades pendientes'
+          : 'Actividades no disponibles'
+        : 'Sin objetivos guardados');
+  const nextStepStage =
+    firstGoal?.detail?.stages?.find((stage) =>
+      stage.activities?.some((activity) => activity.activity_id === nextActivity?.activity_id),
+    )?.name ?? null;
 
   return (
     <Screen style={styles.screen}>
@@ -85,7 +115,9 @@ export default function HomeScreen() {
         {/* Encabezado con Logout */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Hola, {displayName} 👋</Text>
+            <Text style={styles.greeting}>
+              Hola{displayName ? `, ${displayName}` : ''} 👋
+            </Text>
             <Text style={styles.question}>
               ¿Qué quieres lograr hoy?
             </Text>
@@ -124,13 +156,26 @@ export default function HomeScreen() {
             </Text>
 
             <Text style={styles.nextStepDescription}>
-              Una actividad de práctica para avanzar en tu etapa actual.
+              {nextActivity?.description ||
+                (nextActivity
+                  ? 'Actividad pendiente de tu plan.'
+                  : isLoadingGoals
+                    ? 'Consultando el siguiente paso de tu plan.'
+                    : firstGoal?.detail
+                      ? 'Aún no hay actividades pendientes en este objetivo.'
+                      : firstGoal
+                        ? 'No se pudo consultar el siguiente paso.'
+                        : 'Crea un objetivo para comenzar.')}
             </Text>
 
             <View style={styles.activityInfo}>
-              <Text style={styles.infoText}>⏱ {nextStepDuration}</Text>
+              <Text style={styles.infoText}>
+                ⏱ {nextActivity?.estimated_minutes
+                  ? `${nextActivity.estimated_minutes} min`
+                  : 'Duración no indicada'}
+              </Text>
               <Text style={styles.infoText}>•</Text>
-              <Text style={styles.infoText}>{nextStepStage}</Text>
+              <Text style={styles.infoText}>{nextStepStage ?? 'Etapa no disponible'}</Text>
             </View>
 
             <Pressable
@@ -138,21 +183,21 @@ export default function HomeScreen() {
                 styles.primaryButton,
                 pressed && styles.pressed,
               ]}
-              onPress={() =>
-                router.push(
-                  firstGoal
-                    ? {
-                        pathname: '/goal-plan',
-                        params: {
-                          goalId: String(firstGoal.goal_id),
-                          title: firstGoal.title,
-                        },
-                      }
-                    : '/goal-plan',
-                )
-              }>
+              onPress={() => {
+                if (firstGoal) {
+                  router.push({
+                    pathname: '/goal-plan',
+                    params: {
+                      goalId: String(firstGoal.goal.goal_id),
+                      title: firstGoal.goal.title,
+                    },
+                  });
+                } else {
+                  router.push('/create-goal');
+                }
+              }}>
               <Text style={styles.primaryButtonText}>
-                Continuar
+                {firstGoal ? 'Continuar' : 'Crear un objetivo'}
               </Text>
             </Pressable>
           </Card>
@@ -165,35 +210,23 @@ export default function HomeScreen() {
 
             {isLoadingGoals ? (
               <ActivityIndicator size="small" color={Colors.light.primary} />
-            ) : (
-              <Pressable
-                onPress={() =>
-                  router.push(
-                    firstGoal
-                      ? {
-                          pathname: '/goal-plan',
-                          params: {
-                            goalId: String(firstGoal.goal_id),
-                            title: firstGoal.title,
-                          },
-                        }
-                      : '/goal-plan',
-                  )
-                }>
-                <Text style={styles.seeAll}>Ver todos</Text>
-              </Pressable>
-            )}
+            ) : null}
           </View>
 
-          {displayGoals.map((goal) => (
+          {loadError ? <Text style={styles.errorText}>{loadError}</Text> : null}
+          {!isLoadingGoals && goalRows.length === 0 && !loadError ? (
+            <Text style={styles.emptyText}>Aún no tienes objetivos guardados.</Text>
+          ) : null}
+
+          {goalRows.map((row) => (
             <Pressable
-              key={goal.id}
+              key={row.goal.goal_id}
               onPress={() =>
                 router.push({
                   pathname: '/goal-plan',
                   params: {
-                    goalId: String(goal.id),
-                    title: goal.title,
+                    goalId: String(row.goal.goal_id),
+                    title: row.goal.title,
                   },
                 })
               }
@@ -206,16 +239,18 @@ export default function HomeScreen() {
 
                   <View style={styles.goalInfo}>
                     <Text style={styles.goalTitle}>
-                      {goal.title}
+                      {row.goal.title}
                     </Text>
 
                     <Text style={styles.goalStages}>
-                      {goal.stages}
+                      {row.detail?.stages
+                        ? `${row.detail.stages.length} etapas`
+                        : 'Etapas no disponibles'}
                     </Text>
                   </View>
 
                   <Text style={styles.progressText}>
-                    {goal.progress}%
+                    {row.progress ? `${row.progress.progress_percentage}%` : '—'}
                   </Text>
                 </View>
 
@@ -223,7 +258,9 @@ export default function HomeScreen() {
                   <View
                     style={[
                       styles.progressBar,
-                      { width: `${goal.progress}%` },
+                      {
+                        width: `${Math.min(100, Math.max(0, row.progress?.progress_percentage ?? 0))}%`,
+                      },
                     ]}
                   />
                 </View>
@@ -521,5 +558,17 @@ const styles = StyleSheet.create({
 
   pressedCard: {
     transform: [{ scale: 0.99 }],
+  },
+  errorText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#C53030',
+  },
+  emptyText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: Colors.light.textSecondary,
+    textAlign: 'center',
+    paddingVertical: 16,
   },
 });

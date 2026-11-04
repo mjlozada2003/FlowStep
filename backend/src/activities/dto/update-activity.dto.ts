@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsString,
   Min,
+  MaxLength,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ActivityType, ActivityStatus } from '../enums/activity.enum';
@@ -16,6 +17,7 @@ export class UpdateActivityDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(200)
   title?: string;
 
   @ApiPropertyOptional({
@@ -72,6 +74,7 @@ export class UpdateActivityDto {
   })
   @IsOptional()
   @IsInt()
+  @Min(1)
   sort_order?: number;
 
   @ApiPropertyOptional({
@@ -80,5 +83,6 @@ export class UpdateActivityDto {
   })
   @IsOptional()
   @IsInt()
+  @Min(1)
   parent_activity_id?: number;
 }

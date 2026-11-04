@@ -17,6 +17,7 @@ export interface ActivityScheduleInfo {
 export interface GoalActivity {
   activity_id: number;
   title: string;
+  description?: string | null;
   type?: string;
   status?: string;
   estimated_minutes?: number | null;
@@ -68,7 +69,7 @@ function parseNumericValue(value: unknown): number | null {
 
 function parseGoalProgress(value: unknown): GoalProgress | null {
   if (typeof value !== 'object' || value === null) {
-    return null;
+    throw new ApiResponseError('El progreso del objetivo no tiene el formato esperado.');
   }
 
   const record = value as Record<string, unknown>;
@@ -80,34 +81,52 @@ function parseGoalProgress(value: unknown): GoalProgress | null {
       ? record.goal_title
       : typeof record.title === 'string'
         ? record.title
-        : 'Objetivo';
+        : null;
   const goalStatus =
     typeof record.goal_status === 'string'
       ? record.goal_status
       : typeof record.status === 'string'
         ? record.status
-        : 'active';
+        : null;
 
-  const totalActivities = parseNumericValue(record.total_activities ?? record.totalActivities) ?? 0;
-  const completedActivities = parseNumericValue(record.completed_activities ?? record.completedActivities) ?? 0;
-  const totalEstimatedMinutes = parseNumericValue(record.total_estimated_minutes ?? record.totalEstimatedMinutes) ?? 0;
-  const completedEstimatedMinutes = parseNumericValue(record.completed_estimated_minutes ?? record.completedEstimatedMinutes) ?? 0;
-  const progressPercentage = parseNumericValue(record.progress_percentage ?? record.progressPercentage) ?? 0;
+  const totalActivities = parseNumericValue(record.total_activities ?? record.totalActivities);
+  const completedActivities = parseNumericValue(record.completed_activities ?? record.completedActivities);
+  const totalEstimatedMinutes = parseNumericValue(record.total_estimated_minutes ?? record.totalEstimatedMinutes);
+  const completedEstimatedMinutes = parseNumericValue(record.completed_estimated_minutes ?? record.completedEstimatedMinutes);
+  const progressPercentage = parseNumericValue(record.progress_percentage ?? record.progressPercentage);
 
-  if (goalId === null || goalId <= 0) {
-    return null;
+  if (
+    goalId === null ||
+    goalId <= 0 ||
+    userId === null ||
+    userId <= 0 ||
+    goalTitle === null ||
+    goalStatus === null ||
+    totalActivities === null ||
+    completedActivities === null ||
+    totalEstimatedMinutes === null ||
+    completedEstimatedMinutes === null ||
+    progressPercentage === null ||
+    totalActivities < 0 ||
+    completedActivities < 0 ||
+    totalEstimatedMinutes < 0 ||
+    completedEstimatedMinutes < 0 ||
+    progressPercentage < 0 ||
+    progressPercentage > 100
+  ) {
+    throw new ApiResponseError('El progreso del objetivo no tiene el formato esperado.');
   }
 
   return {
     goal_id: goalId,
-    user_id: userId ?? 1,
+    user_id: userId,
     goal_title: goalTitle,
     goal_status: goalStatus,
-    total_activities: Math.max(0, Math.round(totalActivities)),
-    completed_activities: Math.max(0, Math.round(completedActivities)),
-    total_estimated_minutes: Math.max(0, Math.round(totalEstimatedMinutes)),
-    completed_estimated_minutes: Math.max(0, Math.round(completedEstimatedMinutes)),
-    progress_percentage: Math.min(100, Math.max(0, progressPercentage)),
+    total_activities: Math.round(totalActivities),
+    completed_activities: Math.round(completedActivities),
+    total_estimated_minutes: Math.round(totalEstimatedMinutes),
+    completed_estimated_minutes: Math.round(completedEstimatedMinutes),
+    progress_percentage: progressPercentage,
   };
 }
 
@@ -195,32 +214,53 @@ export async function getGoalProgress(
 }
 
 export async function getUserGoals(token: string): Promise<CreatedGoal[]> {
-  const response = await apiRequest<CreatedGoal[]>('/goals', {
+  const response = await apiRequest<unknown>('/goals', {
     method: 'GET',
     token,
   });
 
-  if (!Array.isArray(response)) {
+  if (
+    !Array.isArray(response) ||
+    !response.every(
+      (goal) =>
+        typeof goal === 'object' &&
+        goal !== null &&
+        'goal_id' in goal &&
+        typeof goal.goal_id === 'number' &&
+        'title' in goal &&
+        typeof goal.title === 'string',
+    )
+  ) {
     throw new ApiResponseError('La lista de objetivos no tiene el formato esperado.');
   }
 
-  return response;
+  return response as CreatedGoal[];
 }
 
 export async function getGoalById(
   goalId: number,
   token: string,
 ): Promise<CreatedGoal> {
-  const response = await apiRequest<CreatedGoal>(`/goals/${goalId}`, {
+  const response = await apiRequest<unknown>(`/goals/${goalId}`, {
     method: 'GET',
     token,
   });
 
-  if (!response || typeof response.goal_id !== 'number') {
+  if (
+    typeof response !== 'object' ||
+    response === null ||
+    !('goal_id' in response) ||
+    typeof response.goal_id !== 'number' ||
+    !('title' in response) ||
+    typeof response.title !== 'string' ||
+    ('stages' in response &&
+      response.stages != null &&
+      (!Array.isArray(response.stages) || !response.stages.every(isGoalStage)))
+  ) {
     throw new ApiResponseError('El detalle del objetivo no tiene el formato esperado.');
   }
 
-  return response;
+  return response as CreatedGoal;
 }
 
 export async function updateGoalPriority(
@@ -228,9 +268,22 @@ export async function updateGoalPriority(
   token: string,
   priority: 'high' | 'medium' | 'low',
 ): Promise<CreatedGoal> {
-  return apiRequest<CreatedGoal>(`/goals/${goalId}/priority`, {
+  const response = await apiRequest<unknown>(`/goals/${goalId}/priority`, {
     method: 'PATCH',
     token,
     body: JSON.stringify({ priority }),
   });
+  if (
+    typeof response !== 'object' ||
+    response === null ||
+    !('goal_id' in response) ||
+    typeof response.goal_id !== 'number' ||
+    !('title' in response) ||
+    typeof response.title !== 'string' ||
+    !('priority' in response) ||
+    response.priority !== priority
+  ) {
+    throw new ApiResponseError('La respuesta al actualizar prioridad no tiene el formato esperado.');
+  }
+  return response as CreatedGoal;
 }

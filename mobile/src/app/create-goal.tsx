@@ -2,9 +2,10 @@ import { Feather } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -18,17 +19,59 @@ import {
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
+import { useAuth } from '@/contexts/auth-context';
+import {
+  getAvailability,
+  getWeeklyAvailabilityMinutes,
+} from '@/services/api/availability';
 
 type Priority = 'baja' | 'media' | 'alta';
 
 export default function CreateGoalScreen() {
   const [title, setTitle] = useState('Crear una aplicación web');
   const [priority, setPriority] = useState<Priority>('media');
-  const [hours, setHours] = useState(4);
+  const [weeklyHours, setWeeklyHours] = useState<number | null>(null);
+  const [isLoadingAvailability, setIsLoadingAvailability] = useState(true);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [targetDate, setTargetDate] = useState<Date | null>(new Date(2026, 11, 30));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const { token } = useAuth();
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      if (!token) return undefined;
+
+      getAvailability(token)
+        .then((slots) => {
+          if (!active) return;
+          setWeeklyHours(
+            slots.length > 0 ? getWeeklyAvailabilityMinutes(slots) / 60 : null,
+          );
+          setAvailabilityError(null);
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          setWeeklyHours(null);
+          setAvailabilityError(
+            error instanceof Error ? error.message : 'No se pudo consultar la disponibilidad.',
+          );
+        })
+        .finally(() => {
+          if (active) setIsLoadingAvailability(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [token]),
+  );
+  const isAvailabilityLoading = isLoadingAvailability && Boolean(token);
+  const availabilityErrorMessage =
+    availabilityError ??
+    (!token ? 'Inicia sesión para consultar la disponibilidad.' : null);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -69,7 +112,6 @@ export default function CreateGoalScreen() {
         title: cleanTitle,
         description: cleanTitle,
         priority,
-        hours,
         targetDate: targetDate
           ? [
               targetDate.getFullYear(),
@@ -169,27 +211,28 @@ export default function CreateGoalScreen() {
                 </View>
               </View>
 
-              {/* Tiempo disponible */}
+              {/* Horas semanales persistidas */}
               <View style={[styles.card, styles.halfCard]}>
                 <Text style={styles.cardBadge}>TIEMPO DISPONIBLE</Text>
                 <View style={styles.counterRow}>
-                  <TouchableOpacity
-                    style={styles.counterBtn}
-                    onPress={() => setHours(Math.max(1, hours - 1))}
-                  >
-                    <Feather name="minus" size={16} color="#174A62" />
-                  </TouchableOpacity>
                   <View style={styles.counterTextContainer}>
-                    <Text style={styles.counterValue}>{hours} horas</Text>
+                    {isAvailabilityLoading ? (
+                      <ActivityIndicator size="small" color="#174A62" />
+                    ) : (
+                      <Text style={styles.counterValue}>
+                        {availabilityErrorMessage
+                          ? 'No disponible'
+                          : weeklyHours === null
+                            ? 'Sin configurar'
+                            : `${Number(weeklyHours.toFixed(2))} horas`}
+                      </Text>
+                    )}
                     <Text style={styles.counterSub}>por semana</Text>
                   </View>
-                  <TouchableOpacity
-                    style={styles.counterBtn}
-                    onPress={() => setHours(hours + 1)}
-                  >
-                    <Feather name="plus" size={16} color="#174A62" />
-                  </TouchableOpacity>
                 </View>
+                {availabilityErrorMessage ? (
+                  <Text style={styles.availabilityError}>{availabilityErrorMessage}</Text>
+                ) : null}
               </View>
             </View>
 
@@ -459,6 +502,13 @@ const styles = StyleSheet.create({
   counterSub: {
     fontSize: 9,
     color: '#627D98',
+  },
+  availabilityError: {
+    fontSize: 10,
+    lineHeight: 14,
+    color: '#C53030',
+    textAlign: 'center',
+    marginTop: 4,
   },
   fieldSection: {
     gap: 6,

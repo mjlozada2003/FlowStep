@@ -54,7 +54,7 @@ export class Activity {
   estimated_minutes: number;
 
   @Column({ type: 'timestamp', nullable: true })
-  completed_at: Date;
+  completed_at: Date | null;
 
   @CreateDateColumn({ type: 'timestamp' })
   created_at: Date;

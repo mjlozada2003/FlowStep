@@ -1,6 +1,8 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,8 +12,83 @@ import {
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
+import { useAuth } from '@/contexts/auth-context';
+import { getStageActivities, type StageActivity } from '@/services/api/stages';
 
 export default function GoalSuccessScreen() {
+  const params = useLocalSearchParams<{
+    activityId?: string;
+    stageId?: string;
+    goalId?: string;
+    stageTitle?: string;
+  }>();
+  const { token } = useAuth();
+  const [activities, setActivities] = useState<StageActivity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const activityId = /^\d+$/.test(params.activityId ?? '')
+    ? Number(params.activityId)
+    : null;
+  const stageId = /^\d+$/.test(params.stageId ?? '')
+    ? Number(params.stageId)
+    : null;
+  const goalId = /^\d+$/.test(params.goalId ?? '')
+    ? Number(params.goalId)
+    : null;
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      if (!token || !stageId || !activityId) return undefined;
+
+      getStageActivities(stageId, token)
+        .then((serverActivities) => {
+          if (!active) return;
+          setActivities(serverActivities);
+          const activity = serverActivities.find(
+            (item) => item.activity_id === activityId && item.status === 'completed',
+          );
+          setLoadError(
+            activity
+              ? null
+              : 'No se pudo confirmar que la actividad esté completada.',
+          );
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          setLoadError(
+            error instanceof Error ? error.message : 'No se pudo consultar la actividad.',
+          );
+        })
+        .finally(() => {
+          if (active) setIsLoading(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [activityId, stageId, token]),
+  );
+
+  const completedActivity = activities.find(
+    (activity) =>
+      activity.activity_id === activityId && activity.status === 'completed',
+  );
+  const completedCount = activities.filter(
+    (activity) => activity.status === 'completed',
+  ).length;
+  const totalCount = activities.length;
+  const progressPercent =
+    totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : null;
+  const isScreenLoading = isLoading && Boolean(token && stageId && activityId);
+  const displayLoadError =
+    loadError ??
+    (!token || !stageId || !activityId
+      ? 'Inicia sesión y vuelve a abrir la actividad completada.'
+      : null);
+  const isConfirmed = Boolean(completedActivity && !displayLoadError);
+
   return (
     <Screen style={styles.screen}>
       <ScrollView
@@ -30,23 +107,49 @@ export default function GoalSuccessScreen() {
           </View>
 
           <View style={styles.titleSection}>
-            <Text style={styles.badge}>PRIMER PASO COMPLETADO</Text>
-            <Text style={styles.mainTitle}>¡Muy bien, lo has conseguido!</Text>
+            <Text style={styles.badge}>
+              {isScreenLoading
+                ? 'CONSULTANDO TU PROGRESO'
+                : isConfirmed
+                  ? 'ACTIVIDAD COMPLETADA'
+                  : 'ESTADO NO CONFIRMADO'}
+            </Text>
+            <Text style={styles.mainTitle}>
+              {isScreenLoading
+                ? 'Actualizando tu progreso'
+                : isConfirmed
+                  ? '¡Muy bien, lo has conseguido!'
+                  : 'No se pudo confirmar el cambio'}
+            </Text>
             <Text style={styles.subtitle}>
-              Completaste <Text style={styles.boldText}>Introducción a React</Text>. Cada actividad te acerca un poco más a tu objetivo.
+              {isScreenLoading
+                ? 'Consultando el estado guardado de la actividad.'
+                : isConfirmed
+                  ? <>Completaste <Text style={styles.boldText}>{completedActivity?.title}</Text>. Cada actividad te acerca un poco más a tu objetivo.</>
+                  : displayLoadError}
             </Text>
           </View>
 
-          <View style={styles.progressCard}>
-            <View style={styles.progressHeaderRow}>
-              <Text style={styles.progressCardTitle}>ETAPA 1 · APRENDIZAJE</Text>
-              <Text style={styles.progressPercentText}>25%</Text>
+          {isScreenLoading ? (
+            <ActivityIndicator size="small" color="#174A62" />
+          ) : null}
+          {displayLoadError ? <Text style={styles.errorText}>{displayLoadError}</Text> : null}
+          {progressPercent !== null ? (
+            <View style={styles.progressCard}>
+              <View style={styles.progressHeaderRow}>
+                <Text style={styles.progressCardTitle}>
+                  ETAPA · {params.stageTitle || 'Etapa'}
+                </Text>
+                <Text style={styles.progressPercentText}>{progressPercent}%</Text>
+              </View>
+              <View style={styles.progressBarBackground}>
+                <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
+              </View>
+              <Text style={styles.progressFooterText}>
+                {completedCount} de {totalCount} actividades completadas
+              </Text>
             </View>
-            <View style={styles.progressBarBackground}>
-              <View style={styles.progressBarFill} />
-            </View>
-            <Text style={styles.progressFooterText}>1 de 4 actividades completadas</Text>
-          </View>
+          ) : null}
 
           <View style={styles.mascotCard}>
             <View style={styles.mascotAvatar}>
@@ -61,8 +164,14 @@ export default function GoalSuccessScreen() {
           </View>
 
           <TouchableOpacity
-            style={styles.submitButton}
-            onPress={() => router.push('/schedule')}
+            style={[styles.submitButton, !isConfirmed && styles.submitButtonDisabled]}
+            disabled={!isConfirmed}
+            onPress={() =>
+              router.push({
+                pathname: '/schedule',
+                params: { goalId: goalId ? String(goalId) : '' },
+              })
+            }
             activeOpacity={0.85}
           >
             <Text style={styles.submitButtonText}>Ver mi progreso</Text>
@@ -74,7 +183,14 @@ export default function GoalSuccessScreen() {
       <TouchableOpacity
         style={styles.floatingMapBtn}
         activeOpacity={0.85}
-        onPress={() => router.push('/goal-plan')}
+        onPress={() => {
+          if (goalId) {
+            router.push({
+              pathname: '/goal-plan',
+              params: { goalId: String(goalId) },
+            });
+          }
+        }}
       >
         <Feather name="grid" size={18} color="#FFFFFF" />
         <Text style={styles.floatingMapText}>Mapa</Text>
@@ -259,5 +375,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 14,
+  },
+  submitButtonDisabled: {
+    opacity: 0.55,
+  },
+  errorText: {
+    color: '#C53030',
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
   },
 });

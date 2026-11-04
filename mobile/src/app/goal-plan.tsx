@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -11,7 +11,6 @@ import {
   View,
 } from 'react-native';
 
-import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
 import { useAuth } from '@/contexts/auth-context';
 import {
@@ -21,39 +20,11 @@ import {
   type CreatedGoal,
   type GoalProgress,
 } from '@/services/api/goals';
-
-interface GoalStagePreview {
-  stage_id: number;
-  name: string;
-  activity_count: number;
-}
-
-function isGoalStagePreview(value: unknown): value is GoalStagePreview {
-  if (
-    typeof value !== 'object' ||
-    value === null ||
-    !('stage_id' in value) ||
-    typeof value.stage_id !== 'number' ||
-    !('name' in value) ||
-    typeof value.name !== 'string' ||
-    !('activity_count' in value) ||
-    typeof value.activity_count !== 'number' ||
-    !Number.isInteger(value.activity_count) ||
-    value.activity_count < 0
-  ) {
-    return false;
-  }
-  return true;
-}
+import { getAvailability, getWeeklyAvailabilityMinutes } from '@/services/api/availability';
 
 export default function GoalPlanScreen() {
   const params = useLocalSearchParams<{
     goalId?: string;
-    title?: string;
-    targetDate?: string;
-    stages?: string;
-    priority?: string;
-    hours?: string;
   }>();
 
   const { token } = useAuth();
@@ -65,113 +36,129 @@ export default function GoalPlanScreen() {
 
   const [goal, setGoal] = useState<CreatedGoal | null>(null);
   const [progress, setProgress] = useState<GoalProgress | null>(null);
-  const [priority, setPriority] = useState<string>(params.priority || 'media');
+  const [priority, setPriority] = useState<string>('');
   const [isUpdatingPriority, setIsUpdatingPriority] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [progressError, setProgressError] = useState<string | null>(null);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [weeklyHours, setWeeklyHours] = useState<number | null>(null);
 
-  // Etapas por defecto o cargadas desde parámetros
-  const defaultStages: GoalStagePreview[] = [
-    { stage_id: 1, name: 'Aprendizaje', activity_count: 4 },
-    { stage_id: 2, name: 'Desarrollo', activity_count: 5 },
-    { stage_id: 3, name: 'Pruebas', activity_count: 3 },
-  ];
+  useFocusEffect(
+    useCallback(() => {
+    let active = true;
+    if (!goalId || !token) return undefined;
 
-  let initialStages = defaultStages;
-  if (params.stages) {
-    try {
-      const parsedStages: unknown = JSON.parse(params.stages);
-      if (Array.isArray(parsedStages) && parsedStages.every(isGoalStagePreview)) {
-        initialStages = parsedStages;
-      }
-    } catch {}
-  }
-
-  const [stages, setStages] = useState<GoalStagePreview[]>(initialStages);
-
-  // 1. Cargar el detalle del objetivo desde la API (HU-01, HU-02)
-  useEffect(() => {
-    if (!goalId || !token) return;
-
-    setIsLoading(true);
     getGoalById(goalId, token)
       .then((serverGoal) => {
-        if (serverGoal) {
-          setGoal(serverGoal);
-          if (serverGoal.priority) {
-            setPriority(serverGoal.priority);
-          }
-          if (serverGoal.stages && serverGoal.stages.length > 0) {
-            setStages(
-              serverGoal.stages.map((st) => ({
-                stage_id: st.stage_id,
-                name: st.name,
-                activity_count: st.activities?.length || 0,
-              })),
-            );
-          }
-        }
+        if (!active) return;
+        setLoadError(null);
+        setGoal(serverGoal);
+        setPriority(serverGoal.priority ?? '');
       })
-      .catch((err) => {
-        console.warn('No se pudo cargar el objetivo del servidor:', err);
+      .catch((error: unknown) => {
+        if (!active) return;
+        setLoadError(
+          error instanceof Error ? error.message : 'No se pudo cargar el objetivo.',
+        );
       })
       .finally(() => {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       });
-  }, [goalId, token]);
 
-  // 2. Cargar progreso del objetivo desde la API (HU-03)
-  useEffect(() => {
-    if (!goalId || !token) return;
+    getAvailability(token)
+      .then((slots) => {
+        if (active) {
+          setAvailabilityError(null);
+          setWeeklyHours(getWeeklyAvailabilityMinutes(slots) / 60);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setWeeklyHours(null);
+        setAvailabilityError(
+          error instanceof Error ? error.message : 'No se pudo cargar tu disponibilidad.',
+        );
+      });
 
     getGoalProgress(goalId, token)
-      .then(setProgress)
-      .catch((err) => {
-        console.warn('No se pudo consultar el progreso de la meta:', err);
+      .then((value) => {
+        if (active) {
+          setProgressError(null);
+          setProgress(value);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setProgressError(
+          error instanceof Error
+            ? `No se pudo consultar el progreso: ${error.message}`
+            : 'No se pudo consultar el progreso del objetivo.',
+        );
       });
-  }, [goalId, token]);
 
-  // 3. Modificar prioridad del objetivo (HU-06)
+    return () => {
+      active = false;
+    };
+    }, [goalId, token]),
+  );
+
   const handleCyclePriority = async () => {
-    if (!goalId || !token || isUpdatingPriority) return;
+    if (!goalId || !token || isUpdatingPriority || !priority) return;
 
     const cycle: Record<string, 'high' | 'medium' | 'low'> = {
-      baja: 'medium',
       low: 'medium',
-      media: 'high',
       medium: 'high',
-      alta: 'low',
       high: 'low',
     };
 
-    const nextPriority = cycle[priority.toLowerCase()] || 'medium';
-    setPriority(nextPriority);
+    const nextPriority = cycle[priority.toLowerCase()];
+    if (!nextPriority) return;
+    setLoadError(null);
     setIsUpdatingPriority(true);
 
     try {
-      await updateGoalPriority(goalId, token, nextPriority);
-    } catch (e) {
-      console.warn('No se pudo actualizar la prioridad:', e);
+      const updatedGoal = await updateGoalPriority(goalId, token, nextPriority);
+      setGoal(updatedGoal);
+      setPriority(updatedGoal.priority ?? nextPriority);
+      const refreshedGoal = await getGoalById(goalId, token);
+      setGoal(refreshedGoal);
+      setPriority(refreshedGoal.priority ?? '');
+    } catch (error) {
+      setLoadError(
+        error instanceof Error ? error.message : 'No se pudo actualizar la prioridad.',
+      );
     } finally {
       setIsUpdatingPriority(false);
     }
   };
 
-  const goalTitle = goal?.title || params.title || 'Crear una aplicación web';
-  const goalDueDate = goal?.due_date || params.targetDate;
-  const goalDate = goalDueDate
-    ? `Fecha límite: ${goalDueDate}`
-    : 'Fecha límite - 30 jun 2025';
-
+  const isGoalLoading = isLoading && Boolean(goalId && token);
+  const displayLoadError =
+    loadError ??
+    (!goalId || !token
+      ? 'No se pudo identificar el objetivo. Abre un objetivo guardado desde el inicio.'
+      : null);
+  const goalDate = goal?.due_date
+    ? `Fecha límite: ${goal.due_date}`
+    : 'Sin fecha límite';
+  const stages = goal?.stages ?? [];
   const activityCount =
     progress?.total_activities ??
-    stages.reduce((count, stage) => count + stage.activity_count, 0);
+    stages.reduce((count, stage) => count + (stage.activities?.length ?? 0), 0);
 
   const displayPriority =
-    priority.toLowerCase() === 'high' || priority.toLowerCase() === 'alta'
+    priority.toLowerCase() === 'high'
       ? 'ALTA'
-      : priority.toLowerCase() === 'low' || priority.toLowerCase() === 'baja'
+      : priority.toLowerCase() === 'low'
         ? 'BAJA'
-        : 'MEDIA';
+        : priority.toLowerCase() === 'medium'
+          ? 'MEDIA'
+          : '—';
+  const weeklyHoursLabel =
+    weeklyHours === null
+      ? '—'
+      : `${Number(weeklyHours.toFixed(2))} H`;
 
   return (
     <Screen style={styles.screen}>
@@ -184,7 +171,7 @@ export default function GoalPlanScreen() {
           <View style={styles.topRow}>
             <View>
               <Text style={styles.badge}>TU PLAN PERSONALIZADO</Text>
-              <Text style={styles.mainTitle}>Tu camino está listo</Text>
+              <Text style={styles.mainTitle}>Tu plan personalizado</Text>
             </View>
 
             <View style={styles.avatarWrapper}>
@@ -202,7 +189,9 @@ export default function GoalPlanScreen() {
             </View>
             <View style={styles.goalTextContainer}>
               <Text style={styles.goalCardBadge}>TU OBJETIVO</Text>
-              <Text style={styles.goalCardTitle}>{goalTitle}</Text>
+              <Text style={styles.goalCardTitle}>
+                {goal?.title ?? (isGoalLoading ? 'Cargando objetivo…' : 'Objetivo no disponible')}
+              </Text>
               <Text style={styles.goalCardDate}>{goalDate}</Text>
             </View>
           </View>
@@ -212,6 +201,7 @@ export default function GoalPlanScreen() {
             <TouchableOpacity
               style={styles.miniMetricCard}
               onPress={handleCyclePriority}
+              disabled={!goal || !priority || isUpdatingPriority}
               activeOpacity={0.8}
             >
               {isUpdatingPriority ? (
@@ -224,17 +214,17 @@ export default function GoalPlanScreen() {
 
             <View style={styles.miniMetricCard}>
               <Text style={styles.miniMetricValue}>
-                {params.hours ? `${params.hours} H` : '4 H'}
+                {weeklyHoursLabel}
               </Text>
               <Text style={styles.miniMetricLabel}>Por semana</Text>
             </View>
 
             <View style={styles.miniMetricCard}>
               <Text style={styles.miniMetricValue}>
-                {progress ? `${progress.progress_percentage}%` : '3 DÍAS'}
+                {progress ? `${progress.progress_percentage}%` : '—'}
               </Text>
               <Text style={styles.miniMetricLabel}>
-                {progress ? 'Progreso' : 'Disponibles'}
+                Progreso
               </Text>
             </View>
           </View>
@@ -251,7 +241,7 @@ export default function GoalPlanScreen() {
             <Text style={styles.summaryDot}>•</Text>
             <Text style={styles.summaryText}>
               <Text style={styles.summaryBold}>
-                {progress ? `${progress.completed_activities} listas` : '4 semanas'}
+                {progress ? `${progress.completed_activities} listas` : '— listas'}
               </Text>
             </Text>
           </View>
@@ -282,10 +272,24 @@ export default function GoalPlanScreen() {
           </TouchableOpacity>
 
           {/* Timeline de Etapas */}
+          {isGoalLoading ? (
+            <ActivityIndicator size="small" color="#174A62" />
+          ) : null}
+          {displayLoadError ? <Text style={styles.errorText}>{displayLoadError}</Text> : null}
+          {availabilityError ? (
+            <Text style={styles.errorText}>
+              No se pudo consultar la disponibilidad semanal: {availabilityError}
+            </Text>
+          ) : null}
+          {progressError ? <Text style={styles.errorText}>{progressError}</Text> : null}
+          {!isGoalLoading && goal && stages.length === 0 ? (
+            <Text style={styles.emptyText}>Este objetivo todavía no tiene etapas disponibles.</Text>
+          ) : null}
           <View style={styles.timelineContainer}>
             <View style={styles.timelineLine} />
             {stages.map((stage, index) => {
               const isFirst = index === 0;
+              const stageActivityCount = stage.activities?.length ?? 0;
               return (
                 <Pressable
                   key={stage.stage_id}
@@ -310,13 +314,13 @@ export default function GoalPlanScreen() {
 
                     <View style={styles.stageInfo}>
                       <Text style={styles.stageBadge}>
-                        {isFirst ? 'LISTA PARA EMPEZAR' : index === 1 ? 'SIGUIENTE' : 'DESPUÉS'}
+                        {isFirst ? 'PRIMERA ETAPA' : `ETAPA ${index + 1}`}
                       </Text>
                       <Text style={styles.stageTitle}>
                         Etapa {index + 1} — {stage.name}
                       </Text>
                       <Text style={styles.stageSubtitle}>
-                        {stage.activity_count} actividades · {index === 0 ? '1 semana' : index === 1 ? '2 semanas' : '1 semana'}
+                        {stageActivityCount} actividades
                       </Text>
                     </View>
 
@@ -589,5 +593,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 14,
+  },
+  errorText: {
+    color: '#C53030',
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
+  emptyText: {
+    color: '#627D98',
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    paddingVertical: 16,
   },
 });

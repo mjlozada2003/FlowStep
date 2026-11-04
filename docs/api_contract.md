@@ -143,6 +143,12 @@ Si una petición falla por validación o reglas de negocio, el backend responde 
 
 ---
 
+### Persistencia del Sprint 2
+
+Aplicar `database/04_sprint_2_additions.sql` después de `database/01_schema.sql` en las bases existentes. El script es aditivo e idempotente: crea las tablas que faltan para disponibilidad, cronogramas, preferencias de duración de sesión e historial de estado, sin eliminar tablas ni columnas existentes.
+
+El historial de cambios de estado se conserva en `ACTIVITY_STATUS_HISTORY`, pero no se expone una ruta HTTP separada para consultarlo.
+
 ### 3.3 Módulo: Disponibilidad de Tiempo (Availability)
 
 #### Registrar Franja Horaria (HU-35, HU-07)
@@ -166,13 +172,30 @@ Si una petición falla por validación o reglas de negocio, el backend responde 
   "availabilities": [
     { "day_of_week": "monday", "start_time": "18:00", "end_time": "20:00" },
     { "day_of_week": "thursday", "start_time": "19:00", "end_time": "21:00" }
-  ]
+  ],
+  "session_duration_minutes": 60
 }
 ```
 
+El reemplazo de disponibilidad es transaccional e incluye todas las franjas semanales del usuario autenticado. `session_duration_minutes` es opcional por compatibilidad y admite `30`, `60` o `120`; si se envía, las franjas y la preferencia se guardan en la misma transacción. Las franjas repetidas y solapadas se rechazan. Enviar una lista vacía elimina las franjas de disponibilidad del usuario.
+
 #### Consultar Disponibilidad Semanal
+- **Respuesta:** arreglo de objetos con `availability_id`, `user_id`, `day_of_week`, `start_time` y `end_time`.
 - **Ruta:** `GET /availability`
 - **Autenticación:** Bearer Token
+
+#### Consultar Preferencia de Duración de Sesión (HU-07)
+- **Ruta:** `GET /availability/preferences`
+- **Autenticación:** Bearer JWT
+- **Respuesta:**
+```json
+{
+  "user_id": 1,
+  "session_duration_minutes": 60
+}
+```
+- Si el usuario aún no guardó una preferencia, se devuelve el valor inicial de `60` minutos. La pantalla calcula las horas semanales a partir de las franjas guardadas; no se mantiene un total redundante separado.
+- La duración seleccionada se usa como límite al adaptar la duración estimada de cada actividad al generar el plan.
 
 #### Eliminar Franja Horaria
 - **Ruta:** `DELETE /availability/:id`
@@ -224,6 +247,7 @@ Si una petición falla por validación o reglas de negocio, el backend responde 
 - **Autenticación:** Bearer Token
 
 #### Mantener Actividad Pendiente (HU-16)
+- **Efecto:** registra la transición de estado en `ACTIVITY_STATUS_HISTORY`, conserva allí la fecha de completado anterior y limpia `completed_at` en el estado actual.
 - **Ruta:** `PATCH /activities/:id/pending`
 - **Autenticación:** Bearer Token
 

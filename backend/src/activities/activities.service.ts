@@ -4,10 +4,11 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsRelations, Repository } from 'typeorm';
 import { Activity } from './entities/activity.entity';
 import { Stage } from '../stages/entities/stage.entity';
 import { ActivitySchedule } from './entities/activity-schedule.entity';
+import { ActivityStatusHistory } from './entities/activity-status-history.entity';
 import { CreateActivityDto } from './dto/create-activity.dto';
 import { UpdateActivityDto } from './dto/update-activity.dto';
 import { RescheduleActivityDto } from './dto/reschedule-activity.dto';
@@ -26,9 +27,23 @@ export class ActivitiesService {
     private schedulesRepository: Repository<ActivitySchedule>,
   ) {}
 
-  async createForStage(stageId: number, dto: CreateActivityDto): Promise<Activity> {
+  private findOwnedActivity(
+    userId: number,
+    activityId: number,
+    relations?: FindOptionsRelations<Activity>,
+  ): Promise<Activity | null> {
+    return this.activitiesRepository.findOne({
+      where: {
+        activity_id: activityId,
+        stage: { goal: { user_id: userId } },
+      },
+      relations,
+    });
+  }
+
+  async createForStage(userId: number, stageId: number, dto: CreateActivityDto): Promise<Activity> {
     const stage = await this.stagesRepository.findOne({
-      where: { stage_id: stageId },
+      where: { stage_id: stageId, goal: { user_id: userId } },
       relations: { activities: true },
     });
 
@@ -39,6 +54,21 @@ export class ActivitiesService {
     const maxOrder = stage.activities?.length
       ? Math.max(...stage.activities.map((a) => a.sort_order || 0))
       : 0;
+
+    if (dto.parent_activity_id != null) {
+      const parent = await this.activitiesRepository.findOne({
+        where: {
+          activity_id: dto.parent_activity_id,
+          stage_id: stageId,
+          stage: { goal: { user_id: userId } },
+        },
+      });
+      if (!parent) {
+        throw new NotFoundException(
+          `La actividad padre con ID ${dto.parent_activity_id} no existe en esta etapa`,
+        );
+      }
+    }
 
     const activity = this.activitiesRepository.create({
       stage_id: stageId,
@@ -56,9 +86,12 @@ export class ActivitiesService {
     return this.activitiesRepository.save(activity);
   }
 
-  async findById(activityId: number): Promise<Activity> {
+  async findById(userId: number, activityId: number): Promise<Activity> {
     const activity = await this.activitiesRepository.findOne({
-      where: { activity_id: activityId },
+      where: {
+        activity_id: activityId,
+        stage: { goal: { user_id: userId } },
+      },
       relations: {
         stage: true,
         sub_activities: true,
@@ -78,61 +111,121 @@ export class ActivitiesService {
     return activity;
   }
 
-  async update(activityId: number, dto: UpdateActivityDto): Promise<Activity> {
-    const activity = await this.activitiesRepository.findOne({
-      where: { activity_id: activityId },
-    });
+  async update(userId: number, activityId: number, dto: UpdateActivityDto): Promise<Activity> {
+    const activity = await this.findOwnedActivity(userId, activityId, { stage: true });
 
     if (!activity) {
       throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
     }
 
-    if (dto.status) {
-      if (dto.status === ActivityStatus.COMPLETED && !activity.completed_at) {
-        activity.completed_at = new Date();
-      } else if (dto.status === ActivityStatus.PENDING) {
-        activity.completed_at = null as unknown as Date;
+    if (dto.parent_activity_id != null && dto.parent_activity_id !== activity.activity_id) {
+      const parent = await this.activitiesRepository.findOne({
+        where: {
+          activity_id: dto.parent_activity_id,
+          stage_id: activity.stage_id,
+          stage: { goal: { user_id: userId } },
+        },
+      });
+      if (!parent) {
+        throw new NotFoundException(
+          `La actividad padre con ID ${dto.parent_activity_id} no existe en esta etapa`,
+        );
       }
+    } else if (dto.parent_activity_id === activity.activity_id) {
+      throw new BadRequestException('Una actividad no puede ser su propia actividad padre');
+    }
+
+    const previousStatus = activity.status;
+    if (dto.status !== undefined && dto.status !== previousStatus) {
+      return this.activitiesRepository.manager.transaction(async (manager) => {
+        const activityRepository = manager.getRepository(Activity);
+        const historyRepository = manager.getRepository(ActivityStatusHistory);
+        const current = await activityRepository.findOne({
+          where: {
+            activity_id: activityId,
+            stage: { goal: { user_id: userId } },
+          },
+        });
+        if (!current) {
+          throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
+        }
+
+        if (current.status === dto.status) {
+          Object.assign(current, dto);
+          return activityRepository.save(current);
+        }
+
+        await historyRepository.save(
+          historyRepository.create({
+            activity_id: activityId,
+            previous_status: current.status,
+            new_status: dto.status,
+            previous_completed_at: current.completed_at,
+          }),
+        );
+        Object.assign(current, dto);
+        current.completed_at =
+          dto.status === ActivityStatus.COMPLETED ? new Date() : null;
+        return activityRepository.save(current);
+      });
     }
 
     Object.assign(activity, dto);
     return this.activitiesRepository.save(activity);
   }
 
-  async completeActivity(activityId: number): Promise<Activity> {
-    const activity = await this.activitiesRepository.findOne({
-      where: { activity_id: activityId },
-    });
-
-    if (!activity) {
-      throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
-    }
-
-    activity.status = ActivityStatus.COMPLETED;
-    activity.completed_at = new Date();
-
-    return this.activitiesRepository.save(activity);
+  async completeActivity(userId: number, activityId: number): Promise<Activity> {
+    return this.changeStatus(userId, activityId, ActivityStatus.COMPLETED);
   }
 
-  async markAsPending(activityId: number): Promise<Activity> {
-    const activity = await this.activitiesRepository.findOne({
-      where: { activity_id: activityId },
-    });
-
-    if (!activity) {
-      throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
-    }
-
-    activity.status = ActivityStatus.PENDING;
-    activity.completed_at = null as unknown as Date;
-
-    return this.activitiesRepository.save(activity);
+  async markAsPending(userId: number, activityId: number): Promise<Activity> {
+    return this.changeStatus(userId, activityId, ActivityStatus.PENDING);
   }
 
-  async remove(activityId: number): Promise<{ message: string }> {
-    const activity = await this.activitiesRepository.findOne({
-      where: { activity_id: activityId },
+  private async changeStatus(
+    userId: number,
+    activityId: number,
+    newStatus: ActivityStatus,
+  ): Promise<Activity> {
+    return this.activitiesRepository.manager.transaction(async (manager) => {
+      const activityRepository = manager.getRepository(Activity);
+      const historyRepository = manager.getRepository(ActivityStatusHistory);
+      const activity = await activityRepository.findOne({
+        where: {
+          activity_id: activityId,
+          stage: { goal: { user_id: userId } },
+        },
+      });
+
+      if (!activity) {
+        throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
+      }
+
+      if (activity.status === newStatus) {
+        return activity;
+      }
+
+      const previousStatus = activity.status;
+      const previousCompletedAt = activity.completed_at;
+      await historyRepository.save(
+        historyRepository.create({
+          activity_id: activityId,
+          previous_status: previousStatus,
+          new_status: newStatus,
+          previous_completed_at: previousCompletedAt,
+        }),
+      );
+
+      activity.status = newStatus;
+      activity.completed_at =
+        newStatus === ActivityStatus.COMPLETED ? new Date() : null;
+
+      return activityRepository.save(activity);
     });
+  }
+
+  async remove(userId: number, activityId: number): Promise<{ message: string }> {
+    const activity = await this.findOwnedActivity(userId, activityId);
 
     if (!activity) {
       throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
@@ -142,16 +235,22 @@ export class ActivitiesService {
     return { message: `Actividad con ID ${activityId} eliminada correctamente` };
   }
 
-  async reschedule(activityId: number, dto: RescheduleActivityDto): Promise<ActivitySchedule> {
-    const activity = await this.activitiesRepository.findOne({
-      where: { activity_id: activityId },
-    });
+  async reschedule(
+    userId: number,
+    activityId: number,
+    dto: RescheduleActivityDto,
+  ): Promise<ActivitySchedule> {
+    const activity = await this.findOwnedActivity(userId, activityId);
 
     if (!activity) {
       throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
     }
 
-    if (dto.start_time && dto.end_time && dto.start_time >= dto.end_time) {
+    if (
+      dto.start_time &&
+      dto.end_time &&
+      this.timeToSeconds(dto.start_time) >= this.timeToSeconds(dto.end_time)
+    ) {
       throw new BadRequestException(
         `La hora de fin (${dto.end_time}) debe ser posterior a la hora de inicio (${dto.start_time})`,
       );
@@ -177,10 +276,8 @@ export class ActivitiesService {
     return this.schedulesRepository.save(newSchedule);
   }
 
-  async getScheduleHistory(activityId: number): Promise<ActivitySchedule[]> {
-    const activity = await this.activitiesRepository.findOne({
-      where: { activity_id: activityId },
-    });
+  async getScheduleHistory(userId: number, activityId: number): Promise<ActivitySchedule[]> {
+    const activity = await this.findOwnedActivity(userId, activityId);
 
     if (!activity) {
       throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
@@ -190,5 +287,10 @@ export class ActivitiesService {
       where: { activity_id: activityId },
       order: { version_number: 'ASC' },
     });
+  }
+
+  private timeToSeconds(time: string): number {
+    const [hours, minutes, seconds = '0'] = time.split(':');
+    return Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds);
   }
 }

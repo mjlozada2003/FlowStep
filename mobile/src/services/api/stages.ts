@@ -48,6 +48,27 @@ export interface RescheduleActivityRequest {
   end_time?: string;
 }
 
+function isActivityScheduleVersion(
+  value: unknown,
+): value is ActivityScheduleVersion {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'schedule_id' in value &&
+    typeof value.schedule_id === 'number' &&
+    'activity_id' in value &&
+    typeof value.activity_id === 'number' &&
+    'version_number' in value &&
+    typeof value.version_number === 'number' &&
+    'scheduled_date' in value &&
+    typeof value.scheduled_date === 'string' &&
+    'reason' in value &&
+    typeof value.reason === 'string' &&
+    'created_at' in value &&
+    typeof value.created_at === 'string'
+  );
+}
+
 function isStageActivity(value: unknown): value is StageActivity {
   return (
     typeof value === 'object' &&
@@ -190,7 +211,7 @@ export async function rescheduleActivity(
   token: string,
   data: RescheduleActivityRequest,
 ): Promise<ActivityScheduleVersion> {
-  return apiRequest<ActivityScheduleVersion>(
+  const schedule = await apiRequest<unknown>(
     `/activities/${activityId}/reschedule`,
     {
       method: 'POST',
@@ -198,17 +219,29 @@ export async function rescheduleActivity(
       body: JSON.stringify(data),
     },
   );
+  if (!isActivityScheduleVersion(schedule)) {
+    throw new ApiResponseError(
+      'La respuesta al reprogramar la actividad no tiene el formato esperado.',
+    );
+  }
+  return schedule;
 }
 
 export async function getActivitySchedules(
   activityId: number,
   token: string,
 ): Promise<ActivityScheduleVersion[]> {
-  return apiRequest<ActivityScheduleVersion[]>(
+  const schedules = await apiRequest<unknown>(
     `/activities/${activityId}/schedules`,
     {
       method: 'GET',
       token,
     },
   );
+  if (!Array.isArray(schedules) || !schedules.every(isActivityScheduleVersion)) {
+    throw new ApiResponseError(
+      'El historial de horarios no tiene el formato esperado.',
+    );
+  }
+  return schedules;
 }

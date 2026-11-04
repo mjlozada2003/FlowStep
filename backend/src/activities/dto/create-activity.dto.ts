@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   Min,
+  MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ActivityType } from '../enums/activity.enum';
@@ -17,6 +18,7 @@ export class CreateActivityDto {
   })
   @IsNotEmpty({ message: 'El título de la actividad es obligatorio' })
   @IsString()
+  @MaxLength(200)
   title: string;
 
   @ApiPropertyOptional({
@@ -63,5 +65,6 @@ export class CreateActivityDto {
   })
   @IsOptional()
   @IsInt()
+  @Min(1)
   parent_activity_id?: number;
 }

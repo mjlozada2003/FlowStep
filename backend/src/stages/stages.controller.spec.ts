@@ -47,9 +47,10 @@ describe('StagesController', () => {
       const expectedResult = { activity_id: 1, stage_id: 1, ...dto };
       mockActivitiesService.createForStage.mockResolvedValue(expectedResult);
 
-      const result = await controller.addActivity(1, dto);
+      const req = { user: { userId: 7 } };
+      const result = await controller.addActivity(req, 1, dto);
       expect(result).toEqual(expectedResult);
-      expect(mockActivitiesService.createForStage).toHaveBeenCalledWith(1, dto);
+      expect(mockActivitiesService.createForStage).toHaveBeenCalledWith(7, 1, dto);
     });
   });
 });

@@ -11,11 +11,26 @@ import { BadRequestException } from '@nestjs/common';
 describe('ActivitiesService', () => {
   let service: ActivitiesService;
 
-  const mockActivityRepository = {
+  const mockActivityRepository: any = {
     create: jest.fn(),
     save: jest.fn(),
     findOne: jest.fn(),
     remove: jest.fn(),
+  };
+
+  const mockStatusHistoryRepository = {
+    create: jest.fn((record) => record),
+    save: jest.fn(),
+  };
+
+  const mockEntityManager = {
+    getRepository: jest.fn((entity) =>
+      entity === Activity ? mockActivityRepository : mockStatusHistoryRepository,
+    ),
+  };
+
+  mockActivityRepository.manager = {
+    transaction: jest.fn((callback) => callback(mockEntityManager)),
   };
 
   const mockStageRepository = {
@@ -30,6 +45,7 @@ describe('ActivitiesService', () => {
   };
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ActivitiesService,
@@ -82,7 +98,7 @@ describe('ActivitiesService', () => {
       mockScheduleRepository.create.mockReturnValue(newSchedule);
       mockScheduleRepository.save.mockResolvedValue(newSchedule);
 
-      const result = await service.reschedule(1, dto);
+      const result = await service.reschedule(7, 1, dto);
       expect(result.version_number).toBe(2);
       expect(result.reason).toBe(ScheduleReason.USER_RESCHEDULE);
       expect(mockScheduleRepository.create).toHaveBeenCalledWith(
@@ -99,7 +115,7 @@ describe('ActivitiesService', () => {
       mockActivityRepository.findOne.mockResolvedValue({ activity_id: 1 });
 
       await expect(
-        service.reschedule(1, {
+        service.reschedule(7, 1, {
           scheduled_date: '2026-11-05',
           start_time: '16:00',
           end_time: '14:00',
@@ -134,7 +150,7 @@ describe('ActivitiesService', () => {
       mockActivityRepository.create.mockReturnValue(createdActivity);
       mockActivityRepository.save.mockResolvedValue(createdActivity);
 
-      const result = await service.createForStage(1, dto);
+      const result = await service.createForStage(7, 1, dto);
       expect(result.sort_order).toBe(3);
       expect(result.origin).toBe(ActivityOrigin.MANUAL);
     });
@@ -150,24 +166,93 @@ describe('ActivitiesService', () => {
       mockActivityRepository.findOne.mockResolvedValue(existing);
       mockActivityRepository.save.mockImplementation((act) => Promise.resolve(act));
 
-      const updated = await service.update(1, { title: 'Nuevo Título' });
+      const updated = await service.update(7, 1, { title: 'Nuevo Título' });
       expect(updated.title).toBe('Nuevo Título');
     });
   });
 
   describe('markAsPending', () => {
     it('should mark activity as pending and clear completed_at (HU-16)', async () => {
+      const completedAt = new Date();
       const existing = {
         activity_id: 1,
         status: ActivityStatus.COMPLETED,
-        completed_at: new Date(),
+        completed_at: completedAt,
       };
       mockActivityRepository.findOne.mockResolvedValue(existing);
       mockActivityRepository.save.mockImplementation((act) => Promise.resolve(act));
 
-      const result = await service.markAsPending(1);
+      mockStatusHistoryRepository.save.mockResolvedValue({});
+
+      const result = await service.markAsPending(7, 1);
       expect(result.status).toBe(ActivityStatus.PENDING);
       expect(result.completed_at).toBeNull();
+      expect(mockStatusHistoryRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          activity_id: 1,
+          previous_status: ActivityStatus.COMPLETED,
+          new_status: ActivityStatus.PENDING,
+          previous_completed_at: completedAt,
+        }),
+      );
     });
+  });
+
+  it('scopes activity lookups through the owning goal', async () => {
+    mockActivityRepository.findOne.mockResolvedValue({ activity_id: 4 });
+
+    await service.findById(7, 4);
+
+    expect(mockActivityRepository.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          activity_id: 4,
+          stage: { goal: { user_id: 7 } },
+        },
+      }),
+    );
+  });
+
+  it('records status changes made through the edit endpoint', async () => {
+    const completedAt = new Date();
+    const existing = {
+      activity_id: 1,
+      stage_id: 2,
+      status: ActivityStatus.COMPLETED,
+      completed_at: completedAt,
+    };
+    mockActivityRepository.findOne.mockResolvedValue(existing);
+    mockActivityRepository.save.mockImplementation((activity) => Promise.resolve(activity));
+    mockStatusHistoryRepository.save.mockResolvedValue({});
+
+    const result = await service.update(7, 1, { status: ActivityStatus.PENDING });
+
+    expect(result.completed_at).toBeNull();
+    expect(mockStatusHistoryRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        previous_status: ActivityStatus.COMPLETED,
+        new_status: ActivityStatus.PENDING,
+        previous_completed_at: completedAt,
+      }),
+    );
+  });
+
+  it('rejects adding a manual activity to another user’s stage', async () => {
+    mockStageRepository.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.createForStage(7, 11, {
+        title: 'Activity',
+        type: ActivityType.PRACTICE,
+        estimated_minutes: 30,
+      }),
+    ).rejects.toThrow();
+
+    expect(mockStageRepository.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { stage_id: 11, goal: { user_id: 7 } },
+      }),
+    );
+    expect(mockActivityRepository.save).not.toHaveBeenCalled();
   });
 });

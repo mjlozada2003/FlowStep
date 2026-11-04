@@ -1,6 +1,6 @@
-import { IsArray, ValidateNested } from 'class-validator';
+import { IsArray, IsIn, IsInt, IsOptional, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CreateAvailabilityDto } from './create-availability.dto';
 
 export class BulkAvailabilityDto {
@@ -12,4 +12,13 @@ export class BulkAvailabilityDto {
   @ValidateNested({ each: true })
   @Type(() => CreateAvailabilityDto)
   availabilities: CreateAvailabilityDto[];
+
+  @ApiPropertyOptional({
+    enum: [30, 60, 120],
+    description: 'Duración de sesión elegida por el usuario, en minutos',
+  })
+  @IsOptional()
+  @IsInt()
+  @IsIn([30, 60, 120])
+  session_duration_minutes?: number;
 }

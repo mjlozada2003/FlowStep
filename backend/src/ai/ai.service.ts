@@ -56,8 +56,9 @@ export class AiService {
     goalTitle: string,
     goalDescription: string,
     userAvailabilities?: UserAvailabilitySlot[],
+    sessionDurationMinutes = 60,
   ): InitialPlanResponse {
-    let defaultDuration = 30;
+    let defaultDuration = sessionDurationMinutes;
     if (userAvailabilities && userAvailabilities.length > 0) {
       const slot = userAvailabilities[0];
       if (slot.start_time && slot.end_time) {
@@ -65,7 +66,7 @@ export class AiService {
         const [eh, em] = slot.end_time.split(':').map(Number);
         const diffMinutes = eh * 60 + em - (sh * 60 + sm);
         if (diffMinutes > 0 && diffMinutes <= 180) {
-          defaultDuration = Math.min(diffMinutes, 60);
+          defaultDuration = Math.min(diffMinutes, sessionDurationMinutes);
         }
       }
     }
@@ -157,6 +158,7 @@ export class AiService {
     goalTitle: string,
     goalDescription: string,
     userAvailabilities?: UserAvailabilitySlot[],
+    sessionDurationMinutes = 60,
   ): Promise<InitialPlanResponse | null> {
     const availabilitySection =
       userAvailabilities && userAvailabilities.length > 0
@@ -167,7 +169,7 @@ export class AiService {
 
       CRITERIOS OBLIGATORIOS DE ADAPTACIÓN (HU-36 y HU-07):
       1. Adapta la duración estimada ("estimated_minutes") de cada actividad para que sea compatible con los bloques de tiempo del usuario.
-      2. Ninguna actividad individual debe superar la duración máxima de una sesión disponible del usuario.
+      2. La duración máxima elegida por sesión es ${sessionDurationMinutes} minutos, y ninguna actividad puede superar ese valor ni la duración de su franja disponible.
       3. Si un conocimiento o práctica es extenso, divídelo en varias actividades progresivas y digeribles que encajen dentro de sus horarios disponibles.
       `
         : `
@@ -233,6 +235,11 @@ export class AiService {
 
     // Si la API de Gemini tiene picos de saturación (503/429) o fallas de red, aplicamos el plan pedagógico base adaptable
     console.warn('Gemini experimenta alta demanda o inaccesibilidad temporal. Aplicando plan pedagógico adaptable base.');
-    return this.generateFallbackPlan(goalTitle, goalDescription, userAvailabilities);
+    return this.generateFallbackPlan(
+      goalTitle,
+      goalDescription,
+      userAvailabilities,
+      sessionDurationMinutes,
+    );
   }
 }
