@@ -1,9 +1,17 @@
-import { apiRequest, ApiResponseError } from '@/services/api/client';
+import { apiRequest, ApiHttpError, ApiResponseError } from '@/services/api/client';
 
 export interface CreateGoalRequest {
   title: string;
   user_description: string;
   due_date?: string;
+  priority?: 'high' | 'medium' | 'low';
+}
+
+export interface ActivityScheduleInfo {
+  schedule_id: number;
+  scheduled_date: string;
+  start_time?: string | null;
+  end_time?: string | null;
 }
 
 export interface GoalActivity {
@@ -13,6 +21,7 @@ export interface GoalActivity {
   status?: string;
   estimated_minutes?: number | null;
   sort_order?: number;
+  schedules?: ActivityScheduleInfo[] | null;
 }
 
 export interface GoalStage {
@@ -27,6 +36,7 @@ export interface CreatedGoal {
   goal_id: number;
   title: string;
   user_description: string;
+  priority?: 'high' | 'medium' | 'low';
   start_date?: string;
   due_date?: string | null;
   stages?: GoalStage[] | null;
@@ -61,73 +71,43 @@ function parseGoalProgress(value: unknown): GoalProgress | null {
     return null;
   }
 
-  if (
-    !('goal_id' in value) ||
-    !('user_id' in value) ||
-    !('goal_title' in value) ||
-    typeof value.goal_title !== 'string' ||
-    !('goal_status' in value) ||
-    typeof value.goal_status !== 'string' ||
-    !('total_activities' in value) ||
-    !('completed_activities' in value) ||
-    !('total_estimated_minutes' in value) ||
-    !('completed_estimated_minutes' in value) ||
-    !('progress_percentage' in value)
-  ) {
-    return null;
-  }
+  const record = value as Record<string, unknown>;
 
-  const goalId = parseNumericValue(value.goal_id);
-  const userId = parseNumericValue(value.user_id);
-  const totalActivities = parseNumericValue(value.total_activities);
-  const completedActivities = parseNumericValue(value.completed_activities);
-  const totalEstimatedMinutes = parseNumericValue(value.total_estimated_minutes);
-  const completedEstimatedMinutes = parseNumericValue(
-    value.completed_estimated_minutes,
-  );
-  const progressPercentage = parseNumericValue(value.progress_percentage);
-  const integerMetrics = [
-    goalId,
-    userId,
-    totalActivities,
-    completedActivities,
-    totalEstimatedMinutes,
-    completedEstimatedMinutes,
-  ];
+  const goalId = parseNumericValue(record.goal_id ?? record.goalId);
+  const userId = parseNumericValue(record.user_id ?? record.userId);
+  const goalTitle =
+    typeof record.goal_title === 'string'
+      ? record.goal_title
+      : typeof record.title === 'string'
+        ? record.title
+        : 'Objetivo';
+  const goalStatus =
+    typeof record.goal_status === 'string'
+      ? record.goal_status
+      : typeof record.status === 'string'
+        ? record.status
+        : 'active';
 
-  if (
-    integerMetrics.some(
-      (metric) => metric === null || !Number.isSafeInteger(metric),
-    ) ||
-    goalId === null ||
-    goalId <= 0 ||
-    userId === null ||
-    userId <= 0 ||
-    totalActivities === null ||
-    totalActivities < 0 ||
-    completedActivities === null ||
-    completedActivities < 0 ||
-    totalEstimatedMinutes === null ||
-    totalEstimatedMinutes < 0 ||
-    completedEstimatedMinutes === null ||
-    completedEstimatedMinutes < 0 ||
-    progressPercentage === null ||
-    progressPercentage < 0 ||
-    progressPercentage > 100
-  ) {
+  const totalActivities = parseNumericValue(record.total_activities ?? record.totalActivities) ?? 0;
+  const completedActivities = parseNumericValue(record.completed_activities ?? record.completedActivities) ?? 0;
+  const totalEstimatedMinutes = parseNumericValue(record.total_estimated_minutes ?? record.totalEstimatedMinutes) ?? 0;
+  const completedEstimatedMinutes = parseNumericValue(record.completed_estimated_minutes ?? record.completedEstimatedMinutes) ?? 0;
+  const progressPercentage = parseNumericValue(record.progress_percentage ?? record.progressPercentage) ?? 0;
+
+  if (goalId === null || goalId <= 0) {
     return null;
   }
 
   return {
     goal_id: goalId,
-    user_id: userId,
-    goal_title: value.goal_title,
-    goal_status: value.goal_status,
-    total_activities: totalActivities,
-    completed_activities: completedActivities,
-    total_estimated_minutes: totalEstimatedMinutes,
-    completed_estimated_minutes: completedEstimatedMinutes,
-    progress_percentage: progressPercentage,
+    user_id: userId ?? 1,
+    goal_title: goalTitle,
+    goal_status: goalStatus,
+    total_activities: Math.max(0, Math.round(totalActivities)),
+    completed_activities: Math.max(0, Math.round(completedActivities)),
+    total_estimated_minutes: Math.max(0, Math.round(totalEstimatedMinutes)),
+    completed_estimated_minutes: Math.max(0, Math.round(completedEstimatedMinutes)),
+    progress_percentage: Math.min(100, Math.max(0, progressPercentage)),
   };
 }
 
@@ -188,26 +168,69 @@ export async function getGoalProgress(
   goalId: number,
   token: string,
   signal?: AbortSignal,
-): Promise<GoalProgress> {
+): Promise<GoalProgress | null> {
   if (!Number.isSafeInteger(goalId) || goalId <= 0) {
-    throw new ApiResponseError('El identificador del objetivo debe ser un entero positivo.');
+    return null;
   }
 
-  const response = await apiRequest<unknown>(
-    `/goals/${goalId}/progress`,
-    {
-      method: 'GET',
-      token,
-      signal,
-    },
-  );
-  const progress = parseGoalProgress(response);
-
-  if (!progress) {
-    throw new ApiResponseError(
-      'La respuesta del progreso del objetivo no tiene el formato esperado.',
+  try {
+    const response = await apiRequest<unknown>(
+      `/goals/${goalId}/progress`,
+      {
+        method: 'GET',
+        token,
+        signal,
+      },
     );
+    if (!response) {
+      return null;
+    }
+    return parseGoalProgress(response);
+  } catch (error) {
+    if (error instanceof ApiHttpError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function getUserGoals(token: string): Promise<CreatedGoal[]> {
+  const response = await apiRequest<CreatedGoal[]>('/goals', {
+    method: 'GET',
+    token,
+  });
+
+  if (!Array.isArray(response)) {
+    throw new ApiResponseError('La lista de objetivos no tiene el formato esperado.');
   }
 
-  return progress;
+  return response;
+}
+
+export async function getGoalById(
+  goalId: number,
+  token: string,
+): Promise<CreatedGoal> {
+  const response = await apiRequest<CreatedGoal>(`/goals/${goalId}`, {
+    method: 'GET',
+    token,
+  });
+
+  if (!response || typeof response.goal_id !== 'number') {
+    throw new ApiResponseError('El detalle del objetivo no tiene el formato esperado.');
+  }
+
+  return response;
+}
+
+export async function updateGoalPriority(
+  goalId: number,
+  token: string,
+  priority: 'high' | 'medium' | 'low',
+): Promise<CreatedGoal> {
+  return apiRequest<CreatedGoal>(`/goals/${goalId}/priority`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify({ priority }),
+  });
 }

@@ -1,6 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +13,14 @@ import {
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
+import { useAuth } from '@/contexts/auth-context';
+import {
+  getGoalById,
+  getGoalProgress,
+  updateGoalPriority,
+  type CreatedGoal,
+  type GoalProgress,
+} from '@/services/api/goals';
 
 interface GoalStagePreview {
   stage_id: number;
@@ -42,38 +52,126 @@ export default function GoalPlanScreen() {
     title?: string;
     targetDate?: string;
     stages?: string;
+    priority?: string;
+    hours?: string;
   }>();
 
-  const goalTitle = params.title || 'Crear una aplicación web';
-  const goalDate = params.targetDate
-    ? `Fecha límite: ${params.targetDate}`
-    : 'Fecha límite - 30 jun 2025';
+  const { token } = useAuth();
 
   const parsedGoalId = /^\d+$/.test(params.goalId ?? '')
     ? Number(params.goalId)
-    : 1;
-  const goalId = parsedGoalId !== null && parsedGoalId > 0 ? parsedGoalId : 1;
+    : null;
+  const goalId = parsedGoalId !== null && parsedGoalId > 0 ? parsedGoalId : null;
 
-  // Mock de etapas por defecto para que la vista siempre luzca completa en la demo
-  let stages: GoalStagePreview[] = [
+  const [goal, setGoal] = useState<CreatedGoal | null>(null);
+  const [progress, setProgress] = useState<GoalProgress | null>(null);
+  const [priority, setPriority] = useState<string>(params.priority || 'media');
+  const [isUpdatingPriority, setIsUpdatingPriority] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Etapas por defecto o cargadas desde parámetros
+  const defaultStages: GoalStagePreview[] = [
     { stage_id: 1, name: 'Aprendizaje', activity_count: 4 },
     { stage_id: 2, name: 'Desarrollo', activity_count: 5 },
     { stage_id: 3, name: 'Pruebas', activity_count: 3 },
   ];
 
+  let initialStages = defaultStages;
   if (params.stages) {
     try {
       const parsedStages: unknown = JSON.parse(params.stages);
       if (Array.isArray(parsedStages) && parsedStages.every(isGoalStagePreview)) {
-        stages = parsedStages;
+        initialStages = parsedStages;
       }
     } catch {}
   }
 
-  const activityCount = stages.reduce(
-    (count, stage) => count + stage.activity_count,
-    0,
-  );
+  const [stages, setStages] = useState<GoalStagePreview[]>(initialStages);
+
+  // 1. Cargar el detalle del objetivo desde la API (HU-01, HU-02)
+  useEffect(() => {
+    if (!goalId || !token) return;
+
+    setIsLoading(true);
+    getGoalById(goalId, token)
+      .then((serverGoal) => {
+        if (serverGoal) {
+          setGoal(serverGoal);
+          if (serverGoal.priority) {
+            setPriority(serverGoal.priority);
+          }
+          if (serverGoal.stages && serverGoal.stages.length > 0) {
+            setStages(
+              serverGoal.stages.map((st) => ({
+                stage_id: st.stage_id,
+                name: st.name,
+                activity_count: st.activities?.length || 0,
+              })),
+            );
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('No se pudo cargar el objetivo del servidor:', err);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, [goalId, token]);
+
+  // 2. Cargar progreso del objetivo desde la API (HU-03)
+  useEffect(() => {
+    if (!goalId || !token) return;
+
+    getGoalProgress(goalId, token)
+      .then(setProgress)
+      .catch((err) => {
+        console.warn('No se pudo consultar el progreso de la meta:', err);
+      });
+  }, [goalId, token]);
+
+  // 3. Modificar prioridad del objetivo (HU-06)
+  const handleCyclePriority = async () => {
+    if (!goalId || !token || isUpdatingPriority) return;
+
+    const cycle: Record<string, 'high' | 'medium' | 'low'> = {
+      baja: 'medium',
+      low: 'medium',
+      media: 'high',
+      medium: 'high',
+      alta: 'low',
+      high: 'low',
+    };
+
+    const nextPriority = cycle[priority.toLowerCase()] || 'medium';
+    setPriority(nextPriority);
+    setIsUpdatingPriority(true);
+
+    try {
+      await updateGoalPriority(goalId, token, nextPriority);
+    } catch (e) {
+      console.warn('No se pudo actualizar la prioridad:', e);
+    } finally {
+      setIsUpdatingPriority(false);
+    }
+  };
+
+  const goalTitle = goal?.title || params.title || 'Crear una aplicación web';
+  const goalDueDate = goal?.due_date || params.targetDate;
+  const goalDate = goalDueDate
+    ? `Fecha límite: ${goalDueDate}`
+    : 'Fecha límite - 30 jun 2025';
+
+  const activityCount =
+    progress?.total_activities ??
+    stages.reduce((count, stage) => count + stage.activity_count, 0);
+
+  const displayPriority =
+    priority.toLowerCase() === 'high' || priority.toLowerCase() === 'alta'
+      ? 'ALTA'
+      : priority.toLowerCase() === 'low' || priority.toLowerCase() === 'baja'
+        ? 'BAJA'
+        : 'MEDIA';
 
   return (
     <Screen style={styles.screen}>
@@ -109,19 +207,35 @@ export default function GoalPlanScreen() {
             </View>
           </View>
 
-          {/* 3 Mini Tarjetas de Métricas (Igual al Prototipo) */}
+          {/* 3 Mini Tarjetas de Métricas (Interactivas) */}
           <View style={styles.metricsRow}>
+            <TouchableOpacity
+              style={styles.miniMetricCard}
+              onPress={handleCyclePriority}
+              activeOpacity={0.8}
+            >
+              {isUpdatingPriority ? (
+                <ActivityIndicator size="small" color="#174A62" />
+              ) : (
+                <Text style={styles.miniMetricValue}>{displayPriority}</Text>
+              )}
+              <Text style={styles.miniMetricLabel}>Prioridad (toca)</Text>
+            </TouchableOpacity>
+
             <View style={styles.miniMetricCard}>
-              <Text style={styles.miniMetricValue}>MEDIA</Text>
-              <Text style={styles.miniMetricLabel}>Prioridad</Text>
-            </View>
-            <View style={styles.miniMetricCard}>
-              <Text style={styles.miniMetricValue}>4 H</Text>
+              <Text style={styles.miniMetricValue}>
+                {params.hours ? `${params.hours} H` : '4 H'}
+              </Text>
               <Text style={styles.miniMetricLabel}>Por semana</Text>
             </View>
+
             <View style={styles.miniMetricCard}>
-              <Text style={styles.miniMetricValue}>3 DÍAS</Text>
-              <Text style={styles.miniMetricLabel}>Disponibles</Text>
+              <Text style={styles.miniMetricValue}>
+                {progress ? `${progress.progress_percentage}%` : '3 DÍAS'}
+              </Text>
+              <Text style={styles.miniMetricLabel}>
+                {progress ? 'Progreso' : 'Disponibles'}
+              </Text>
             </View>
           </View>
 
@@ -136,15 +250,24 @@ export default function GoalPlanScreen() {
             </Text>
             <Text style={styles.summaryDot}>•</Text>
             <Text style={styles.summaryText}>
-              <Text style={styles.summaryBold}>4</Text> semanas
+              <Text style={styles.summaryBold}>
+                {progress ? `${progress.completed_activities} listas` : '4 semanas'}
+              </Text>
             </Text>
           </View>
 
-          {/* Tarjeta de Acceso a la Agenda Adaptada */}
+          {/* Tarjeta de Acceso a la Agenda Adaptada (HU-36) */}
           <TouchableOpacity
             style={styles.scheduleAccessCard}
             activeOpacity={0.85}
-            onPress={() => router.push('/schedule')}
+            onPress={() =>
+              router.push({
+                pathname: '/schedule',
+                params: {
+                  goalId: goalId ? String(goalId) : '',
+                },
+              })
+            }
           >
             <View style={styles.scheduleCardLeft}>
               <View style={styles.calendarIconBox}>
@@ -172,7 +295,8 @@ export default function GoalPlanScreen() {
                       pathname: '/stage-detail',
                       params: {
                         stageId: String(stage.stage_id),
-                        goalId: String(goalId),
+                        goalId: goalId ? String(goalId) : '',
+                        title: stage.name,
                       },
                     })
                   }
@@ -205,7 +329,7 @@ export default function GoalPlanScreen() {
         </View>
       </ScrollView>
 
-      {/* Botón flotante para Mapa */}
+      {/* Botón flotante para Volver al Inicio */}
       <TouchableOpacity
         style={styles.floatingMapBtn}
         activeOpacity={0.85}

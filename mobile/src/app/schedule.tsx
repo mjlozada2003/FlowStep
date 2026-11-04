@@ -1,6 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,8 +12,22 @@ import {
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
+import { useAuth } from '@/contexts/auth-context';
+import { getAvailability } from '@/services/api/availability';
+import { getGoalById, getUserGoals } from '@/services/api/goals';
 
-const SCHEDULE_ITEMS = [
+interface ScheduleItem {
+  id: number;
+  day: string;
+  date: string;
+  time: string;
+  title: string;
+  stage: string;
+  stageId?: number;
+  status: string | null;
+}
+
+const DEFAULT_SCHEDULE_ITEMS: ScheduleItem[] = [
   {
     id: 1,
     day: 'LUN',
@@ -19,6 +35,7 @@ const SCHEDULE_ITEMS = [
     time: '18:00 · 45 min',
     title: 'Introducción a React',
     stage: 'Etapa 1 · Aprendizaje',
+    stageId: 1,
     status: 'PRÓXIMA',
   },
   {
@@ -28,6 +45,7 @@ const SCHEDULE_ITEMS = [
     time: '18:00 · 60 min',
     title: 'Componentes de React',
     stage: 'Etapa 1 · Aprendizaje',
+    stageId: 1,
     status: null,
   },
   {
@@ -37,12 +55,157 @@ const SCHEDULE_ITEMS = [
     time: '10:00 · 60 min',
     title: 'Hooks',
     stage: 'Etapa 1 · Aprendizaje',
+    stageId: 1,
     status: null,
   },
 ];
 
+const SPANISH_DAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
+
 export default function ScheduleScreen() {
-  const params = useLocalSearchParams();
+  const params = useLocalSearchParams<{ goalId?: string }>();
+  const { token } = useAuth();
+
+  const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>(DEFAULT_SCHEDULE_ITEMS);
+  const [targetStageId, setTargetStageId] = useState<number | null>(null);
+  const [totalSessions, setTotalSessions] = useState<number>(3);
+  const [plannedTimeStr, setPlannedTimeStr] = useState<string>('2 h 45');
+  const [availableTimeStr, setAvailableTimeStr] = useState<string>('4 h');
+  const [freeTimeStr, setFreeTimeStr] = useState<string>('1 h 15 min libres');
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+
+    let isMounted = true;
+    setIsLoading(true);
+
+    const loadScheduleData = async () => {
+      try {
+        let activeGoalId: number | null = null;
+        if (params.goalId && /^\d+$/.test(params.goalId)) {
+          activeGoalId = Number(params.goalId);
+        } else {
+          const userGoals = await getUserGoals(token);
+          if (userGoals.length > 0) {
+            activeGoalId = userGoals[0].goal_id;
+          }
+        }
+
+        if (!activeGoalId) return;
+
+        // Consultar objetivo completo con etapas y actividades
+        const goalData = await getGoalById(activeGoalId, token);
+
+        // Consultar disponibilidad configurada del usuario
+        let weeklyAvailableHours = 4;
+        try {
+          const availabilities = await getAvailability(token);
+          if (availabilities && availabilities.length > 0) {
+            let totalAvailableMinutes = 0;
+            for (const slot of availabilities) {
+              const [startH, startM] = slot.start_time.split(':').map(Number);
+              const [endH, endM] = slot.end_time.split(':').map(Number);
+              const diff = (endH * 60 + (endM || 0)) - (startH * 60 + (startM || 0));
+              if (diff > 0) totalAvailableMinutes += diff;
+            }
+            if (totalAvailableMinutes > 0) {
+              weeklyAvailableHours = Math.round((totalAvailableMinutes / 60) * 10) / 10;
+            }
+          }
+        } catch {}
+
+        if (!isMounted) return;
+
+        // Extraer actividades con fechas programadas
+        const items: ScheduleItem[] = [];
+        let totalPlannedMinutes = 0;
+        let firstStageId: number | null = null;
+
+        if (goalData?.stages) {
+          goalData.stages.forEach((stage, stageIdx) => {
+            if (!firstStageId && stage.stage_id) firstStageId = stage.stage_id;
+
+            (stage.activities || []).forEach((act) => {
+              const minutes = act.estimated_minutes || 30;
+              totalPlannedMinutes += minutes;
+
+              let itemDay = 'LUN';
+              let itemDate = '16';
+              let startTime = '18:00';
+
+              if (act.schedules && act.schedules.length > 0) {
+                const latestSchedule = act.schedules[act.schedules.length - 1];
+                if (latestSchedule.scheduled_date) {
+                  const dateObj = new Date(latestSchedule.scheduled_date + 'T00:00:00');
+                  itemDay = SPANISH_DAYS[dateObj.getDay()] || 'LUN';
+                  itemDate = String(dateObj.getDate());
+                }
+                if (latestSchedule.start_time) {
+                  startTime = latestSchedule.start_time.slice(0, 5);
+                }
+              }
+
+              items.push({
+                id: act.activity_id,
+                day: itemDay,
+                date: itemDate,
+                time: `${startTime} · ${minutes} min`,
+                title: act.title,
+                stage: `Etapa ${stageIdx + 1} · ${stage.name}`,
+                stageId: stage.stage_id,
+                status: act.status === 'completed' ? 'COMPLETADA' : items.length === 0 ? 'PRÓXIMA' : null,
+              });
+            });
+          });
+        }
+
+        if (items.length > 0) {
+          setScheduleItems(items.slice(0, 7)); // Mostrar las de esta semana
+          setTotalSessions(items.length);
+          if (firstStageId) setTargetStageId(firstStageId);
+
+          const plannedHours = Math.floor(totalPlannedMinutes / 60);
+          const plannedMins = totalPlannedMinutes % 60;
+          setPlannedTimeStr(
+            plannedHours > 0 ? `${plannedHours} h ${plannedMins > 0 ? `${plannedMins} m` : ''}` : `${plannedMins} min`,
+          );
+
+          setAvailableTimeStr(`${weeklyAvailableHours} h`);
+
+          const freeMinutes = Math.max(0, weeklyAvailableHours * 60 - totalPlannedMinutes);
+          const freeH = Math.floor(freeMinutes / 60);
+          const freeM = freeMinutes % 60;
+          setFreeTimeStr(
+            freeH > 0
+              ? `${freeH} h ${freeM > 0 ? `${freeM} min` : ''} libres`
+              : `${freeM} min libres`,
+          );
+        }
+      } catch (e) {
+        console.warn('Error cargando la agenda adaptada del backend:', e);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    loadScheduleData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [params.goalId, token]);
+
+  const handleNavigateToStage = (stageId?: number) => {
+    const finalStageId = stageId || targetStageId || 1;
+    router.push({
+      pathname: '/stage-detail',
+      params: {
+        stageId: String(finalStageId),
+        goalId: params.goalId || '',
+      },
+    });
+  };
 
   return (
     <Screen style={styles.screen}>
@@ -71,64 +234,68 @@ export default function ScheduleScreen() {
             </Text>
           </View>
 
-          {/* Tarjeta de métricas semanales */}
+          {/* Tarjeta de métricas semanales sincronizadas */}
           <View style={styles.metricsCard}>
             <View style={styles.metricItem}>
-              <Text style={styles.metricValue}>3</Text>
+              <Text style={styles.metricValue}>{totalSessions}</Text>
               <Text style={styles.metricLabel}>sesiones</Text>
             </View>
             <View style={styles.metricDivider} />
             <View style={styles.metricItem}>
-              <Text style={styles.metricValue}>2 h 45</Text>
+              <Text style={styles.metricValue}>{plannedTimeStr}</Text>
               <Text style={styles.metricLabel}>planificadas</Text>
             </View>
             <View style={styles.metricDivider} />
             <View style={styles.metricItem}>
-              <Text style={styles.metricValue}>4 h</Text>
+              <Text style={styles.metricValue}>{availableTimeStr}</Text>
               <Text style={styles.metricLabel}>disponibles</Text>
             </View>
           </View>
 
           {/* Lista de actividades programadas */}
           <View style={styles.activitiesList}>
-            {SCHEDULE_ITEMS.map((item) => {
-              const isNext = item.status === 'PRÓXIMA';
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[
-                    styles.activityCard,
-                    isNext && styles.activityCardNext,
-                  ]}
-                  activeOpacity={0.85}
-                  onPress={() => router.push('/stage-detail')}
-                >
-                  <View style={styles.dateBox}>
-                    <Text style={styles.dateBoxDay}>{item.day}</Text>
-                    <Text style={styles.dateBoxNum}>{item.date}</Text>
-                  </View>
-
-                  <View style={styles.activityInfo}>
-                    <View style={styles.activityHeaderRow}>
-                      <Text style={styles.activityTime}>{item.time}</Text>
-                      {item.status ? (
-                        <View style={styles.statusBadge}>
-                          <Text style={styles.statusBadgeText}>{item.status}</Text>
-                        </View>
-                      ) : null}
+            {isLoading ? (
+              <ActivityIndicator size="small" color="#174A62" style={{ marginVertical: 20 }} />
+            ) : (
+              scheduleItems.map((item) => {
+                const isNext = item.status === 'PRÓXIMA';
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[
+                      styles.activityCard,
+                      isNext && styles.activityCardNext,
+                    ]}
+                    activeOpacity={0.85}
+                    onPress={() => handleNavigateToStage(item.stageId)}
+                  >
+                    <View style={styles.dateBox}>
+                      <Text style={styles.dateBoxDay}>{item.day}</Text>
+                      <Text style={styles.dateBoxNum}>{item.date}</Text>
                     </View>
-                    <Text style={styles.activityTitle}>{item.title}</Text>
-                    <Text style={styles.activityStage}>{item.stage}</Text>
-                  </View>
 
-                  <Feather name="chevron-right" size={18} color="#94A3B8" />
-                </TouchableOpacity>
-              );
-            })}
+                    <View style={styles.activityInfo}>
+                      <View style={styles.activityHeaderRow}>
+                        <Text style={styles.activityTime}>{item.time}</Text>
+                        {item.status ? (
+                          <View style={styles.statusBadge}>
+                            <Text style={styles.statusBadgeText}>{item.status}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={styles.activityTitle}>{item.title}</Text>
+                      <Text style={styles.activityStage}>{item.stage}</Text>
+                    </View>
+
+                    <Feather name="chevron-right" size={18} color="#94A3B8" />
+                  </TouchableOpacity>
+                );
+              })
+            )}
           </View>
 
           <View style={styles.freeTimeCard}>
-            <Text style={styles.freeTimeTitle}>1 h 15 min libres</Text>
+            <Text style={styles.freeTimeTitle}>{freeTimeStr}</Text>
             <Text style={styles.freeTimeSubtitle}>
               Tu semana conserva margen para avanzar sin sobrecarga.
             </Text>
@@ -136,7 +303,7 @@ export default function ScheduleScreen() {
 
           <TouchableOpacity
             style={styles.submitButton}
-            onPress={() => router.push('/stage-detail')}
+            onPress={() => handleNavigateToStage()}
             activeOpacity={0.85}
           >
             <Text style={styles.submitButtonText}>Ver actividades de la etapa</Text>

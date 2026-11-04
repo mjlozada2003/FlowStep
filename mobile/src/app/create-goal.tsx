@@ -67,6 +67,7 @@ export default function CreateGoalScreen() {
       pathname: '/availability',
       params: {
         title: cleanTitle,
+        description: cleanTitle,
         priority,
         hours,
         targetDate: targetDate
