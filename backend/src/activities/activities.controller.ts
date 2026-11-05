@@ -8,6 +8,7 @@ import {
   Body,
   ParseIntPipe,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { ActivitiesService } from './activities.service';
@@ -36,8 +37,8 @@ export class ActivitiesController {
     status: 404,
     description: 'Actividad no encontrada.',
   })
-  findById(@Param('id', ParseIntPipe) id: number) {
-    return this.activitiesService.findById(id);
+  findById(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.activitiesService.findById(req.user.userId, id);
   }
 
   @Patch(':id')
@@ -55,10 +56,11 @@ export class ActivitiesController {
     description: 'Actividad no encontrada.',
   })
   update(
+    @Request() req: any,
     @Param('id', ParseIntPipe) id: number,
     @Body() updateActivityDto: UpdateActivityDto,
   ) {
-    return this.activitiesService.update(id, updateActivityDto);
+    return this.activitiesService.update(req.user.userId, id, updateActivityDto);
   }
 
   @Patch(':id/complete')
@@ -89,8 +91,8 @@ export class ActivitiesController {
     status: 401,
     description: 'No autorizado. Se requiere un token Bearer válido.',
   })
-  completeActivity(@Param('id', ParseIntPipe) id: number) {
-    return this.activitiesService.completeActivity(id);
+  completeActivity(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.activitiesService.completeActivity(req.user.userId, id);
   }
 
   @Patch(':id/pending')
@@ -107,8 +109,8 @@ export class ActivitiesController {
     status: 404,
     description: 'Actividad no encontrada.',
   })
-  markAsPending(@Param('id', ParseIntPipe) id: number) {
-    return this.activitiesService.markAsPending(id);
+  markAsPending(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.activitiesService.markAsPending(req.user.userId, id);
   }
 
   @Delete(':id')
@@ -125,8 +127,8 @@ export class ActivitiesController {
     status: 404,
     description: 'Actividad no encontrada.',
   })
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.activitiesService.remove(id);
+  remove(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.activitiesService.remove(req.user.userId, id);
   }
 
   @Post(':id/reschedule')
@@ -160,10 +162,11 @@ export class ActivitiesController {
     description: 'Actividad no encontrada.',
   })
   reschedule(
+    @Request() req: any,
     @Param('id', ParseIntPipe) id: number,
     @Body() rescheduleDto: RescheduleActivityDto,
   ) {
-    return this.activitiesService.reschedule(id, rescheduleDto);
+    return this.activitiesService.reschedule(req.user.userId, id, rescheduleDto);
   }
 
   @Get(':id/schedules')
@@ -180,7 +183,7 @@ export class ActivitiesController {
     status: 404,
     description: 'Actividad no encontrada.',
   })
-  getScheduleHistory(@Param('id', ParseIntPipe) id: number) {
-    return this.activitiesService.getScheduleHistory(id);
+  getScheduleHistory(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.activitiesService.getScheduleHistory(req.user.userId, id);
   }
 }

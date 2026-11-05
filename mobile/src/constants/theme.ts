@@ -13,6 +13,8 @@ export const Colors = {
     text: '#0F2C40',
     background: '#FAF6F0', // Fondo crema suave
     cardBackground: '#FFFFFF',
+    backgroundElement: '#FFFFFF',
+    backgroundSelected: '#D8ECF8',
     textSecondary: '#627D98',
     textMuted: '#8FA3B8',
 
@@ -33,6 +35,8 @@ export const Colors = {
     text: '#FAF6F0',
     background: '#0F2C40',
     cardBackground: '#174A62',
+    backgroundElement: '#174A62',
+    backgroundSelected: '#244B70',
     textSecondary: '#A0AEC0',
     textMuted: '#718096',
 

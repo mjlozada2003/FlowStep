@@ -1,98 +1,288 @@
 import { Feather } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
+import { AppModal } from '@/components/ui/Modal';
 import { Screen } from '@/components/ui/Screen';
+import { useAuth } from '@/contexts/auth-context';
+import {
+  completeActivity,
+  createStageActivity,
+  getActivitySchedules,
+  getStageActivities,
+  markActivityPending,
+  rescheduleActivity,
+  updateActivity,
+  type RescheduleActivityRequest,
+} from '@/services/api/stages';
 
 interface Activity {
   id: number;
   title: string;
-  duration: string;
+  duration: number | null;
   type: string;
+  date: string;
   completed: boolean;
 }
 
-const STAGE_DATA: Record<
-  string,
-  {
-    badge: string;
-    title: string;
-    description: string;
-    activities: Activity[];
+async function loadStageActivities(stageId: number, token: string) {
+  const serverActivities = await getStageActivities(stageId, token);
+  let scheduleError: string | null = null;
+  const activities = await Promise.all(
+    serverActivities.map(async (activity) => {
+      let schedules = activity.schedules ?? [];
+      try {
+        schedules = await getActivitySchedules(activity.activity_id, token);
+      } catch {
+        scheduleError = 'No se pudo cargar el historial de horarios de algunas actividades.';
+      }
+
+      const sortedSchedules = [...schedules].sort(
+        (left, right) => left.version_number - right.version_number,
+      );
+      const schedule = sortedSchedules[sortedSchedules.length - 1];
+      const date = schedule
+        ? `${schedule.scheduled_date}${schedule.start_time ? ` · ${schedule.start_time.slice(0, 5)}` : ''}`
+        : '';
+
+      return {
+        id: activity.activity_id,
+        title: activity.title,
+        duration: activity.estimated_minutes,
+        type: activity.type,
+        date,
+        completed: activity.status === 'completed',
+      };
+    }),
+  );
+  return { activities, scheduleError };
+}
+
+function parseRescheduleInput(value: string): RescheduleActivityRequest | null {
+  const match =
+    /^(\d{4}-\d{2}-\d{2})(?:\s+([01]\d|2[0-3]):([0-5]\d)(?:\s*[-–]\s*([01]\d|2[0-3]):([0-5]\d))?)?$/.exec(
+      value.trim(),
+    );
+  if (!match) return null;
+
+  const date = new Date(`${match[1]}T00:00:00`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== match[1]) {
+    return null;
   }
-> = {
-  '1': {
-    badge: 'ETAPA 01',
-    title: 'Aprendizaje',
-    description:
-      'Construye las bases que necesitas para empezar a desarrollar con confianza.',
-    activities: [
-      {
-        id: 1,
-        title: 'Introducción a React',
-        duration: '20 min',
-        type: 'Lectura',
-        completed: false,
-      },
-      {
-        id: 2,
-        title: 'Componentes de React',
-        duration: '30 min',
-        type: 'Práctica',
-        completed: false,
-      },
-      {
-        id: 3,
-        title: 'Hooks',
-        duration: '30 min',
-        type: 'Práctica',
-        completed: false,
-      },
-      {
-        id: 4,
-        title: 'Consumo de APIs',
-        duration: '35 min',
-        type: 'Práctica',
-        completed: false,
-      },
-    ],
-  },
-  '2': {
-    badge: 'ETAPA 02',
-    title: 'Desarrollo',
-    description: 'Aplica tus conocimientos construyendo los módulos principales de tu meta.',
-    activities: [],
-  },
-  '3': {
-    badge: 'ETAPA 03',
-    title: 'Pruebas',
-    description: 'Refina, valida y asegura la calidad del resultado final.',
-    activities: [],
-  },
-};
+
+  const request: RescheduleActivityRequest = { scheduled_date: match[1] };
+  if (match[2] && match[3]) request.start_time = `${match[2]}:${match[3]}`;
+  if (match[4] && match[5]) request.end_time = `${match[4]}:${match[5]}`;
+  if (
+    request.start_time &&
+    request.end_time &&
+    request.end_time <= request.start_time
+  ) {
+    return null;
+  }
+  return request;
+}
 
 export default function StageDetailScreen() {
-  const params = useLocalSearchParams<{ stageId?: string; title?: string }>();
-  const currentStageId = params.stageId || '1';
-  const stageInfo = STAGE_DATA[currentStageId] || STAGE_DATA['1'];
+  const params = useLocalSearchParams<{
+    stageId?: string;
+    goalId?: string;
+    title?: string;
+  }>();
+  const { token } = useAuth();
 
-  const [activities, setActivities] = useState<Activity[]>(stageInfo.activities);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingError, setIsLoadingError] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const toggleActivity = (id: number) => {
-    setActivities((prev) =>
-      prev.map((act) =>
-        act.id === id ? { ...act, completed: !act.completed } : act
-      )
-    );
+  // Modales
+  const [addModalVisible, setAddModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+
+  // Form states
+  const [newTitle, setNewTitle] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [busyActivityId, setBusyActivityId] = useState<number | null>(null);
+
+  const stageId = params.stageId && /^\d+$/.test(params.stageId) ? Number(params.stageId) : null;
+  const goalId = params.goalId && /^\d+$/.test(params.goalId) ? Number(params.goalId) : null;
+  const stageTitle = params.title || 'Etapa';
+  const isStageLoading = isLoading && Boolean(stageId && token);
+  const displayLoadingError =
+    isLoadingError ??
+    (!stageId || !token
+      ? 'Inicia sesión y abre una etapa válida para consultar sus actividades.'
+      : null);
+
+  useFocusEffect(
+    useCallback(() => {
+    let active = true;
+    if (!stageId || !token) return undefined;
+
+    loadStageActivities(stageId, token)
+      .then(({ activities: serverActivities, scheduleError }) => {
+        if (!active) return;
+        setActivities(serverActivities);
+        setIsLoadingError(scheduleError);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setActivities([]);
+        setIsLoadingError(
+          error instanceof Error ? error.message : 'No se pudieron cargar las actividades.',
+        );
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+    }, [stageId, token]),
+  );
+
+  const toggleActivity = async (id: number) => {
+    const currentActivity = activities.find((a) => a.id === id);
+    if (!currentActivity || !token || !stageId || busyActivityId !== null) return;
+
+    const nextCompleted = !currentActivity.completed;
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setBusyActivityId(id);
+    try {
+      if (nextCompleted) {
+        await completeActivity(id, token);
+      } else {
+        await markActivityPending(id, token);
+      }
+      const refreshed = await loadStageActivities(stageId, token);
+      setActivities(refreshed.activities);
+      setIsLoadingError(refreshed.scheduleError);
+      if (nextCompleted) {
+        router.push({
+          pathname: '/goal-success',
+          params: {
+            activityId: String(id),
+            stageId: String(stageId),
+            goalId: goalId ? String(goalId) : '',
+            stageTitle,
+          },
+        });
+      } else {
+        setSuccessMessage('Actividad marcada como pendiente.');
+      }
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'No se pudo actualizar la actividad.',
+      );
+      try {
+        const refreshed = await loadStageActivities(stageId, token);
+        setActivities(refreshed.activities);
+        setIsLoadingError(refreshed.scheduleError);
+      } catch {
+        // Keep the last server-confirmed list when reconciliation is unavailable.
+      }
+    } finally {
+      setBusyActivityId(null);
+    }
+  };
+
+  const handleAddActivity = async () => {
+    if (!newTitle.trim() || !token || !stageId || isSubmitting) return;
+
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsSubmitting(true);
+    try {
+      await createStageActivity(stageId, token, {
+        title: newTitle.trim(),
+        description: newDesc.trim() || undefined,
+        type: 'practice',
+        estimated_minutes: 30,
+      });
+      const refreshed = await loadStageActivities(stageId, token);
+      setActivities(refreshed.activities);
+      setIsLoadingError(refreshed.scheduleError);
+      setNewTitle('');
+      setNewDesc('');
+      setAddModalVisible(false);
+      setSuccessMessage('Actividad agregada y sincronizada.');
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'No se pudo guardar la actividad.',
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (
+      !selectedActivity ||
+      !editTitle.trim() ||
+      !token ||
+      !stageId ||
+      isSubmitting
+    ) return;
+
+    const reschedule = editDate.trim()
+      ? parseRescheduleInput(editDate)
+      : undefined;
+    if (editDate.trim() && !reschedule) {
+      setErrorMessage('Usa AAAA-MM-DD, opcionalmente seguido de la hora HH:mm.');
+      return;
+    }
+
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsSubmitting(true);
+    try {
+      if (editTitle.trim() !== selectedActivity.title) {
+        await updateActivity(selectedActivity.id, token, {
+          title: editTitle.trim(),
+        });
+      }
+      if (reschedule) {
+        await rescheduleActivity(selectedActivity.id, token, reschedule);
+      }
+      const refreshed = await loadStageActivities(stageId, token);
+      setActivities(refreshed.activities);
+      setIsLoadingError(refreshed.scheduleError);
+      setEditModalVisible(false);
+      setSelectedActivity(null);
+      setSuccessMessage('Cambios guardados y sincronizados.');
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'No se pudieron guardar los cambios.',
+      );
+      try {
+        const refreshed = await loadStageActivities(stageId, token);
+        setActivities(refreshed.activities);
+        setIsLoadingError(refreshed.scheduleError);
+      } catch {
+        // Keep the last server-confirmed list when reconciliation is unavailable.
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const completedCount = activities.filter((a) => a.completed).length;
@@ -106,55 +296,102 @@ export default function StageDetailScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.topBar}>
+        <View style={styles.container}>
+          {/* Top Bar */}
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => router.back()}
+              activeOpacity={0.7}
+            >
+              <Feather name="chevron-left" size={24} color="#0F2C40" />
+            </TouchableOpacity>
+            <Text style={styles.headerStepTag}>ETAPA 1 DE 3</Text>
+            <BrandHeader showTagline={false} />
+          </View>
+
+          {/* Hero Header */}
+          <View style={styles.headerHero}>
+            <Text style={styles.stageBadge}>ETAPA ACTIVA</Text>
+            <Text style={styles.stageTitle}>{stageTitle}</Text>
+            <Text style={styles.stageSubtitle}>
+              Construye las bases que necesitas para empezar a avanzar con confianza.
+            </Text>
+
+            <View style={styles.progressRow}>
+              <Text style={styles.progressLabel}>Progreso de la etapa</Text>
+              <Text style={styles.progressValue}>{progressPercent}%</Text>
+            </View>
+            <View style={styles.progressBarBackground}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  { width: `${progressPercent}%` },
+                ]}
+              />
+            </View>
+            {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+          </View>
+
+          {/* Banner Adaptado a Disponibilidad */}
           <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-            activeOpacity={0.7}
+            style={styles.adaptedBanner}
+            onPress={() =>
+              router.push({
+                pathname: '/schedule',
+                params: { goalId: goalId ? String(goalId) : '' },
+              })
+            }
+            activeOpacity={0.8}
           >
-            <Feather name="chevron-left" size={24} color="#0F2C40" />
+            <View style={styles.bannerLeft}>
+              <Feather name="calendar" size={18} color="#174A62" />
+              <View>
+                <Text style={styles.bannerTitle}>Plan adaptado a tu disponibilidad</Text>
+                <Text style={styles.bannerSub}>Sesiones organizadas para evitar sobrecargas</Text>
+              </View>
+            </View>
+            <Text style={styles.bannerAction}>Ver agenda</Text>
           </TouchableOpacity>
-          <BrandHeader showTagline={false} />
-        </View>
 
-        <View style={styles.headerHero}>
-          <Text style={styles.stageBadge}>{stageInfo.badge}</Text>
-          <Text style={styles.stageTitle}>{stageInfo.title}</Text>
-          <Text style={styles.stageSubtitle}>{stageInfo.description}</Text>
-
-          <View style={styles.progressRow}>
-            <Text style={styles.progressLabel}>Progreso de la etapa</Text>
-            <Text style={styles.progressValue}>{progressPercent}%</Text>
-          </View>
-          <View style={styles.progressBarBackground}>
-            <View
-              style={[
-                styles.progressBarFill,
-                { width: `${progressPercent}%` },
-              ]}
-            />
-          </View>
-        </View>
-
-        <View style={styles.bodyContainer}>
-          {totalCount > 0 ? (
-            <>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Tus actividades</Text>
-                <Text style={styles.counterText}>
+          {/* List Section */}
+          <View style={styles.bodyContainer}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Tus actividades</Text>
+              {isStageLoading ? (
+                <ActivityIndicator size="small" color="#174A62" />
+              ) : (
+                <Text style={styles.counterHeader}>
                   {completedCount} de {totalCount} completadas
                 </Text>
-              </View>
+              )}
+            </View>
 
-              <View style={styles.activitiesList}>
-                {activities.map((activity) => (
+            <View style={styles.activitiesList}>
+              {displayLoadingError ? (
+                <Text style={styles.errorText}>{displayLoadingError}</Text>
+              ) : null}
+              {errorMessage ? (
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              ) : null}
+              {successMessage ? (
+                <Text style={styles.successText}>{successMessage}</Text>
+              ) : null}
+              {!isStageLoading && activities.length === 0 && !displayLoadingError ? (
+                <Text style={styles.emptyText}>Esta etapa aún no tiene actividades.</Text>
+              ) : null}
+              {activities.map((activity, index) => (
+                <View
+                  key={activity.id}
+                  style={[
+                    styles.activityCard,
+                    activity.completed && styles.activityCardCompleted,
+                  ]}
+                >
                   <Pressable
-                    key={activity.id}
-                    style={[
-                      styles.activityCard,
-                      activity.completed && styles.activityCardCompleted,
-                    ]}
+                    style={styles.cardMainClickable}
                     onPress={() => toggleActivity(activity.id)}
+                    disabled={busyActivityId !== null}
                   >
                     <View
                       style={[
@@ -162,14 +399,16 @@ export default function StageDetailScreen() {
                         activity.completed && styles.checkboxCompleted,
                       ]}
                     >
-                      {activity.completed ? (
+                      {busyActivityId === activity.id ? (
+                        <ActivityIndicator size="small" color="#174A62" />
+                      ) : activity.completed ? (
                         <Feather name="check" size={14} color="#FFFFFF" />
                       ) : null}
                     </View>
 
                     <View style={styles.activityInfo}>
                       <Text style={styles.activityBadge}>
-                        ACTIVIDAD {activity.id}
+                        ACTIVIDAD {index + 1}
                       </Text>
                       <Text
                         style={[
@@ -179,37 +418,144 @@ export default function StageDetailScreen() {
                       >
                         {activity.title}
                       </Text>
-                      <Text style={styles.activityMeta}>
-                        {activity.duration} · {activity.type}
-                      </Text>
+                      <View style={styles.dateRowMeta}>
+                        <Feather name="calendar" size={12} color="#94A3B8" />
+                        <Text style={styles.activityMeta}>
+                          {activity.date || 'Sin fecha programada'}
+                        </Text>
+                      </View>
                     </View>
-
-                    <Feather name="chevron-right" size={18} color="#94A3B8" />
                   </Pressable>
-                ))}
-              </View>
-            </>
-          ) : (
-            <View style={styles.emptyCard}>
-              <View style={styles.emptyIconCircle}>
-                <Feather name="lock" size={26} color="#174A62" />
-              </View>
-              <Text style={styles.emptyTitle}>Próximamente</Text>
-              <Text style={styles.emptySubtitle}>
-                Esta etapa se activará cuando completes la etapa anterior. ¡Sigue avanzando paso a paso!
-              </Text>
-            </View>
-          )}
 
-          <TouchableOpacity
-            style={styles.returnButton}
-            onPress={() => router.back()}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.returnButtonText}>Volver al plan</Text>
-          </TouchableOpacity>
+                  {/* Único botón de Editar */}
+                  <TouchableOpacity
+                    style={styles.singleEditBtn}
+                    disabled={isSubmitting || busyActivityId !== null}
+                    onPress={() => {
+                      setSelectedActivity(activity);
+                      setEditTitle(activity.title);
+                      setEditDate(activity.date.replace(' · ', ' '));
+                      setEditModalVisible(true);
+                    }}
+                  >
+                    <Text style={styles.singleEditText}>Editar</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+
+              {/* Tarjeta de Añadir Actividad Propia */}
+              <TouchableOpacity
+                style={styles.dashedAddCard}
+                onPress={() => setAddModalVisible(true)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.plusCircle}>
+                  <Feather name="plus" size={16} color="#174A62" />
+                </View>
+                <View>
+                  <Text style={styles.dashedAddTitle}>Añadir actividad propia</Text>
+                  <Text style={styles.dashedAddSub}>Personaliza esta etapa con una tarea</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.returnButton}
+              onPress={() => {
+                if (goalId) {
+                  router.push({
+                    pathname: '/goal-plan',
+                    params: { goalId: String(goalId) },
+                  });
+                } else {
+                  router.back();
+                }
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.returnButtonText}>Volver al plan</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
+
+      {/* Modal Reutilizable: Agregar Actividad (HU-13) */}
+      <AppModal
+        visible={addModalVisible}
+        onClose={() => setAddModalVisible(false)}
+        category="NUEVA ACTIVIDAD"
+        title="Añade una actividad"
+        primaryButtonText={isSubmitting ? 'Guardando...' : 'Guardar cambios'}
+        onPrimaryAction={handleAddActivity}
+      >
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>NOMBRE</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Ej. Repasar conceptos"
+            value={typeof newTitle === 'string' ? newTitle : ''}
+            onChangeText={(text) => setNewTitle(text)}
+            placeholderTextColor="#94A3B8"
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>DESCRIPCIÓN</Text>
+          <TextInput
+            style={[styles.textInput, styles.textArea]}
+            placeholder="¿Qué necesitas hacer?"
+            value={typeof newDesc === 'string' ? newDesc : ''}
+            onChangeText={(text) => setNewDesc(text)}
+            multiline
+            placeholderTextColor="#94A3B8"
+          />
+        </View>
+
+        <View style={styles.infoMiniBox}>
+          <Feather name="calendar" size={14} color="#174A62" />
+          <Text style={styles.infoMiniText}>
+            Horario sincronizado con tu disponibilidad
+          </Text>
+        </View>
+      </AppModal>
+
+      {/* Modal Reutilizable: Editar Actividad Unificado (HU-11, HU-16) */}
+      <AppModal
+        visible={editModalVisible}
+        onClose={() => setEditModalVisible(false)}
+        category="EDITAR ACTIVIDAD"
+        title={selectedActivity?.title || ''}
+        primaryButtonText={isSubmitting ? 'Guardando...' : 'Guardar cambios'}
+        onPrimaryAction={handleSaveEdit}
+      >
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>NOMBRE</Text>
+          <TextInput
+            style={styles.textInput}
+            value={typeof editTitle === 'string' ? editTitle : ''}
+            onChangeText={(text) => setEditTitle(text)}
+            placeholderTextColor="#94A3B8"
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>FECHA Y HORA</Text>
+          <TextInput
+            style={styles.textInput}
+            value={typeof editDate === 'string' ? editDate : ''}
+            onChangeText={(text) => setEditDate(text)}
+            placeholder="AAAA-MM-DD HH:mm"
+            placeholderTextColor="#94A3B8"
+          />
+          <View style={styles.infoMiniBox}>
+            <Feather name="calendar" size={14} color="#174A62" />
+            <Text style={styles.infoMiniText}>
+              Horario sincronizado con tu disponibilidad
+            </Text>
+          </View>
+        </View>
+        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+      </AppModal>
     </Screen>
   );
 }
@@ -220,7 +566,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 32,
+    paddingBottom: 40,
+  },
+  container: {
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
+    gap: 16,
   },
   topBar: {
     flexDirection: 'row',
@@ -228,7 +580,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 8,
   },
   backButton: {
     width: 40,
@@ -237,50 +588,56 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.05)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
     elevation: 2,
+  },
+  headerStepTag: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#627D98',
+    letterSpacing: 1.2,
   },
   headerHero: {
     backgroundColor: '#D8ECF8',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 36,
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
+    marginHorizontal: 20,
+    borderRadius: 24,
+    padding: 20,
+    gap: 6,
   },
   stageBadge: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     color: '#174A62',
     letterSpacing: 1.2,
-    marginBottom: 4,
   },
   stageTitle: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '800',
     color: '#0F2C40',
-    marginBottom: 8,
     letterSpacing: -0.5,
   },
   stageSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#475569',
-    lineHeight: 20,
-    marginBottom: 20,
+    lineHeight: 18,
+    marginBottom: 8,
   },
   progressRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginTop: 4,
   },
   progressLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#475569',
     fontWeight: '600',
   },
   progressValue: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
     color: '#174A62',
   },
@@ -289,16 +646,47 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.6)',
     borderRadius: 3,
     overflow: 'hidden',
+    marginTop: 4,
   },
   progressBarFill: {
     height: '100%',
     backgroundColor: '#174A62',
     borderRadius: 3,
   },
+  adaptedBanner: {
+    marginHorizontal: 20,
+    backgroundColor: '#EBF5FB',
+    borderRadius: 16,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#D8ECF8',
+  },
+  bannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  bannerTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0F2C40',
+  },
+  bannerSub: {
+    fontSize: 10,
+    color: '#627D98',
+    marginTop: 1,
+  },
+  bannerAction: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#174A62',
+  },
   bodyContainer: {
     paddingHorizontal: 20,
-    paddingTop: 24,
-    gap: 16,
+    gap: 14,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -306,12 +694,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
     color: '#0F2C40',
   },
-  counterText: {
-    fontSize: 12,
+  counterHeader: {
+    fontSize: 11,
     color: '#627D98',
     fontWeight: '600',
   },
@@ -323,21 +711,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
+    padding: 14,
+    borderWidth: 1.2,
     borderColor: '#E2E8F0',
-    boxShadow: '0px 4px 12px rgba(23, 74, 98, 0.04)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
     elevation: 2,
-    gap: 14,
+    justifyContent: 'space-between',
+    gap: 10,
   },
   activityCardCompleted: {
     backgroundColor: '#F8FAFC',
     borderColor: '#CBD5E1',
   },
+  cardMainClickable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
   checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 7,
     borderWidth: 1.5,
     borderColor: '#94A3B8',
     backgroundColor: '#FFFFFF',
@@ -352,14 +750,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   activityBadge: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     color: '#8FA3B8',
-    letterSpacing: 1,
+    letterSpacing: 0.8,
     marginBottom: 2,
   },
   activityTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: '#0F2C40',
     marginBottom: 2,
@@ -368,54 +766,131 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     color: '#627D98',
   },
+  dateRowMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   activityMeta: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#94A3B8',
   },
-  emptyCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 28,
-    alignItems: 'center',
+  singleEditBtn: {
+    backgroundColor: '#FAF6F0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    boxShadow: '0px 4px 12px rgba(23, 74, 98, 0.04)',
-    elevation: 2,
-    gap: 8,
+    alignItems: 'center',
   },
-  emptyIconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  singleEditText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#174A62',
+  },
+  dashedAddCard: {
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    borderStyle: 'dashed',
+    borderRadius: 20,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: 'rgba(23, 74, 98, 0.01)',
+  },
+  plusCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#D8ECF8',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 4,
   },
-  emptyTitle: {
-    fontSize: 18,
+  dashedAddTitle: {
+    fontSize: 14,
     fontWeight: '800',
     color: '#0F2C40',
   },
-  emptySubtitle: {
-    fontSize: 13,
+  dashedAddSub: {
+    fontSize: 11,
     color: '#627D98',
-    textAlign: 'center',
-    lineHeight: 19,
+    marginTop: 1,
   },
   returnButton: {
-    marginTop: 8,
-    backgroundColor: '#FAF6F0',
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-    borderRadius: 20,
-    height: 52,
+    backgroundColor: '#174A62',
+    borderRadius: 18,
+    height: 50,
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
   },
   returnButtonText: {
-    color: '#174A62',
+    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
+  },
+  inputGroup: {
+    gap: 6,
+  },
+  inputLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#627D98',
+    letterSpacing: 1,
+  },
+  textInput: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.2,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 46,
+    fontSize: 13,
+    color: '#0F2C40',
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+    paddingTop: 10,
+  },
+  infoMiniBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EBF5FB',
+    borderRadius: 12,
+    padding: 10,
+    gap: 8,
+    marginTop: 2,
+  },
+  infoMiniText: {
+    fontSize: 11,
+    color: '#174A62',
+    fontWeight: '600',
+  },
+  errorText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#C53030',
+    fontWeight: '600',
+  },
+  successText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#137333',
+    fontWeight: '600',
+  },
+  emptyText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#627D98',
+    textAlign: 'center',
+    paddingVertical: 16,
   },
 });

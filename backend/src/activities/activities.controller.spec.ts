@@ -52,9 +52,10 @@ describe('ActivitiesController', () => {
 
       mockActivitiesService.reschedule.mockResolvedValue(expectedResult);
 
-      const result = await controller.reschedule(1, dto);
+      const req = { user: { userId: 7 } };
+      const result = await controller.reschedule(req, 1, dto);
       expect(result).toEqual(expectedResult);
-      expect(mockActivitiesService.reschedule).toHaveBeenCalledWith(1, dto);
+      expect(mockActivitiesService.reschedule).toHaveBeenCalledWith(7, 1, dto);
     });
   });
 
@@ -65,9 +66,10 @@ describe('ActivitiesController', () => {
 
       mockActivitiesService.update.mockResolvedValue(expectedResult);
 
-      const result = await controller.update(1, dto);
+      const req = { user: { userId: 7 } };
+      const result = await controller.update(req, 1, dto);
       expect(result).toEqual(expectedResult);
-      expect(mockActivitiesService.update).toHaveBeenCalledWith(1, dto);
+      expect(mockActivitiesService.update).toHaveBeenCalledWith(7, 1, dto);
     });
   });
 
@@ -81,9 +83,10 @@ describe('ActivitiesController', () => {
 
       mockActivitiesService.markAsPending.mockResolvedValue(expectedResult);
 
-      const result = await controller.markAsPending(1);
+      const req = { user: { userId: 7 } };
+      const result = await controller.markAsPending(req, 1);
       expect(result).toEqual(expectedResult);
-      expect(mockActivitiesService.markAsPending).toHaveBeenCalledWith(1);
+      expect(mockActivitiesService.markAsPending).toHaveBeenCalledWith(7, 1);
     });
   });
 });

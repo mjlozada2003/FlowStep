@@ -9,7 +9,7 @@ import { AvailabilityService } from '../availability/availability.service';
 import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
 import { AiService, UserAvailabilitySlot } from '../ai/ai.service';
-import { ActivityOrigin, ActivityStatus } from '../activities/enums/activity.enum';
+import { ActivityOrigin, ActivityStatus, ActivityType } from '../activities/enums/activity.enum';
 import { PriorityLevel } from './enums/goal.enum';
 import { ScheduleReason } from '../activities/enums/schedule-reason.enum';
 
@@ -95,6 +95,7 @@ export class GoalsService {
 
     // 2. Consultar la disponibilidad del usuario (HU-36 & HU-07)
     const userAvailabilities = await this.availabilityService.findAllByUser(userId);
+    const availabilityPreferences = await this.availabilityService.getPreferences(userId);
 
     // 3. Generar el plan con IA adaptado a la disponibilidad (HU-02, HU-09, HU-36)
     try {
@@ -102,6 +103,7 @@ export class GoalsService {
         savedGoal.title,
         savedGoal.user_description,
         userAvailabilities,
+        availabilityPreferences.session_duration_minutes,
       );
 
       // 4. Guardar las etapas y actividades
@@ -134,7 +136,9 @@ export class GoalsService {
               const newActivity = this.activitiesRepository.create({
                 stage_id: savedStage.stage_id,
                 title: act.title,
-                type: act.type,
+                type: Object.values(ActivityType).includes(act.type as ActivityType)
+                  ? (act.type as ActivityType)
+                  : ActivityType.LEARNING,
                 estimated_minutes: act.estimated_minutes,
                 sort_order: act.sort_order,
                 origin: ActivityOrigin.INITIAL_PLAN,
@@ -227,7 +231,29 @@ export class GoalsService {
       'SELECT * FROM v_goal_progress WHERE goal_id = $1 AND user_id = $2',
       [goalId, userId],
     );
-    return result[0] || null;
+    if (result && result.length > 0) {
+      return result[0];
+    }
+
+    const goal = await this.goalsRepository.findOne({
+      where: { goal_id: goalId, user_id: userId },
+    });
+
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    return {
+      goal_id: goal.goal_id,
+      user_id: goal.user_id,
+      goal_title: goal.title,
+      goal_status: goal.status,
+      total_activities: 0,
+      completed_activities: 0,
+      total_estimated_minutes: 0,
+      completed_estimated_minutes: 0,
+      progress_percentage: 0,
+    };
   }
 
   async updatePriority(userId: number, goalId: number, priority: PriorityLevel): Promise<Goal> {

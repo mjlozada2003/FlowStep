@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -14,7 +15,12 @@ import {
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
-import { validateDemoCredentials } from '@/services/demoAuth';
+import { useAuth } from '@/contexts/auth-context';
+import { ApiHttpError } from '@/services/api/client';
+import {
+  getAuthErrorMessage,
+  loginUser,
+} from '@/services/api/auth';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -22,7 +28,9 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [focusedField, setFocusedField] = useState<'email' | 'password' | null>(null);
+  const { setSession } = useAuth();
 
   const [errors, setErrors] = useState<{
     email?: string;
@@ -30,7 +38,7 @@ export default function LoginScreen() {
     form?: string;
   }>({});
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     const newErrors: typeof errors = {};
 
     if (!email.trim()) {
@@ -49,16 +57,24 @@ export default function LoginScreen() {
       return;
     }
 
-    const isValid = validateDemoCredentials(email.trim().toLowerCase(), password);
-
-    if (!isValid) {
-      setErrors({
-        form: 'Correo o contraseña incorrectos.',
+    setIsSubmitting(true);
+    try {
+      const session = await loginUser({
+        email: email.trim().toLowerCase(),
+        password,
       });
-      return;
+      setSession(session);
+      router.replace('/home');
+    } catch (error) {
+      setErrors({
+        form:
+          error instanceof ApiHttpError && error.status === 401
+            ? 'Correo o contraseña incorrectos.'
+            : getAuthErrorMessage(error),
+      });
+    } finally {
+      setIsSubmitting(false);
     }
-
-    router.replace('/home');
   };
 
   return (
@@ -176,12 +192,25 @@ export default function LoginScreen() {
                 ) : null}
 
                 <TouchableOpacity
-                  style={styles.submitButton}
-                  onPress={() => router.push('/create-goal')}
+                  onPress={handleLogin}
                   activeOpacity={0.85}
+                  disabled={isSubmitting}
+                  style={[
+                    styles.submitButton,
+                    isSubmitting && styles.submitButtonDisabled,
+                  ]}
                 >
-                  <Text style={styles.submitButtonText}>Iniciar sesión</Text>
-                  <Feather name="arrow-right" size={20} color="#FFFFFF" style={styles.buttonArrow} />
+                  {isSubmitting ? (
+                    <>
+                      <ActivityIndicator color="#FFFFFF" />
+                      <Text style={styles.submitButtonText}>Iniciando sesión...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.submitButtonText}>Iniciar sesión</Text>
+                      <Feather name="arrow-right" size={20} color="#FFFFFF" style={styles.buttonArrow} />
+                    </>
+                  )}
                 </TouchableOpacity>
               </View>
 
@@ -193,11 +222,6 @@ export default function LoginScreen() {
               </View>
             </View>
 
-            <View style={styles.demoCard}>
-              <Text style={styles.demoTitle}>Acceso de demostración</Text>
-              <Text style={styles.demoText}>Correo: demo@flowstep.app</Text>
-              <Text style={styles.demoText}>Contraseña: FlowStep123!</Text>
-            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -332,6 +356,9 @@ const styles = StyleSheet.create({
     boxShadow: '0px 4px 8px rgba(23, 74, 98, 0.25)',
     elevation: 3,
   },
+  submitButtonDisabled: {
+    opacity: 0.7,
+  },
   submitButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
@@ -354,25 +381,5 @@ const styles = StyleSheet.create({
     color: '#174A62',
     fontSize: 13,
     fontWeight: '800',
-  },
-  demoCard: {
-    marginTop: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    alignItems: 'center',
-    gap: 4,
-  },
-  demoTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0F2C40',
-    marginBottom: 2,
-  },
-  demoText: {
-    fontSize: 12,
-    color: '#627D98',
   },
 });

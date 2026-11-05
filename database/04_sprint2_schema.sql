@@ -33,6 +33,15 @@ CREATE TABLE IF NOT EXISTS "AVAILABILITY" (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_availability_user_day_start
     ON "AVAILABILITY" (user_id, day_of_week, start_time);
 
+-- HU-07: guarda la duracion elegida por sesion; el total semanal sigue derivandose
+-- de las franjas de AVAILABILITY.
+CREATE TABLE IF NOT EXISTS "USER_AVAILABILITY_PREFERENCE" (
+    user_id INTEGER PRIMARY KEY REFERENCES "APP_USER"(user_id) ON DELETE CASCADE,
+    session_duration_minutes INTEGER NOT NULL DEFAULT 60,
+    CONSTRAINT chk_user_availability_session_duration
+        CHECK (session_duration_minutes IN (30, 60, 120))
+);
+
 -- HU-14, HU-36: cada reprogramacion agrega una version; no reemplaza la anterior.
 -- recommendation_id se reserva para AI_RECOMMENDATION (otro sprint del ER).
 CREATE TABLE IF NOT EXISTS "ACTIVITY_SCHEDULE" (
@@ -52,6 +61,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_activity_schedule_version
 CREATE INDEX IF NOT EXISTS idx_activity_schedule_date
     ON "ACTIVITY_SCHEDULE" (scheduled_date);
 
+-- HU-16: conserva transiciones y la fecha anterior de completado al volver a pendiente.
+CREATE TABLE IF NOT EXISTS "ACTIVITY_STATUS_HISTORY" (
+    activity_status_history_id SERIAL PRIMARY KEY,
+    activity_id INTEGER NOT NULL REFERENCES "ACTIVITY"(activity_id) ON DELETE CASCADE,
+    previous_status "ACTIVITY_status_enum" NOT NULL,
+    new_status "ACTIVITY_status_enum" NOT NULL,
+    previous_completed_at TIMESTAMP,
+    changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS "IDX_ACTIVITY_STATUS_HISTORY_ACTIVITY_CHANGED"
+    ON "ACTIVITY_STATUS_HISTORY" (activity_id, changed_at);
+
 -- Tambien agrega CHECKs si TypeORM habia creado previamente las tablas.
 -- Si existen datos invalidos, la migracion falla completa sin corregirlos en silencio.
 DO $$
@@ -61,6 +83,8 @@ BEGIN
     FOR rule IN
         SELECT * FROM (VALUES
             ('AVAILABILITY', 'chk_availability_time_range', 'end_time > start_time'),
+            ('USER_AVAILABILITY_PREFERENCE', 'chk_user_availability_session_duration',
+                'session_duration_minutes IN (30, 60, 120)'),
             ('ACTIVITY_SCHEDULE', 'chk_schedule_version', 'version_number >= 1'),
             ('ACTIVITY_SCHEDULE', 'chk_schedule_time_range',
                 'start_time IS NULL OR end_time IS NULL OR end_time > start_time'),

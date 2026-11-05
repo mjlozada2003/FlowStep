@@ -1,10 +1,11 @@
 import { Feather } from '@expo/vector-icons';
 import DateTimePicker, {
-  DateTimePickerChangeEvent,
+  DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -18,12 +19,59 @@ import {
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
+import { useAuth } from '@/contexts/auth-context';
+import {
+  getAvailability,
+  getWeeklyAvailabilityMinutes,
+} from '@/services/api/availability';
+
+type Priority = 'baja' | 'media' | 'alta';
 
 export default function CreateGoalScreen() {
-  const [title, setTitle] = useState('');
-  const [targetDate, setTargetDate] = useState<Date | null>(null);
+  const [title, setTitle] = useState('Crear una aplicación web');
+  const [priority, setPriority] = useState<Priority>('media');
+  const [weeklyHours, setWeeklyHours] = useState<number | null>(null);
+  const [isLoadingAvailability, setIsLoadingAvailability] = useState(true);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [targetDate, setTargetDate] = useState<Date | null>(new Date(2026, 11, 30));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const { token } = useAuth();
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      if (!token) return undefined;
+
+      getAvailability(token)
+        .then((slots) => {
+          if (!active) return;
+          setWeeklyHours(
+            slots.length > 0 ? getWeeklyAvailabilityMinutes(slots) / 60 : null,
+          );
+          setAvailabilityError(null);
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          setWeeklyHours(null);
+          setAvailabilityError(
+            error instanceof Error ? error.message : 'No se pudo consultar la disponibilidad.',
+          );
+        })
+        .finally(() => {
+          if (active) setIsLoadingAvailability(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [token]),
+  );
+  const isAvailabilityLoading = isLoadingAvailability && Boolean(token);
+  const availabilityErrorMessage =
+    availabilityError ??
+    (!token ? 'Inicia sesión para consultar la disponibilidad.' : null);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -37,7 +85,7 @@ export default function CreateGoalScreen() {
     : '';
 
   const handleDateValueChange = (
-    _event: DateTimePickerChangeEvent,
+    _event: DateTimePickerEvent,
     selectedDate?: Date,
   ) => {
     if (Platform.OS === 'android') {
@@ -52,14 +100,18 @@ export default function CreateGoalScreen() {
     const cleanTitle = title.trim();
 
     if (!cleanTitle) {
-      alert('Cuéntanos qué quieres conseguir para preparar tu plan.');
+      setErrorMessage('Por favor, cuéntanos qué quieres conseguir.');
       return;
     }
 
+    setErrorMessage('');
+
     router.push({
-      pathname: '/goal-plan',
+      pathname: '/availability',
       params: {
         title: cleanTitle,
+        description: cleanTitle,
+        priority,
         targetDate: targetDate
           ? [
               targetDate.getFullYear(),
@@ -103,12 +155,16 @@ export default function CreateGoalScreen() {
               </Text>
             </View>
 
-            <View style={styles.card}>
+            {/* Tarjeta de Objetivo */}
+            <View style={[styles.card, errorMessage ? styles.cardError : null]}>
               <Text style={styles.cardBadge}>MI OBJETIVO</Text>
               <TextInput
                 placeholder="Crear una aplicación web"
                 value={title}
-                onChangeText={setTitle}
+                onChangeText={(text) => {
+                  setTitle(text);
+                  if (errorMessage) setErrorMessage('');
+                }}
                 onFocus={() => setIsInputFocused(true)}
                 onBlur={() => setIsInputFocused(false)}
                 multiline
@@ -122,9 +178,67 @@ export default function CreateGoalScreen() {
               <Text style={styles.inputHint}>Escríbelo con tus propias palabras</Text>
             </View>
 
+            {errorMessage ? (
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            ) : null}
+
+            {/* Bloque dividido: Prioridad y Tiempo Disponible */}
+            <View style={styles.rowCardsContainer}>
+              {/* Prioridad del objetivo */}
+              <View style={[styles.card, styles.halfCard]}>
+                <Text style={styles.cardBadge}>PRIORIDAD DEL OBJETIVO</Text>
+                <View style={styles.priorityChipsRow}>
+                  {(['baja', 'media', 'alta'] as Priority[]).map((p) => (
+                    <TouchableOpacity
+                      key={p}
+                      style={[
+                        styles.miniChip,
+                        priority === p && styles.miniChipSelected,
+                      ]}
+                      onPress={() => setPriority(p)}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={[
+                          styles.miniChipText,
+                          priority === p && styles.miniChipTextSelected,
+                        ]}
+                      >
+                        {p.charAt(0).toUpperCase() + p.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Horas semanales persistidas */}
+              <View style={[styles.card, styles.halfCard]}>
+                <Text style={styles.cardBadge}>TIEMPO DISPONIBLE</Text>
+                <View style={styles.counterRow}>
+                  <View style={styles.counterTextContainer}>
+                    {isAvailabilityLoading ? (
+                      <ActivityIndicator size="small" color="#174A62" />
+                    ) : (
+                      <Text style={styles.counterValue}>
+                        {availabilityErrorMessage
+                          ? 'No disponible'
+                          : weeklyHours === null
+                            ? 'Sin configurar'
+                            : `${Number(weeklyHours.toFixed(2))} horas`}
+                      </Text>
+                    )}
+                    <Text style={styles.counterSub}>por semana</Text>
+                  </View>
+                </View>
+                {availabilityErrorMessage ? (
+                  <Text style={styles.availabilityError}>{availabilityErrorMessage}</Text>
+                ) : null}
+              </View>
+            </View>
+
+            {/* Fecha Límite */}
             <View style={styles.fieldSection}>
               <Text style={styles.fieldLabel}>FECHA LÍMITE</Text>
-
               <Pressable
                 onPress={() => setShowDatePicker(true)}
                 style={styles.datePickerButton}
@@ -181,7 +295,7 @@ export default function CreateGoalScreen() {
             </View>
 
             <View style={styles.infoBanner}>
-              <Feather name="star" size={18} color="#174A62" style={styles.bannerIcon} />
+              <Feather name="plus" size={16} color="#174A62" style={styles.bannerIcon} />
               <View style={styles.bannerTextContainer}>
                 <Text style={styles.bannerTitle}>
                   Un objetivo claro es el primer paso.
@@ -197,7 +311,7 @@ export default function CreateGoalScreen() {
               onPress={handleCreatePlan}
               activeOpacity={0.85}
             >
-              <Text style={styles.submitButtonText}>Crear mi plan</Text>
+              <Text style={styles.submitButtonText}>Configurar disponibilidad</Text>
               <Feather name="arrow-right" size={20} color="#FFFFFF" style={styles.buttonArrow} />
             </TouchableOpacity>
           </View>
@@ -219,7 +333,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 20,
     paddingVertical: 24,
-    justifyContent: 'center',
   },
   container: {
     width: '100%',
@@ -241,63 +354,73 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     alignItems: 'center',
-    marginVertical: 4,
+    marginVertical: 2,
   },
   avatarCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: '#D8ECF8',
     justifyContent: 'center',
     alignItems: 'center',
   },
   titleSection: {
     alignItems: 'center',
-    textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   badge: {
     fontSize: 11,
     fontWeight: '800',
     color: '#174A62',
     letterSpacing: 1.2,
-    marginBottom: 6,
+    marginBottom: 4,
     textAlign: 'center',
   },
   mainTitle: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '800',
     color: '#0F2C40',
-    marginBottom: 6,
+    marginBottom: 4,
     textAlign: 'center',
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#627D98',
     textAlign: 'center',
-    lineHeight: 20,
-    paddingHorizontal: 12,
+    lineHeight: 18,
+    paddingHorizontal: 8,
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 20,
+    borderRadius: 20,
+    padding: 16,
     boxShadow: '0px 8px 16px rgba(23, 74, 98, 0.08)',
     elevation: 4,
   },
+  cardError: {
+    borderColor: '#D97A7A',
+    borderWidth: 1.5,
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#D97A7A',
+    fontWeight: '600',
+    marginTop: -8,
+    marginLeft: 4,
+  },
   cardBadge: {
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: '800',
     color: '#174A62',
-    letterSpacing: 1.2,
-    marginBottom: 8,
+    letterSpacing: 1,
+    marginBottom: 6,
   },
   goalInput: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: '700',
     color: '#0F2C40',
-    minHeight: 60,
+    minHeight: 48,
     textAlignVertical: 'top',
     ...(Platform.OS === 'web'
       ? ({
@@ -311,9 +434,81 @@ const styles = StyleSheet.create({
     color: '#174A62',
   },
   inputHint: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#94A3B8',
-    marginTop: 8,
+    marginTop: 6,
+  },
+  rowCardsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  halfCard: {
+    flex: 1,
+    padding: 12,
+    justifyContent: 'space-between',
+  },
+  priorityChipsRow: {
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: 4,
+  },
+  miniChip: {
+    flex: 1,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  miniChipSelected: {
+    backgroundColor: '#D8ECF8',
+    borderColor: '#174A62',
+  },
+  miniChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#627D98',
+  },
+  miniChipTextSelected: {
+    color: '#174A62',
+    fontWeight: '800',
+  },
+  counterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  counterBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#EBF5FB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D8ECF8',
+  },
+  counterTextContainer: {
+    alignItems: 'center',
+  },
+  counterValue: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F2C40',
+  },
+  counterSub: {
+    fontSize: 9,
+    color: '#627D98',
+  },
+  availabilityError: {
+    fontSize: 10,
+    lineHeight: 14,
+    color: '#C53030',
+    textAlign: 'center',
+    marginTop: 4,
   },
   fieldSection: {
     gap: 6,
@@ -328,18 +523,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1.2,
     borderColor: '#E2E8F0',
     paddingHorizontal: 16,
-    height: 52,
+    height: 48,
   },
   dateIcon: {
     marginRight: 10,
   },
   dateText: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#0F2C40',
   },
@@ -358,31 +553,31 @@ const styles = StyleSheet.create({
   },
   iosPickerContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 14,
     padding: 12,
-    marginTop: 8,
+    marginTop: 6,
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
   iosDoneBtn: {
     alignSelf: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     backgroundColor: '#D8ECF8',
-    borderRadius: 12,
+    borderRadius: 10,
   },
   iosDoneText: {
     color: '#174A62',
     fontWeight: '700',
-    fontSize: 13,
+    fontSize: 12,
   },
   infoBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#EBF5FB',
-    borderRadius: 18,
-    padding: 16,
-    gap: 12,
+    borderRadius: 16,
+    padding: 14,
+    gap: 10,
   },
   bannerIcon: {
     marginTop: 2,
@@ -391,29 +586,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   bannerTitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: '#0F2C40',
   },
   bannerSubtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#627D98',
     marginTop: 2,
   },
   submitButton: {
     backgroundColor: '#174A62',
-    height: 52,
-    borderRadius: 20,
+    height: 50,
+    borderRadius: 18,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 2,
     boxShadow: '0px 4px 8px rgba(23, 74, 98, 0.25)',
     elevation: 3,
   },
   submitButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
   },
   buttonArrow: {

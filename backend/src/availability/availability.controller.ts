@@ -62,7 +62,30 @@ export class AvailabilityController {
     description: 'Disponibilidad semanal guardada con éxito.',
   })
   bulkSet(@Request() req: any, @Body() bulkDto: BulkAvailabilityDto) {
-    return this.availabilityService.bulkSet(req.user.userId, bulkDto.availabilities);
+    return this.availabilityService.bulkSet(
+      req.user.userId,
+      bulkDto.availabilities,
+      bulkDto.session_duration_minutes,
+    );
+  }
+
+  @Get('preferences')
+  @ApiOperation({
+    summary: 'Consultar preferencias de duración de sesión (HU-07)',
+    description: 'Retorna la duración de sesión guardada para el usuario autenticado; el valor inicial es 60 minutos.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Preferencias de disponibilidad recuperadas.',
+    schema: {
+      example: {
+        user_id: 1,
+        session_duration_minutes: 60,
+      },
+    },
+  })
+  getPreferences(@Request() req: any) {
+    return this.availabilityService.getPreferences(req.user.userId);
   }
 
   @Get()

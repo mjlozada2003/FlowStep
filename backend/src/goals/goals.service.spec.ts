@@ -38,6 +38,7 @@ describe('GoalsService', () => {
 
   const mockAvailabilityService = {
     findAllByUser: jest.fn(),
+    getPreferences: jest.fn(),
   };
 
   const mockAiService = {
@@ -94,6 +95,10 @@ describe('GoalsService', () => {
         },
       ];
       mockAvailabilityService.findAllByUser.mockResolvedValue(userAvailabilities);
+      mockAvailabilityService.getPreferences.mockResolvedValue({
+        user_id: 1,
+        session_duration_minutes: 30,
+      });
 
       const savedGoal = {
         goal_id: 1,
@@ -143,6 +148,7 @@ describe('GoalsService', () => {
         'Meta con IA',
         'Descripción',
         userAvailabilities,
+        30,
       );
       expect(result).toBeDefined();
     });

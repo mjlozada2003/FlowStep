@@ -6,6 +6,7 @@ import {
   Body,
   ParseIntPipe,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { StagesService } from './stages.service';
@@ -37,8 +38,8 @@ export class StagesController {
     status: 401,
     description: 'No autorizado. Se requiere un token Bearer válido.',
   })
-  getActivitiesByStage(@Param('id', ParseIntPipe) id: number) {
-    return this.stagesService.getActivitiesByStage(id);
+  getActivitiesByStage(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.stagesService.getActivitiesByStage(req.user.userId, id);
   }
 
   @Post(':id/activities')
@@ -70,9 +71,10 @@ export class StagesController {
     description: 'Etapa no encontrada.',
   })
   addActivity(
+    @Request() req: any,
     @Param('id', ParseIntPipe) id: number,
     @Body() createActivityDto: CreateActivityDto,
   ) {
-    return this.activitiesService.createForStage(id, createActivityDto);
+    return this.activitiesService.createForStage(req.user.userId, id, createActivityDto);
   }
 }
