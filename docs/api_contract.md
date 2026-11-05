@@ -270,3 +270,213 @@ El reemplazo de disponibilidad es transaccional e incluye todas las franjas sema
 #### Eliminar Actividad
 - **Ruta:** `DELETE /activities/:id`
 - **Autenticación:** Bearer Token
+
+
+#### Registrar Sesión de Trabajo y Dificultades (HU-17, HU-18)
+- **Ruta:** `POST /activities/:id/sessions`
+- **Autenticación:** Bearer Token
+- **Body:**
+```json
+{
+  "minutes_spent": 45,
+  "session_date": "2026-11-04",
+  "difficulty_level": 3,
+  "difficulty_notes": "Me costó la conjugación de verbos irregulares pero logré avanzar."
+}
+```
+- **Respuesta (`201 Created`):**
+```json
+{
+  "session_id": 1,
+  "activity_id": 1,
+  "session_date": "2026-11-04",
+  "minutes_spent": 45,
+  "difficulty_level": 3,
+  "difficulty_notes": "Me costó la conjugación de verbos irregulares pero logré avanzar.",
+  "created_at": "2026-11-04T15:16:00.000Z"
+}
+```
+
+#### Consultar Sesiones y Tiempo Total Dedicado (HU-17)
+- **Ruta:** `GET /activities/:id/sessions`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+{
+  "activity_id": 1,
+  "activity_title": "Estudiar gramática básica",
+  "estimated_minutes": 60,
+  "total_logged_minutes": 45,
+  "sessions": [
+    {
+      "session_id": 1,
+      "activity_id": 1,
+      "minutes_spent": 45,
+      "session_date": "2026-11-04",
+      "difficulty_level": 3,
+      "difficulty_notes": "Me costó la conjugación de verbos irregulares pero logré avanzar.",
+      "created_at": "2026-11-04T15:16:00.000Z"
+    }
+  ]
+}
+```
+
+#### Catálogo de Motivos de Incumplimiento (HU-19)
+- **Ruta:** `GET /activities/miss-reasons`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+[
+  { "reason_id": 1, "name": "Falta de tiempo", "description": null },
+  { "reason_id": 2, "name": "Dificultad con la actividad", "description": null },
+  { "reason_id": 3, "name": "Imprevisto", "description": null },
+  { "reason_id": 4, "name": "Otro", "description": null }
+]
+```
+
+#### Registrar Causa de Incumplimiento (HU-19)
+- **Ruta:** `POST /activities/:id/miss`
+- **Autenticación:** Bearer Token
+- **Body:**
+```json
+{
+  "reason_id": 1,
+  "details": "Tuve una reunión de trabajo imprevista y no alcancé a realizar la actividad."
+}
+```
+
+#### Consultar Incidencias de Incumplimiento (HU-19)
+- **Ruta:** `GET /activities/:id/misses`
+- **Autenticación:** Bearer Token
+
+#### Historial Cronológico Consolidado de Actividades (HU-20)
+- **Ruta:** `GET /activities/history`
+- **Autenticación:** Bearer Token
+- **Query Params (Opcionales):** `goal_id`, `activity_id`, `event_type` (`work_session`, `status_change`, `schedule_version`, `schedule_miss`), `from` (`YYYY-MM-DD`), `to` (`YYYY-MM-DD`), `limit`, `offset`.
+- **Respuesta (`200 OK`):**
+```json
+[
+  {
+    "user_id": 1,
+    "goal_id": 1,
+    "stage_id": 1,
+    "activity_id": 2,
+    "activity_title": "Estudiar vocabulario básico",
+    "event_type": "work_session",
+    "event_id": 1,
+    "event_date": "2026-11-04",
+    "recorded_at": "2026-11-04T15:00:00.000Z",
+    "details": {
+      "minutes_spent": 45,
+      "difficulty_level": 3,
+      "difficulty_notes": "Práctica fluida"
+    }
+  }
+]
+```
+
+#### Historial Cronológico de Actividad Específica (HU-20)
+- **Ruta:** `GET /activities/:id/history`
+- **Autenticación:** Bearer Token
+
+---
+
+### 3.6 Módulo: Métricas, Ritmo y Gráficos de Objetivos
+
+#### Consultar Avance de Todos los Objetivos (HU-22)
+- **Ruta:** `GET /goals/progress`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+[
+  {
+    "goal_id": 1,
+    "user_id": 1,
+    "goal_title": "Aprender Francés Básico",
+    "goal_status": "active",
+    "total_activities": 8,
+    "completed_activities": 4,
+    "total_estimated_minutes": 240,
+    "completed_estimated_minutes": 120,
+    "progress_percentage": "50.00"
+  }
+]
+```
+
+#### Consultar Ritmo de Todos los Objetivos (HU-24)
+- **Ruta:** `GET /goals/pace`
+- **Autenticación:** Bearer Token
+
+#### Comparativa de Ritmo y Detección de Retraso de un Objetivo (HU-24)
+- **Ruta:** `GET /goals/:id/pace`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+{
+  "goal_id": 1,
+  "user_id": 1,
+  "goal_title": "Aprender Francés Básico",
+  "goal_status": "active",
+  "total_activities": 8,
+  "completed_activities": 2,
+  "total_estimated_minutes": 240,
+  "completed_estimated_minutes": 60,
+  "progress_percentage": "25.00",
+  "as_of_date": "2026-11-04",
+  "scheduled_estimated_minutes": 240,
+  "expected_completed_minutes": 120,
+  "expected_progress_percentage": "50.00",
+  "pace_status": "behind",
+  "is_delayed": true,
+  "delay_minutes": 60,
+  "delay_percentage": 25.0,
+  "alert_message": "Atención: Tienes un posible retraso de 60 minutos (25% por debajo del plan esperado a la fecha). Te recomendamos reprogramar o dedicar una sesión de estudio."
+}
+```
+
+#### Visualización de Progreso para Gráficos Móviles (HU-21)
+- **Ruta:** `GET /goals/:id/charts`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+{
+  "goal_id": 1,
+  "goal_title": "Aprender Francés Básico",
+  "summary": {
+    "progress_percentage": "50.00",
+    "total_activities": 8,
+    "completed_activities": 4,
+    "total_estimated_minutes": 240,
+    "completed_estimated_minutes": 120,
+    "total_minutes_spent": 105
+  },
+  "weekly_progress": [
+    {
+      "week_start": "2026-11-02",
+      "minutes_spent": 45,
+      "completed_estimated_minutes": 60,
+      "planned_estimated_minutes": 60
+    }
+  ],
+  "status_distribution": {
+    "completed": 4,
+    "in_progress": 0,
+    "pending": 4,
+    "skipped": 0
+  },
+  "stage_progress": [
+    {
+      "stage_id": 1,
+      "stage_name": "Fundamentos de Francés",
+      "sort_order": 1,
+      "total_activities": 4,
+      "completed_activities": 2,
+      "progress_percentage": "50.00"
+    }
+  ]
+}
+```
+
+#### Serie Semanal de Progreso (HU-21)
+- **Ruta:** `GET /goals/:id/weekly-progress`
+- **Autenticación:** Bearer Token

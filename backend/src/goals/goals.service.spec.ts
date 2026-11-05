@@ -19,6 +19,7 @@ describe('GoalsService', () => {
     save: jest.fn(),
     find: jest.fn(),
     findOne: jest.fn(),
+    query: jest.fn(),
   };
 
   const mockStageRepository = {
@@ -176,6 +177,72 @@ describe('GoalsService', () => {
       await expect(service.updatePriority(1, 999, PriorityLevel.HIGH)).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('getAllGoalsProgress (HU-22)', () => {
+    it('should query progress for all goals owned by user', async () => {
+      const mockList = [{ goal_id: 1, progress_percentage: 50 }];
+      mockGoalRepository.query.mockResolvedValue(mockList);
+
+      const result = await service.getAllGoalsProgress(1);
+      expect(result).toEqual(mockList);
+      expect(mockGoalRepository.query).toHaveBeenCalledWith(
+        expect.stringContaining('SELECT * FROM v_goal_progress WHERE user_id = $1'),
+        [1],
+      );
+    });
+  });
+
+  describe('getGoalPace (HU-24)', () => {
+    it('should return pace with delay alert when behind', async () => {
+      mockGoalRepository.findOne.mockResolvedValue({ goal_id: 1, user_id: 1, title: 'Meta' });
+      mockGoalRepository.query.mockResolvedValue([{
+        goal_id: 1,
+        pace_status: 'behind',
+        completed_estimated_minutes: 60,
+        expected_completed_minutes: 120,
+        progress_percentage: 25,
+        expected_progress_percentage: 50,
+      }]);
+
+      const result = await service.getGoalPace(1, 1);
+      expect(result.is_delayed).toBe(true);
+      expect(result.delay_minutes).toBe(60);
+      expect(result.delay_percentage).toBe(25);
+      expect(result.alert_message).toContain('posible retraso');
+    });
+
+    it('should return on_track alert when pacing is good', async () => {
+      mockGoalRepository.findOne.mockResolvedValue({ goal_id: 1, user_id: 1, title: 'Meta' });
+      mockGoalRepository.query.mockResolvedValue([{
+        goal_id: 1,
+        pace_status: 'on_track',
+        completed_estimated_minutes: 120,
+        expected_completed_minutes: 120,
+        progress_percentage: 50,
+        expected_progress_percentage: 50,
+      }]);
+
+      const result = await service.getGoalPace(1, 1);
+      expect(result.is_delayed).toBe(false);
+      expect(result.alert_message).toContain('¡Excelente!');
+    });
+  });
+
+  describe('getGoalChartData (HU-21)', () => {
+    it('should aggregate weekly, stage, and status distributions', async () => {
+      mockGoalRepository.findOne.mockResolvedValue({ goal_id: 1, user_id: 1, title: 'Meta' });
+      mockGoalRepository.query
+        .mockResolvedValueOnce([{ week_start: '2026-11-02', minutes_spent: 120 }])
+        .mockResolvedValueOnce([{ stage_id: 10, stage_name: 'Fase 1', progress_percentage: 100 }])
+        .mockResolvedValueOnce([{ status: 'completed', count: 5, total_minutes: 120 }]);
+
+      const result = await service.getGoalChartData(1, 1);
+      expect(result).toHaveProperty('weekly_progress');
+      expect(result).toHaveProperty('stage_progress');
+      expect(result).toHaveProperty('status_distribution');
+      expect(result.status_distribution.completed).toBe(5);
     });
   });
 });

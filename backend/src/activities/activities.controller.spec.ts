@@ -186,8 +186,4 @@ describe('ActivitiesController', () => {
       expect(mockActivitiesService.getActivityHistoryById).toHaveBeenCalledWith(7, 1);
     });
   });
-    });
-  });
-    });
-  });
 });

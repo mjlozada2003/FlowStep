@@ -17,6 +17,8 @@ describe('GoalsController', () => {
     getAllGoalsProgress: jest.fn(),
     getGoalPace: jest.fn(),
     getAllGoalsPace: jest.fn(),
+    getGoalChartData: jest.fn(),
+    getGoalWeeklyProgress: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -99,6 +101,23 @@ describe('GoalsController', () => {
       expect(mockGoalsService.getGoalPace).toHaveBeenCalledWith(1, 1);
     });
   });
+
+  describe('getGoalChartData (HU-21)', () => {
+    it('should return aggregated charts data', async () => {
+      const req = { user: { userId: 1 } };
+      const expectedCharts = {
+        goal_id: 1,
+        summary: { progress_percentage: '50.00' },
+        weekly_progress: [],
+        status_distribution: { completed: 2, pending: 2 },
+        stage_progress: [],
+      };
+
+      mockGoalsService.getGoalChartData.mockResolvedValue(expectedCharts);
+
+      const result = await controller.getGoalChartData(req, 1);
+      expect(result).toEqual(expectedCharts);
+      expect(mockGoalsService.getGoalChartData).toHaveBeenCalledWith(1, 1);
     });
   });
 });

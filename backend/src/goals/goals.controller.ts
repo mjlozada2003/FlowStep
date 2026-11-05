@@ -213,6 +213,80 @@ export class GoalsController {
     return this.goalsService.getGoalPace(id, req.user.userId);
   }
 
+  @Get(':id/charts')
+  @ApiOperation({
+    summary: 'Consultar datos agregados para visualización gráfica del progreso (HU-21)',
+    description: 'Retorna datos estructurados para renderizar gráficos en la aplicación móvil: serie temporal semanal de esfuerzo y avance (v_goal_weekly_progress), distribución por estados (dona/pastel) y barras de avance comparativo por etapa (v_stage_progress).',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Datos analíticos y de gráficas del objetivo recuperados exitosamente.',
+    schema: {
+      example: {
+        goal_id: 1,
+        goal_title: 'Aprender Francés Básico',
+        summary: {
+          progress_percentage: '50.00',
+          total_activities: 8,
+          completed_activities: 4,
+          total_estimated_minutes: 240,
+          completed_estimated_minutes: 120,
+          total_minutes_spent: 105,
+        },
+        weekly_progress: [
+          {
+            week_start: '2026-11-02',
+            minutes_spent: 45,
+            completed_estimated_minutes: 60,
+            planned_estimated_minutes: 60,
+          },
+        ],
+        status_distribution: {
+          completed: 4,
+          in_progress: 0,
+          pending: 4,
+          skipped: 0,
+        },
+        stage_progress: [
+          {
+            stage_id: 1,
+            stage_name: 'Fundamentos de Francés',
+            sort_order: 1,
+            total_activities: 4,
+            completed_activities: 2,
+            progress_percentage: '50.00',
+          },
+        ],
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Objetivo no encontrado.',
+  })
+  getGoalChartData(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.goalsService.getGoalChartData(id, req.user.userId);
+  }
+
+  @Get(':id/weekly-progress')
+  @ApiOperation({
+    summary: 'Consultar serie semanal de esfuerzo y avance de un objetivo (HU-21)',
+    description: 'Consulta directamente la vista v_goal_weekly_progress retornando la serie histórica semanal de minutos dedicados, completados y planificados.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Serie temporal semanal recuperada exitosamente.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Objetivo no encontrado.',
+  })
+  getWeeklyProgress(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.goalsService.getGoalWeeklyProgress(id, req.user.userId);
+  }
+
   @Patch(':id/priority')
   @ApiOperation({
     summary: 'Establecer o modificar la prioridad del objetivo (HU-06)',

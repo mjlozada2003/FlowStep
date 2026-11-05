@@ -444,11 +444,6 @@ describe('ActivitiesService', () => {
       const result = await service.getActivityHistoryById(7, 1);
       expect(result).toEqual([]);
       expect(mockActivityRepository.findOne).toHaveBeenCalled();
-    });
   });
-    });
-  });
-    });
-  });
-  });
+});
 });
