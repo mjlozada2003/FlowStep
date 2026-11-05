@@ -5,7 +5,7 @@ Este documento resume el progreso, decisiones arquitectónicas y módulos desarr
 ## 1. Arquitectura y Stack Tecnológico
 - **Framework:** NestJS (Node.js) configurado bajo una arquitectura monolítica por capas (Controladores, Servicios, Repositorios).
 - **Base de Datos:** PostgreSQL corriendo vía Docker (`docker-compose.yml`).
-- **ORM:** TypeORM configurado con `synchronize: true` (para fase de desarrollo local), mapeando rigurosamente el diseño de base de datos DBML proporcionado (tipos de datos, longitudes, llaves primarias auto-incrementales enteras).
+- **ORM:** TypeORM mapea el diseño de base de datos DBML proporcionado. Actualmente la sincronización automática está desactivada por defecto y se controla con `DB_SYNCHRONIZE`; al usar los scripts SQL se mantiene en `false`.
 - **Inteligencia Artificial:** SDK Oficial de Google Gen AI (`@google/genai`) usando el modelo `gemini-3.5-flash` para la planificación automática.
 
 ## 2. Historias de Usuario Completadas

@@ -209,7 +209,7 @@ Para asegurar una integración perfecta entre el equipo de Base de Datos y el eq
    Se mantienen los nombres que ya usa TypeORM, incluidos `GOAL_priority_enum` y `ACTIVITY_priority_enum`. Los tipos nuevos son `AVAILABILITY_day_of_week_enum` y `ACTIVITY_SCHEDULE_reason_enum`. El dominio lógico del ER es el mismo; no se renombra un tipo que el backend ya utiliza.
 
 3. **Configuración de `synchronize`:**  
-   El `app.module.ts` actual usa `synchronize: true`. Al administrar el esquema con scripts SQL, desactivar esa opción antes de arrancar el backend para evitar que TypeORM modifique el esquema automáticamente. La aplicación requiere que el esquema se haya inicializado antes de arrancar.
+   La sincronización automática está desactivada por defecto. `app.module.ts` solo la activa si `DB_SYNCHRONIZE` vale exactamente `true`. Al administrar el esquema con los scripts SQL, mantener `DB_SYNCHRONIZE=false` en `backend/.env` o dejar la variable sin definir. La aplicación requiere que el esquema se haya inicializado y que las migraciones pendientes se hayan aplicado antes de arrancar. Reiniciar el backend después de cambiar esta variable.
 
 ## 6. Actualizar una base existente al Sprint 2
 
@@ -337,3 +337,37 @@ que cada actividad u horario pertenezca a ese usuario antes de insertar.
 Para probar las siete historias sobre una base temporal con los esquemas y
 vistas aplicados, ejecuta `database/tests/sprint3.sql` con `ON_ERROR_STOP=1`.
 Las filas de prueba se revierten al terminar.
+
+### Datos de demostracion del Sprint 3
+
+Ejecuta `08_sprint3_seeds.sql` despues de `07`. En la consola de psql,
+abierta desde la raiz del proyecto, usa `\i database/08_sprint3_seeds.sql`.
+El usuario de demostracion es `sprint3.demo@flowstep.test`, con la
+contrasena `Password123!`. Los registros permanecen guardados.
+
+El script agrega tres objetivos, seis actividades, cinco sesiones con
+**125 minutos** de esfuerzo, tres cambios de estado, una incidencia y
+seis versiones de agenda. En la fecha de la primera carga, el objetivo
+de SQL tiene **25%** de avance y atraso, el de modelado tiene **50%** y
+esta al dia, y el tercero queda sin agenda. Las fechas se conservan al
+repetir la carga, por lo que el ritmo cambia con el paso de los dias.
+El script puede repetirse sin duplicar los ejemplos existentes.
+
+```sql
+SELECT w.*
+FROM "WORK_SESSION" w
+JOIN "ACTIVITY" a ON a.activity_id = w.activity_id
+JOIN "STAGE" s ON s.stage_id = a.stage_id
+JOIN "GOAL" g ON g.goal_id = s.goal_id
+JOIN "APP_USER" u ON u.user_id = g.user_id
+WHERE u.email = 'sprint3.demo@flowstep.test'
+ORDER BY w.session_date, w.session_id;
+
+SELECT goal_title, progress_percentage, expected_progress_percentage, pace_status
+FROM v_goal_pace
+WHERE user_id = (SELECT user_id FROM "APP_USER" WHERE email = 'sprint3.demo@flowstep.test');
+
+SELECT * FROM v_goal_weekly_progress
+WHERE user_id = (SELECT user_id FROM "APP_USER" WHERE email = 'sprint3.demo@flowstep.test')
+ORDER BY goal_id, week_start;
+```
