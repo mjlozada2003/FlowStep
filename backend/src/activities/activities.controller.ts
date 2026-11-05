@@ -15,6 +15,7 @@ import { ActivitiesService } from './activities.service';
 import { UpdateActivityDto } from './dto/update-activity.dto';
 import { RescheduleActivityDto } from './dto/reschedule-activity.dto';
 import { CreateWorkSessionDto } from './dto/create-work-session.dto';
+import { RecordActivityMissDto } from './dto/record-activity-miss.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('Actividades')
@@ -23,6 +24,27 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 @UseGuards(JwtAuthGuard)
 export class ActivitiesController {
   constructor(private readonly activitiesService: ActivitiesService) {}
+
+  @Get('miss-reasons')
+  @ApiOperation({
+    summary: 'Consultar el catálogo de motivos de incumplimiento (HU-19)',
+    description: 'Retorna el catálogo predefinido de razones de incumplimiento (Falta de tiempo, Dificultad, Imprevisto, Otro) para selección del usuario.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Catálogo de motivos recuperado exitosamente.',
+    schema: {
+      example: [
+        { reason_id: 1, name: 'Falta de tiempo', description: null },
+        { reason_id: 2, name: 'Dificultad con la actividad', description: null },
+        { reason_id: 3, name: 'Imprevisto', description: null },
+        { reason_id: 4, name: 'Otro', description: null },
+      ],
+    },
+  })
+  getMissReasons() {
+    return this.activitiesService.getMissReasons();
+  }
 
   @Get(':id')
   @ApiOperation({
@@ -263,5 +285,65 @@ export class ActivitiesController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.activitiesService.getWorkSessions(req.user.userId, id);
+  }
+
+  @Post(':id/miss')
+  @ApiOperation({
+    summary: 'Registrar causa de incumplimiento de una actividad (HU-19)',
+    description: 'Permite registrar el motivo por el cual no se pudo completar una actividad en su versión programada, con justificación adicional para alimentar futuras adaptaciones.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la actividad', example: 1 })
+  @ApiResponse({
+    status: 201,
+    description: 'Incidencia de incumplimiento registrada exitosamente.',
+    schema: {
+      example: {
+        miss_id: 1,
+        schedule_id: 2,
+        reason_id: 1,
+        details: 'Tuve una reunión de trabajo imprevista.',
+        recorded_at: '2026-11-04T18:00:00.000Z',
+        reason: {
+          reason_id: 1,
+          name: 'Falta de tiempo',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Motivo inválido, la actividad no tiene horario programado o ya existe una incidencia registrada para este horario.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Actividad o versión de horario no encontrada.',
+  })
+  recordMiss(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RecordActivityMissDto,
+  ) {
+    return this.activitiesService.recordMiss(req.user.userId, id, dto);
+  }
+
+  @Get(':id/misses')
+  @ApiOperation({
+    summary: 'Consultar las incidencias de incumplimiento registradas para una actividad (HU-19)',
+    description: 'Retorna el historial de causas de incumplimiento reportadas en las diferentes versiones de programación de la actividad.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la actividad', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de incidencias de incumplimiento recuperada exitosamente.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Actividad no encontrada.',
+  })
+  getActivityMisses(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.activitiesService.getActivityMisses(req.user.userId, id);
   }
 }

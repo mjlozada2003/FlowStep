@@ -5,6 +5,8 @@ import { Activity } from './entities/activity.entity';
 import { Stage } from '../stages/entities/stage.entity';
 import { ActivitySchedule } from './entities/activity-schedule.entity';
 import { WorkSession } from './entities/work-session.entity';
+import { MissReason } from './entities/miss-reason.entity';
+import { ScheduleMiss } from './entities/schedule-miss.entity';
 import { ActivityOrigin, ActivityStatus, ActivityType } from './enums/activity.enum';
 import { ScheduleReason } from './enums/schedule-reason.enum';
 import { BadRequestException } from '@nestjs/common';
@@ -44,6 +46,18 @@ describe('ActivitiesService', () => {
     find: jest.fn(),
   };
 
+  const mockMissReasonRepository = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+  };
+
+  const mockScheduleMissRepository = {
+    create: jest.fn(),
+    save: jest.fn(),
+    find: jest.fn(),
+    findOne: jest.fn(),
+  };
+
   const mockScheduleRepository = {
     create: jest.fn(),
     save: jest.fn(),
@@ -71,6 +85,14 @@ describe('ActivitiesService', () => {
         {
           provide: getRepositoryToken(WorkSession),
           useValue: mockWorkSessionRepository,
+        },
+        {
+          provide: getRepositoryToken(MissReason),
+          useValue: mockMissReasonRepository,
+        },
+        {
+          provide: getRepositoryToken(ScheduleMiss),
+          useValue: mockScheduleMissRepository,
         },
       ],
     }).compile();
@@ -319,6 +341,72 @@ describe('ActivitiesService', () => {
       expect(result.total_logged_minutes).toBe(50);
       expect(result.estimated_minutes).toBe(60);
       expect(result.sessions).toEqual(sessions);
+    });
+  });
+
+  describe('recordMiss (HU-19)', () => {
+    it('should record an activity miss successfully', async () => {
+      const activity = { activity_id: 1, title: 'Test Activity' };
+      const reason = { reason_id: 1, name: 'Falta de tiempo' };
+      const schedule = { schedule_id: 10, activity_id: 1, version_number: 1 };
+
+      mockActivityRepository.findOne.mockResolvedValue(activity);
+      mockMissReasonRepository.findOne.mockResolvedValue(reason);
+      mockScheduleRepository.findOne.mockResolvedValue(schedule);
+      mockScheduleMissRepository.findOne.mockResolvedValue(null);
+
+      const expectedMiss = {
+        miss_id: 1,
+        schedule_id: 10,
+        reason_id: 1,
+        details: 'Demasiado trabajo',
+        reason,
+      };
+
+      mockScheduleMissRepository.create.mockReturnValue(expectedMiss);
+      mockScheduleMissRepository.save.mockResolvedValue(expectedMiss);
+
+      const result = await service.recordMiss(7, 1, {
+        reason_id: 1,
+        details: 'Demasiado trabajo',
+      });
+
+      expect(result).toEqual(expectedMiss);
+      expect(mockScheduleMissRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          schedule_id: 10,
+          reason_id: 1,
+          details: 'Demasiado trabajo',
+        }),
+      );
+      expect(mockScheduleMissRepository.save).toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException if miss already exists for schedule', async () => {
+      const activity = { activity_id: 1 };
+      const reason = { reason_id: 1, name: 'Falta de tiempo' };
+      const schedule = { schedule_id: 10, activity_id: 1 };
+
+      mockActivityRepository.findOne.mockResolvedValue(activity);
+      mockMissReasonRepository.findOne.mockResolvedValue(reason);
+      mockScheduleRepository.findOne.mockResolvedValue(schedule);
+      mockScheduleMissRepository.findOne.mockResolvedValue({ miss_id: 99 });
+
+      await expect(
+        service.recordMiss(7, 1, { reason_id: 1 }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('getMissReasons (HU-19)', () => {
+    it('should return catalog of miss reasons', async () => {
+      const reasons = [{ reason_id: 1, name: 'Falta de tiempo' }];
+      mockMissReasonRepository.find.mockResolvedValue(reasons);
+
+      const result = await service.getMissReasons();
+      expect(result).toEqual(reasons);
+    });
+  });
     });
   });
   });

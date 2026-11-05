@@ -17,6 +17,9 @@ describe('ActivitiesController', () => {
     getScheduleHistory: jest.fn(),
     logWorkSession: jest.fn(),
     getWorkSessions: jest.fn(),
+    getMissReasons: jest.fn(),
+    recordMiss: jest.fn(),
+    getActivityMisses: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -131,6 +134,32 @@ describe('ActivitiesController', () => {
       const result = await controller.getWorkSessions(req, 1);
       expect(result).toEqual(expectedResult);
       expect(mockActivitiesService.getWorkSessions).toHaveBeenCalledWith(7, 1);
+    });
+  });
+
+  describe('recordMiss (HU-19)', () => {
+    it('should record an activity miss', async () => {
+      const dto = { reason_id: 1, details: 'Imprevisto' };
+      const expectedResult = { miss_id: 1, schedule_id: 5, ...dto };
+
+      mockActivitiesService.recordMiss.mockResolvedValue(expectedResult);
+
+      const req = { user: { userId: 7 } };
+      const result = await controller.recordMiss(req, 1, dto);
+      expect(result).toEqual(expectedResult);
+      expect(mockActivitiesService.recordMiss).toHaveBeenCalledWith(7, 1, dto);
+    });
+  });
+
+  describe('getMissReasons (HU-19)', () => {
+    it('should retrieve miss reasons catalog', async () => {
+      const reasons = [{ reason_id: 1, name: 'Falta de tiempo' }];
+      mockActivitiesService.getMissReasons.mockResolvedValue(reasons);
+
+      const result = await controller.getMissReasons();
+      expect(result).toEqual(reasons);
+    });
+  });
     });
   });
 });

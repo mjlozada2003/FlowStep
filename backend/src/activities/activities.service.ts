@@ -10,10 +10,13 @@ import { Stage } from '../stages/entities/stage.entity';
 import { ActivitySchedule } from './entities/activity-schedule.entity';
 import { ActivityStatusHistory } from './entities/activity-status-history.entity';
 import { WorkSession } from './entities/work-session.entity';
+import { MissReason } from './entities/miss-reason.entity';
+import { ScheduleMiss } from './entities/schedule-miss.entity';
 import { CreateActivityDto } from './dto/create-activity.dto';
 import { UpdateActivityDto } from './dto/update-activity.dto';
 import { RescheduleActivityDto } from './dto/reschedule-activity.dto';
 import { CreateWorkSessionDto } from './dto/create-work-session.dto';
+import { RecordActivityMissDto } from './dto/record-activity-miss.dto';
 import { ActivityOrigin, ActivityStatus } from './enums/activity.enum';
 import { PriorityLevel } from '../goals/enums/goal.enum';
 import { ScheduleReason } from './enums/schedule-reason.enum';
@@ -29,6 +32,10 @@ export class ActivitiesService {
     private schedulesRepository: Repository<ActivitySchedule>,
     @InjectRepository(WorkSession)
     private workSessionsRepository: Repository<WorkSession>,
+    @InjectRepository(MissReason)
+    private missReasonsRepository: Repository<MissReason>,
+    @InjectRepository(ScheduleMiss)
+    private scheduleMissesRepository: Repository<ScheduleMiss>,
   ) {}
 
   private findOwnedActivity(
@@ -349,6 +356,84 @@ export class ActivitiesService {
       total_logged_minutes: totalLoggedMinutes,
       sessions,
     };
+  }
+
+  async getMissReasons(): Promise<MissReason[]> {
+    return this.missReasonsRepository.find({
+      order: { reason_id: 'ASC' },
+    });
+  }
+
+  async recordMiss(
+    userId: number,
+    activityId: number,
+    dto: RecordActivityMissDto,
+  ): Promise<ScheduleMiss> {
+    const activity = await this.findOwnedActivity(userId, activityId);
+    if (!activity) {
+      throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
+    }
+
+    const reason = await this.missReasonsRepository.findOne({
+      where: { reason_id: dto.reason_id },
+    });
+    if (!reason) {
+      throw new BadRequestException('El motivo de incumplimiento seleccionado no es válido');
+    }
+
+    let schedule: ActivitySchedule | null = null;
+    if (dto.schedule_id) {
+      schedule = await this.schedulesRepository.findOne({
+        where: { schedule_id: dto.schedule_id, activity_id: activityId },
+      });
+      if (!schedule) {
+        throw new NotFoundException(
+          `La versión de programación con ID ${dto.schedule_id} no pertenece a esta actividad`,
+        );
+      }
+    } else {
+      schedule = await this.schedulesRepository.findOne({
+        where: { activity_id: activityId },
+        order: { version_number: 'DESC' },
+      });
+      if (!schedule) {
+        throw new BadRequestException(
+          'La actividad no cuenta con una programación en el cronograma para registrar un incumplimiento',
+        );
+      }
+    }
+
+    const existingMiss = await this.scheduleMissesRepository.findOne({
+      where: { schedule_id: schedule.schedule_id },
+    });
+    if (existingMiss) {
+      throw new BadRequestException(
+        'Ya se ha registrado una incidencia de incumplimiento para esta versión de programación',
+      );
+    }
+
+    const miss = this.scheduleMissesRepository.create({
+      schedule_id: schedule.schedule_id,
+      reason_id: dto.reason_id,
+      details: dto.details || null,
+    });
+
+    const savedMiss = await this.scheduleMissesRepository.save(miss);
+    savedMiss.reason = reason;
+    return savedMiss;
+  }
+
+  async getActivityMisses(userId: number, activityId: number): Promise<ScheduleMiss[]> {
+    const activity = await this.findOwnedActivity(userId, activityId);
+    if (!activity) {
+      throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
+    }
+
+    return this.scheduleMissesRepository.find({
+      where: { schedule: { activity_id: activityId } },
+      relations: { reason: true, schedule: true },
+      order: { recorded_at: 'DESC' },
+    });
   }
 
   private timeToSeconds(time: string): number {
