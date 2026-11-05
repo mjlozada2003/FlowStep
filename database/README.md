@@ -308,3 +308,32 @@ node database/tests/backend.integration.cjs
 # El contenedor temporal y sus datos se eliminan al detenerlo:
 docker stop flowstep-sprint2-test
 ```
+
+## 9. Sprint 3 · Registro e indicadores
+
+Aplica `07_sprint3_tracking.sql` después de `04_sprint2_schema.sql` y
+`05_sprint2_views.sql` del Sprint 2 integrado en `main`. El script requiere
+`ACTIVITY_STATUS_HISTORY`, incorporada al `04` por el PR #9. Si la base tiene
+una versión anterior de `04`, vuelve a aplicar primero el `04` actualizado.
+Para un volumen existente ejecuta el `07` explícitamente con
+`psql -v ON_ERROR_STOP=1 -f database/07_sprint3_tracking.sql` usando tu conexión.
+
+| Historia | Contrato de base de datos |
+| --- | --- |
+| HU-17 y HU-18 | `WORK_SESSION` admite varias sesiones por actividad. Los minutos son positivos. La dificultad de 1 a 5 y las notas son opcionales. |
+| HU-19 | `SCHEDULE_MISS` registra un motivo del catálogo `MISS_REASON` y un detalle opcional por versión del horario. La versión anterior sigue siendo consultable después de reprogramar. Esta operación requiere un horario existente. |
+| HU-20 | `v_activity_timeline` reúne sesiones, cambios de estado registrados, versiones e incumplimientos. Incluye `user_id`, `goal_id`, `activity_id`, `event_date`, `recorded_at`, `event_type`, `event_id` y `details` en JSON. |
+| HU-22 | `v_goal_pace.progress_percentage` reutiliza la ponderación por minutos estimados de `v_goal_progress`. |
+| HU-24 | `v_goal_pace` compara los minutos estimados completados con los minutos que debían completarse hasta hoy inclusive. Usa la versión vigente de cada horario y la fecha de la sesión de PostgreSQL. Devuelve `behind`, `on_track` o `no_schedule` si no hay minutos estimados programados. |
+| HU-21 | `v_goal_weekly_progress` devuelve minutos dedicados, estimados completados y estimados planificados por semana, con el lunes como inicio. |
+
+El gráfico se deriva del estado actual. Si se reabre una actividad o se
+reprograma, sus minutos completados o planificados se recalculan. Las semanas
+sin eventos se pueden rellenar con cero en el cliente. La cronología muestra
+los cambios de estado que efectivamente quedaron registrados por el backend.
+
+Las consultas de la API deben filtrar por el `user_id` autenticado y verificar
+que cada actividad u horario pertenezca a ese usuario antes de insertar.
+Para probar las siete historias sobre una base temporal con los esquemas y
+vistas aplicados, ejecuta `database/tests/sprint3.sql` con `ON_ERROR_STOP=1`.
+Las filas de prueba se revierten al terminar.
