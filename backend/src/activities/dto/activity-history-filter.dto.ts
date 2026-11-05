@@ -1,6 +1,7 @@
-import { IsOptional, IsInt, IsString, IsIn, Matches, Min } from 'class-validator';
+import { IsOptional, IsInt, IsString, IsIn, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsCalendarDate } from '../../common/utils/date.utils';
 
 export class ActivityHistoryFilterDto {
   @ApiPropertyOptional({
@@ -38,8 +39,8 @@ export class ActivityHistoryFilterDto {
     example: '2026-11-01',
   })
   @IsOptional()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-    message: 'La fecha inicial debe tener formato YYYY-MM-DD',
+  @IsCalendarDate({
+    message: 'La fecha inicial (from) debe ser una fecha de calendario real y válida en formato YYYY-MM-DD',
   })
   from?: string;
 
@@ -48,8 +49,8 @@ export class ActivityHistoryFilterDto {
     example: '2026-11-30',
   })
   @IsOptional()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-    message: 'La fecha final debe tener formato YYYY-MM-DD',
+  @IsCalendarDate({
+    message: 'La fecha final (to) debe ser una fecha de calendario real y válida en formato YYYY-MM-DD',
   })
   to?: string;
 

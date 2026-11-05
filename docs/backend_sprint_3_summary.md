@@ -21,7 +21,7 @@ Este documento resume el progreso, decisiones arquitectónicas, modelos de datos
   - **Entidad:** `WorkSession` (mapea tabla `WORK_SESSION`).
   - **DTO:** `CreateWorkSessionDto` con validaciones de:
     - `minutes_spent` (entero positivo mayor o igual a 1).
-    - `session_date` (formato ISO 8601 YYYY-MM-DD).
+    - `session_date` (formato YYYY-MM-DD o ISO 8601 con validación estricta de fecha real de calendario vía `@IsCalendarDate`). Si se omite, calcula automáticamente la fecha actual en la zona horaria oficial del proyecto (`America/La_Paz`, UTC-4), evitando adelantos indeseados a UTC en sesiones nocturnas.
     - `difficulty_level` (opcional, entero entre 1 y 5).
     - `difficulty_notes` (opcional, observaciones textuales del usuario).
   - **Endpoints:**
@@ -45,7 +45,7 @@ Este documento resume el progreso, decisiones arquitectónicas, modelos de datos
 ### Historial y Trazabilidad de Actividades
 - **HU-20 — Consultar historial de actividades:**
   - **Módulo:** `ActivitiesModule`
-  - **DTO:** `ActivityHistoryFilterDto` para filtrado por `goal_id`, `activity_id`, `event_type` (`work_session`, `reschedule`, `miss`, `status_change`), fechas de rango (`from_date`, `to_date`), `limit` y `offset`.
+  - **DTO:** `ActivityHistoryFilterDto` para filtrado por `goal_id`, `activity_id`, `event_type` (`work_session`, `reschedule`, `miss`, `status_change`), fechas de rango (`from`, `to` con validación estricta de fecha real de calendario `@IsCalendarDate` que rechaza valores imposibles como `2026-99-99` o `from > to`), `limit` y `offset`.
   - **Vista utilizada:** `v_activity_timeline` (unifica sesiones de trabajo, reprogramaciones, incidencias y cambios de estado ordenados por fecha y hora).
   - **Endpoints:**
     - `GET /activities/history`: Línea de tiempo transversal del usuario autenticado con filtros dinámicos parametrizados (previene inyecciones SQL).

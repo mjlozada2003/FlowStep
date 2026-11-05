@@ -433,6 +433,18 @@ describe('ActivitiesService', () => {
         expect.arrayContaining([7, 1, 'work_session', 50, 0]),
       );
     });
+
+    it('should throw BadRequestException when from is an impossible date (HU-20)', async () => {
+      await expect(
+        service.getActivityTimeline(7, { from: '2026-99-99' }),
+      ).rejects.toThrow();
+    });
+
+    it('should throw BadRequestException when from date is after to date (HU-20)', async () => {
+      await expect(
+        service.getActivityTimeline(7, { from: '2026-11-30', to: '2026-11-01' }),
+      ).rejects.toThrow();
+    });
   });
 
   describe('getActivityHistoryById (HU-20)', () => {

@@ -1,5 +1,4 @@
 import {
-  IsDateString,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -9,6 +8,7 @@ import {
   Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsCalendarDate } from '../../common/utils/date.utils';
 
 export class CreateWorkSessionDto {
   @ApiProperty({
@@ -22,12 +22,12 @@ export class CreateWorkSessionDto {
   minutes_spent: number;
 
   @ApiPropertyOptional({
-    description: 'Fecha en la que se realizó la sesión (formato YYYY-MM-DD o ISO 8601). Si se omite, se usa la fecha actual.',
-    example: '2026-11-04',
+    description: 'Fecha en la que se realizó la sesión (formato YYYY-MM-DD o ISO 8601). Si se omite, se usa la fecha actual en la zona horaria del sistema (por defecto America/La_Paz).',
+    example: '2026-11-05',
   })
   @IsOptional()
-  @IsDateString({}, {
-    message: 'La fecha debe ser una fecha válida (formato YYYY-MM-DD o ISO 8601)',
+  @IsCalendarDate({
+    message: 'La fecha de la sesión (session_date) debe ser una fecha de calendario real y válida (formato YYYY-MM-DD o ISO 8601)',
   })
   session_date?: string;
 

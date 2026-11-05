@@ -21,6 +21,7 @@ import { ActivityHistoryFilterDto } from './dto/activity-history-filter.dto';
 import { ActivityOrigin, ActivityStatus } from './enums/activity.enum';
 import { PriorityLevel } from '../goals/enums/goal.enum';
 import { ScheduleReason } from './enums/schedule-reason.enum';
+import { getAppDateString } from '../common/utils/date.utils';
 
 @Injectable()
 export class ActivitiesService {
@@ -311,7 +312,7 @@ export class ActivitiesService {
       throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
     }
 
-    const sessionDate = dto.session_date ? dto.session_date.split('T')[0] : new Date().toISOString().split('T')[0];
+    const sessionDate = getAppDateString(dto.session_date);
 
     const workSession = this.workSessionsRepository.create({
       activity_id: activityId,
@@ -458,13 +459,25 @@ export class ActivitiesService {
       query += ` AND event_type = $${params.length}`;
     }
 
+    if (filters?.from && filters?.to) {
+      const fromDate = getAppDateString(filters.from);
+      const toDate = getAppDateString(filters.to);
+      if (fromDate > toDate) {
+        throw new BadRequestException(
+          `El rango de fechas es inválido: la fecha inicial (from: ${filters.from}) no puede ser posterior a la fecha final (to: ${filters.to})`,
+        );
+      }
+    }
+
     if (filters?.from) {
-      params.push(filters.from);
+      const fromDate = getAppDateString(filters.from);
+      params.push(fromDate);
       query += ` AND event_date >= $${params.length}`;
     }
 
     if (filters?.to) {
-      params.push(filters.to);
+      const toDate = getAppDateString(filters.to);
+      params.push(toDate);
       query += ` AND event_date <= $${params.length}`;
     }
 
