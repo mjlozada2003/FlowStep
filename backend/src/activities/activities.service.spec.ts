@@ -19,6 +19,7 @@ describe('ActivitiesService', () => {
     save: jest.fn(),
     findOne: jest.fn(),
     remove: jest.fn(),
+    query: jest.fn(),
   };
 
   const mockStatusHistoryRepository = {
@@ -405,6 +406,46 @@ describe('ActivitiesService', () => {
 
       const result = await service.getMissReasons();
       expect(result).toEqual(reasons);
+    });
+  });
+
+  describe('getActivityTimeline (HU-20)', () => {
+    it('should query timeline view with filters', async () => {
+      const mockEvents = [
+        {
+          activity_id: 1,
+          event_type: 'work_session',
+          event_date: '2026-11-04',
+          details: { minutes_spent: 30 },
+        },
+      ];
+
+      mockActivityRepository.query.mockResolvedValue(mockEvents);
+
+      const result = await service.getActivityTimeline(7, {
+        goal_id: 1,
+        event_type: 'work_session',
+      });
+
+      expect(result).toEqual(mockEvents);
+      expect(mockActivityRepository.query).toHaveBeenCalledWith(
+        expect.stringContaining('SELECT * FROM v_activity_timeline WHERE user_id = $1'),
+        expect.arrayContaining([7, 1, 'work_session', 50, 0]),
+      );
+    });
+  });
+
+  describe('getActivityHistoryById (HU-20)', () => {
+    it('should retrieve history for a specific owned activity', async () => {
+      const activity = { activity_id: 1, title: 'Activity 1' };
+      mockActivityRepository.findOne.mockResolvedValue(activity);
+      mockActivityRepository.query.mockResolvedValue([]);
+
+      const result = await service.getActivityHistoryById(7, 1);
+      expect(result).toEqual([]);
+      expect(mockActivityRepository.findOne).toHaveBeenCalled();
+    });
+  });
     });
   });
     });

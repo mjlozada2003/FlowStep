@@ -17,6 +17,7 @@ import { UpdateActivityDto } from './dto/update-activity.dto';
 import { RescheduleActivityDto } from './dto/reschedule-activity.dto';
 import { CreateWorkSessionDto } from './dto/create-work-session.dto';
 import { RecordActivityMissDto } from './dto/record-activity-miss.dto';
+import { ActivityHistoryFilterDto } from './dto/activity-history-filter.dto';
 import { ActivityOrigin, ActivityStatus } from './enums/activity.enum';
 import { PriorityLevel } from '../goals/enums/goal.enum';
 import { ScheduleReason } from './enums/schedule-reason.enum';
@@ -434,6 +435,61 @@ export class ActivitiesService {
       relations: { reason: true, schedule: true },
       order: { recorded_at: 'DESC' },
     });
+  }
+
+  async getActivityTimeline(
+    userId: number,
+    filters?: ActivityHistoryFilterDto,
+  ): Promise<any[]> {
+    const params: any[] = [userId];
+    let query = 'SELECT * FROM v_activity_timeline WHERE user_id = $1';
+
+    if (filters?.goal_id != null) {
+      params.push(filters.goal_id);
+      query += ` AND goal_id = $${params.length}`;
+    }
+
+    if (filters?.activity_id != null) {
+      params.push(filters.activity_id);
+      query += ` AND activity_id = $${params.length}`;
+    }
+
+    if (filters?.event_type) {
+      params.push(filters.event_type);
+      query += ` AND event_type = $${params.length}`;
+    }
+
+    if (filters?.from) {
+      params.push(filters.from);
+      query += ` AND event_date >= $${params.length}`;
+    }
+
+    if (filters?.to) {
+      params.push(filters.to);
+      query += ` AND event_date <= $${params.length}`;
+    }
+
+    query += ' ORDER BY recorded_at DESC, event_date DESC';
+
+    const limit = filters?.limit && filters.limit > 0 ? filters.limit : 50;
+    const offset = filters?.offset && filters.offset >= 0 ? filters.offset : 0;
+
+    params.push(limit);
+    query += ` LIMIT $${params.length}`;
+
+    params.push(offset);
+    query += ` OFFSET $${params.length}`;
+
+    return this.activitiesRepository.query(query, params);
+  }
+
+  async getActivityHistoryById(userId: number, activityId: number): Promise<any[]> {
+    const activity = await this.findOwnedActivity(userId, activityId);
+    if (!activity) {
+      throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
+    }
+
+    return this.getActivityTimeline(userId, { activity_id: activityId });
   }
 
   private timeToSeconds(time: string): number {

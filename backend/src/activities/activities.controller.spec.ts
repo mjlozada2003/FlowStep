@@ -20,6 +20,8 @@ describe('ActivitiesController', () => {
     getMissReasons: jest.fn(),
     recordMiss: jest.fn(),
     getActivityMisses: jest.fn(),
+    getActivityTimeline: jest.fn(),
+    getActivityHistoryById: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -158,6 +160,32 @@ describe('ActivitiesController', () => {
 
       const result = await controller.getMissReasons();
       expect(result).toEqual(reasons);
+    });
+  });
+
+  describe('getTimeline (HU-20)', () => {
+    it('should retrieve activity timeline events', async () => {
+      const events = [{ event_id: 1, event_type: 'work_session' }];
+      mockActivitiesService.getActivityTimeline.mockResolvedValue(events);
+
+      const req = { user: { userId: 7 } };
+      const result = await controller.getTimeline(req, { goal_id: 1 });
+      expect(result).toEqual(events);
+      expect(mockActivitiesService.getActivityTimeline).toHaveBeenCalledWith(7, { goal_id: 1 });
+    });
+  });
+
+  describe('getActivityHistory (HU-20)', () => {
+    it('should retrieve history for a specific activity', async () => {
+      const events = [{ event_id: 1, event_type: 'status_change' }];
+      mockActivitiesService.getActivityHistoryById.mockResolvedValue(events);
+
+      const req = { user: { userId: 7 } };
+      const result = await controller.getActivityHistory(req, 1);
+      expect(result).toEqual(events);
+      expect(mockActivitiesService.getActivityHistoryById).toHaveBeenCalledWith(7, 1);
+    });
+  });
     });
   });
     });

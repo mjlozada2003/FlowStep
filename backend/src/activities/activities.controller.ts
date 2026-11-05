@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   UseGuards,
   Request,
+  Query,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { ActivitiesService } from './activities.service';
@@ -16,6 +17,7 @@ import { UpdateActivityDto } from './dto/update-activity.dto';
 import { RescheduleActivityDto } from './dto/reschedule-activity.dto';
 import { CreateWorkSessionDto } from './dto/create-work-session.dto';
 import { RecordActivityMissDto } from './dto/record-activity-miss.dto';
+import { ActivityHistoryFilterDto } from './dto/activity-history-filter.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('Actividades')
@@ -44,6 +46,58 @@ export class ActivitiesController {
   })
   getMissReasons() {
     return this.activitiesService.getMissReasons();
+  }
+
+  @Get('history')
+  @ApiOperation({
+    summary: 'Consultar el historial cronológico consolidado de actividades (HU-20)',
+    description: 'Retorna la cronología unificada de eventos de actividades del usuario (sesiones de trabajo, cambios de estado, reprogramaciones e incidencias de incumplimiento) consultando la vista v_activity_timeline, con soporte para filtros por meta, actividad, tipo de evento y rango de fechas.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Historial de actividades recuperado exitosamente.',
+    schema: {
+      example: [
+        {
+          user_id: 1,
+          goal_id: 1,
+          stage_id: 1,
+          activity_id: 2,
+          activity_title: 'Estudiar vocabulario básico',
+          event_type: 'work_session',
+          event_id: 1,
+          event_date: '2026-11-04',
+          recorded_at: '2026-11-04T15:00:00.000Z',
+          details: {
+            minutes_spent: 45,
+            difficulty_level: 3,
+            difficulty_notes: 'Práctica fluida',
+          },
+        },
+        {
+          user_id: 1,
+          goal_id: 1,
+          stage_id: 1,
+          activity_id: 2,
+          activity_title: 'Estudiar vocabulario básico',
+          event_type: 'status_change',
+          event_id: 1,
+          event_date: '2026-11-04',
+          recorded_at: '2026-11-04T15:05:00.000Z',
+          details: {
+            previous_status: 'pending',
+            new_status: 'completed',
+            previous_completed_at: null,
+          },
+        },
+      ],
+    },
+  })
+  getTimeline(
+    @Request() req: any,
+    @Query() filterDto: ActivityHistoryFilterDto,
+  ) {
+    return this.activitiesService.getActivityTimeline(req.user.userId, filterDto);
   }
 
   @Get(':id')
@@ -345,5 +399,26 @@ export class ActivitiesController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.activitiesService.getActivityMisses(req.user.userId, id);
+  }
+
+  @Get(':id/history')
+  @ApiOperation({
+    summary: 'Consultar el historial cronológico de una actividad específica (HU-20)',
+    description: 'Retorna todos los eventos cronológicos registrados exclusivamente para esta actividad (sesiones, cambios de estado, reprogramaciones e incidencias).',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la actividad', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Historial de la actividad recuperado exitosamente.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Actividad no encontrada o no pertenece al usuario.',
+  })
+  getActivityHistory(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.activitiesService.getActivityHistoryById(req.user.userId, id);
   }
 }
