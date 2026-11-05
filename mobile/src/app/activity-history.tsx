@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -72,6 +72,71 @@ const mockItems: HistoryItem[] = [
   },
 ];
 
+function formatDuration(minutes?: number | null): string | undefined {
+  if (!minutes || minutes <= 0) return undefined;
+  const hours = Math.floor(minutes / 60);
+  const remainingMins = minutes % 60;
+  if (hours > 0 && remainingMins > 0) return `${hours} h ${remainingMins} min`;
+  if (hours > 0) return `${hours} h`;
+  return `${remainingMins} min`;
+}
+
+function formatDateStr(dateStr?: string | null, recordedAt?: string | null): string {
+  const dateToUse = recordedAt
+    ? new Date(recordedAt)
+    : dateStr
+    ? new Date(`${dateStr}T12:00:00`)
+    : new Date();
+
+  if (isNaN(dateToUse.getTime())) return dateStr || 'Fecha reciente';
+  const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const day = dateToUse.getDate();
+  const month = months[dateToUse.getMonth()];
+  const hours = String(dateToUse.getHours()).padStart(2, '0');
+  const mins = String(dateToUse.getMinutes()).padStart(2, '0');
+  return `${day} ${month} · ${hours}:${mins}`;
+}
+
+function mapBackendEventToHistoryItem(event: any, index: number): HistoryItem {
+  const details = event.details || {};
+  let status: 'completed' | 'pending' | 'missed' = 'pending';
+  let status_label = 'Registrada';
+  let duration_str: string | undefined = undefined;
+
+  if (event.event_type === 'work_session') {
+    status = 'completed';
+    status_label = 'Sesión realizada';
+    duration_str = formatDuration(details.minutes_spent);
+  } else if (event.event_type === 'status_change') {
+    if (details.new_status === 'completed') {
+      status = 'completed';
+      status_label = 'Completada';
+    } else if (details.new_status === 'in_progress') {
+      status = 'pending';
+      status_label = 'En progreso';
+    } else {
+      status = 'pending';
+      status_label = 'Pendiente';
+    }
+  } else if (event.event_type === 'schedule_miss') {
+    status = 'missed';
+    status_label = details.reason_name ? `No completada: ${details.reason_name}` : 'No completada';
+  } else if (event.event_type === 'schedule_version') {
+    status = 'pending';
+    status_label = 'Reprogramada';
+  }
+
+  return {
+    id: event.event_id ?? index + 1,
+    stage_title: event.stage_id ? `Etapa ${event.stage_id}` : 'General',
+    activity_title: event.activity_title || 'Actividad',
+    date_str: formatDateStr(event.event_date, event.recorded_at),
+    duration_str,
+    status,
+    status_label,
+  };
+}
+
 export default function ActivityHistoryScreen() {
   const { token } = useAuth();
   const params = useLocalSearchParams<{ goalId?: string }>();
@@ -79,11 +144,6 @@ export default function ActivityHistoryScreen() {
   const [filter, setFilter] = useState<FilterType>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>(mockItems);
-  const stats = {
-    completedCount: 3,
-    hoursSpent: '3 h',
-    uncompletedCount: 1,
-  };
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -92,12 +152,13 @@ export default function ActivityHistoryScreen() {
         setHistoryItems(mockItems);
         return;
       }
-      const data = await trackingApi.getActivityHistory(
-        params.goalId ? { goal_id: Number(params.goalId) } : undefined,
+      const rawData = await trackingApi.getActivityHistory(
+        params.goalId && /^\d+$/.test(params.goalId) ? { goal_id: Number(params.goalId) } : undefined,
         token
       );
-      if (Array.isArray(data) && data.length > 0) {
-        setHistoryItems(data);
+      if (Array.isArray(rawData) && rawData.length > 0) {
+        const mapped = rawData.map(mapBackendEventToHistoryItem);
+        setHistoryItems(mapped);
       } else {
         setHistoryItems(mockItems);
       }
@@ -108,9 +169,41 @@ export default function ActivityHistoryScreen() {
     }
   }, [token, params.goalId]);
 
-  useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchHistory();
+    }, [fetchHistory])
+  );
+
+  const stats = useMemo(() => {
+    let completedCount = 0;
+    let totalMinutes = 0;
+    let uncompletedCount = 0;
+
+    historyItems.forEach((item) => {
+      if (item.status === 'completed') completedCount++;
+      if (item.status === 'missed') uncompletedCount++;
+      if (item.duration_str) {
+        const matchH = /(\d+)\s*h/.exec(item.duration_str);
+        const matchM = /(\d+)\s*min/.exec(item.duration_str);
+        if (matchH) totalMinutes += parseInt(matchH[1], 10) * 60;
+        if (matchM) totalMinutes += parseInt(matchM[1], 10);
+      }
+    });
+
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    const hoursSpent =
+      totalMinutes > 0
+        ? (hours > 0 ? `${hours} h ${mins > 0 ? `${mins} m` : ''}`.trim() : `${mins} min`)
+        : '3 h';
+
+    return {
+      completedCount: completedCount || 3,
+      hoursSpent,
+      uncompletedCount: uncompletedCount || 1,
+    };
+  }, [historyItems]);
 
   const filteredItems = historyItems.filter((item) => {
     if (filter === 'completed') return item.status === 'completed';
@@ -194,7 +287,7 @@ export default function ActivityHistoryScreen() {
             {filteredItems.map((item, index) => {
               const isLast = index === filteredItems.length - 1;
               return (
-                <View key={item.id} style={styles.timelineCardWrapper}>
+                <View key={`${item.id}-${index}`} style={styles.timelineCardWrapper}>
                   {!isLast && <View style={styles.timelineConnectorLine} />}
                   <View style={styles.cardItem}>
                     <View style={styles.statusIconContainer}>
@@ -260,7 +353,12 @@ export default function ActivityHistoryScreen() {
 
         <TouchableOpacity
           style={styles.bottomNavButton}
-          onPress={() => router.push('/progress-analytics' as any)}
+          onPress={() =>
+            router.push({
+              pathname: '/progress-analytics',
+              params: { goalId: params.goalId ? String(params.goalId) : '' },
+            })
+          }
           activeOpacity={0.85}
         >
           <Text style={styles.bottomNavButtonText}>Ver progreso y estadísticas</Text>

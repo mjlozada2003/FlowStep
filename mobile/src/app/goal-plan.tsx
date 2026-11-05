@@ -219,14 +219,25 @@ export default function GoalPlanScreen() {
               <Text style={styles.miniMetricLabel}>Por semana</Text>
             </View>
 
-            <View style={styles.miniMetricCard}>
+            <TouchableOpacity
+              style={styles.miniMetricCard}
+              activeOpacity={0.7}
+              onPress={() =>
+                router.push({
+                  pathname: '/progress-analytics',
+                  params: {
+                    goalId: goalId ? String(goalId) : '',
+                  },
+                })
+              }
+            >
               <Text style={styles.miniMetricValue}>
                 {progress ? `${progress.progress_percentage}%` : '—'}
               </Text>
               <Text style={styles.miniMetricLabel}>
-                Progreso
+                Progreso (ver)
               </Text>
-            </View>
+            </TouchableOpacity>
           </View>
 
           {/* Resumen de conteo */}
@@ -266,6 +277,56 @@ export default function GoalPlanScreen() {
               <View>
                 <Text style={styles.scheduleCardTag}>PLAN ADAPTADO A TU DISPONIBILIDAD</Text>
                 <Text style={styles.scheduleCardTitle}>Ver agenda de esta semana</Text>
+              </View>
+            </View>
+            <Feather name="arrow-right" size={18} color="#174A62" />
+          </TouchableOpacity>
+
+          {/* Tarjeta de Acceso a Seguimiento y Métricas (HU-21, HU-22, HU-24) */}
+          <TouchableOpacity
+            style={styles.scheduleAccessCard}
+            activeOpacity={0.85}
+            onPress={() =>
+              router.push({
+                pathname: '/progress-analytics',
+                params: {
+                  goalId: goalId ? String(goalId) : '',
+                },
+              })
+            }
+          >
+            <View style={styles.scheduleCardLeft}>
+              <View style={[styles.calendarIconBox, { backgroundColor: '#E2EEF1' }]}>
+                <Feather name="trending-up" size={18} color="#174A62" />
+              </View>
+              <View>
+                <Text style={styles.scheduleCardTag}>SEGUIMIENTO Y RITMO</Text>
+                <Text style={styles.scheduleCardTitle}>Ver progreso y estadísticas</Text>
+              </View>
+            </View>
+            <Feather name="arrow-right" size={18} color="#174A62" />
+          </TouchableOpacity>
+
+          {/* Tarjeta de Acceso a Seguimiento y Métricas (HU-21, HU-22, HU-24) */}
+          <TouchableOpacity
+            style={styles.scheduleAccessCard}
+            activeOpacity={0.85}
+            onPress={() =>
+              router.push({
+                pathname: '/progress-analytics',
+                params: {
+                  goalId: goalId ? String(goalId) : '',
+                },
+              })
+            }
+          >
+            <View style={styles.scheduleCardLeft}>
+              <View style={[styles.calendarIconBox, { backgroundColor: '#E2EEF1' }]}>
+                <Feather name="trending-up" size={18} color="#174A62" />
+              </View>
+              <View>
+                <Text style={styles.scheduleCardTag}>SEGUIMIENTO Y RITMO</Text>
+                <Text style={styles.scheduleCardTitle}>Ver progreso y estadísticas</Text>
               </View>
             </View>
             <Feather name="arrow-right" size={18} color="#174A62" />

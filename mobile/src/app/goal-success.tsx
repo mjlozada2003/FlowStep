@@ -168,7 +168,7 @@ export default function GoalSuccessScreen() {
             disabled={!isConfirmed}
             onPress={() =>
               router.push({
-                pathname: '/schedule',
+                pathname: '/progress-analytics',
                 params: { goalId: goalId ? String(goalId) : '' },
               })
             }
@@ -176,6 +176,20 @@ export default function GoalSuccessScreen() {
           >
             <Text style={styles.submitButtonText}>Ver mi progreso</Text>
             <Feather name="arrow-right" size={20} color="#FFFFFF" style={styles.buttonArrow} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.submitButton, { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#CBD5E1', marginTop: 10 }]}
+            onPress={() =>
+              router.push({
+                pathname: '/schedule',
+                params: { goalId: goalId ? String(goalId) : '' },
+              })
+            }
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.submitButtonText, { color: '#174A62' }]}>Ver agenda adaptada</Text>
+            <Feather name="calendar" size={18} color="#174A62" style={styles.buttonArrow} />
           </TouchableOpacity>
         </View>
       </ScrollView>

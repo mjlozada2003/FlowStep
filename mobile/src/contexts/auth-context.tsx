@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useMemo,
   useState,
@@ -7,6 +8,23 @@ import {
 import type { PropsWithChildren } from 'react';
 
 import type { AuthSession } from '@/services/api/auth';
+
+const STORAGE_KEY = 'flowstep_auth_session';
+
+function getStoredSession(): AuthSession | null {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const saved = window.localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed.accessToken === 'string') {
+          return parsed;
+        }
+      }
+    } catch {}
+  }
+  return null;
+}
 
 interface AuthContextValue {
   session: AuthSession | null;
@@ -19,7 +37,25 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: PropsWithChildren) {
-  const [session, setSession] = useState<AuthSession | null>(null);
+  const [session, setSessionState] = useState<AuthSession | null>(getStoredSession);
+
+  const setSession = useCallback((newSession: AuthSession) => {
+    setSessionState(newSession);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(newSession));
+      } catch {}
+    }
+  }, []);
+
+  const clearSession = useCallback(() => {
+    setSessionState(null);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch {}
+    }
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -27,9 +63,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
       token: session?.accessToken ?? null,
       user: session?.user ?? null,
       setSession,
-      clearSession: () => setSession(null),
+      clearSession,
     }),
-    [session],
+    [session, setSession, clearSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

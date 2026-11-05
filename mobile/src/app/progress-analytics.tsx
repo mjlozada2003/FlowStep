@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -12,11 +12,144 @@ import {
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
 import { useAuth } from '@/contexts/auth-context';
-import { trackingApi } from '@/services/api/tracking';
+import { getUserGoals } from '@/services/api/goals';
+import { trackingApi, type GoalChartData, type GoalPaceData } from '@/services/api/tracking';
+
+const mockChartData: GoalChartData = {
+  goal_id: 1,
+  goal_title: 'Crear una aplicación web',
+  summary: {
+    progress_percentage: '25.00',
+    total_activities: 12,
+    completed_activities: 3,
+    total_estimated_minutes: 360,
+    completed_estimated_minutes: 90,
+    total_minutes_spent: 85,
+  },
+  weekly_progress: [],
+  status_distribution: {
+    completed: 3,
+    in_progress: 0,
+    pending: 8,
+    skipped: 1,
+  },
+  stage_progress: [
+    {
+      stage_id: 1,
+      stage_name: 'Aprendizaje',
+      sort_order: 1,
+      total_activities: 4,
+      completed_activities: 2,
+      progress_percentage: '50.00',
+    },
+    {
+      stage_id: 2,
+      stage_name: 'Desarrollo',
+      sort_order: 2,
+      total_activities: 5,
+      completed_activities: 1,
+      progress_percentage: '20.00',
+    },
+    {
+      stage_id: 3,
+      stage_name: 'Pruebas',
+      sort_order: 3,
+      total_activities: 3,
+      completed_activities: 0,
+      progress_percentage: '0.00',
+    },
+  ],
+};
+
+const mockPaceData: GoalPaceData = {
+  goal_id: 1,
+  goal_title: 'Crear una aplicación web',
+  progress_percentage: '25.00',
+  expected_progress_percentage: '23.00',
+  pace_status: 'on_track',
+  is_delayed: false,
+  delay_minutes: 0,
+  delay_percentage: 0,
+  alert_message: 'Estás 2 puntos por encima del ritmo previsto para hoy. Mantén tu constancia.',
+};
 
 export default function ProgressAnalyticsScreen() {
   const { token } = useAuth();
-  const [isLoading, setIsLoading] = useState(false);
+  const params = useLocalSearchParams<{ goalId?: string }>();
+  const [activeGoalId, setActiveGoalId] = useState<number | null>(
+    params.goalId && /^\d+$/.test(params.goalId) ? Number(params.goalId) : null
+  );
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [chartData, setChartData] = useState<GoalChartData>(mockChartData);
+  const [paceData, setPaceData] = useState<GoalPaceData>(mockPaceData);
+
+  const loadData = useCallback(async () => {
+    let resolvedGoalId = activeGoalId;
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      if (!resolvedGoalId) {
+        const goals = await getUserGoals(token);
+        if (goals.length > 0) {
+          resolvedGoalId = goals[0].goal_id;
+          setActiveGoalId(resolvedGoalId);
+        }
+      }
+
+      if (resolvedGoalId) {
+        const [chartsRes, paceRes] = await Promise.allSettled([
+          trackingApi.getGoalCharts(resolvedGoalId, token),
+          trackingApi.getGoalPace(resolvedGoalId, token),
+        ]);
+
+        if (chartsRes.status === 'fulfilled' && chartsRes.value) {
+          setChartData(chartsRes.value);
+        }
+        if (paceRes.status === 'fulfilled' && paceRes.value) {
+          setPaceData(paceRes.value);
+        }
+      }
+    } catch {
+      // Fallback a mock data
+    } finally {
+      setIsLoading(false);
+    }
+  }, [token, activeGoalId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
+
+  const rawPercent = parseFloat(chartData.summary.progress_percentage || '0');
+  const displayPercent = Math.min(100, Math.max(0, Math.round(rawPercent)));
+
+  const rawExpectedPercent = parseFloat(paceData.expected_progress_percentage || '0');
+  const displayExpectedPercent = Math.min(100, Math.max(0, Math.round(rawExpectedPercent)));
+
+  const isBehind = paceData.pace_status === 'behind' || paceData.is_delayed;
+  const isOnTrack = paceData.pace_status === 'on_track';
+
+  const motivationalMessage = isBehind
+    ? {
+        title: '¡No te desanimes!',
+        desc: paceData.alert_message || 'Estás un poco por detrás del ritmo. Dedica unos minutos hoy para retomar el impulso.',
+      }
+    : displayPercent >= 50
+    ? {
+        title: '¡Increíble avance!',
+        desc: 'Has superado la mitad de tu objetivo. Sigue con ese ritmo.',
+      }
+    : {
+        title: '¡Vas avanzando!',
+        desc: 'Cada actividad te acerca a tu objetivo. La constancia es la clave.',
+      };
 
   return (
     <Screen style={styles.screenBg}>
@@ -37,154 +170,244 @@ export default function ProgressAnalyticsScreen() {
           Una mirada clara a todo lo que ya has avanzado.
         </Text>
 
-        {/* Tarjeta 1: Resumen del Objetivo (HU-21) */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <View style={styles.iconCircle}>
-              <Feather name="target" size={16} color="#174A62" />
-            </View>
-            <View>
-              <Text style={styles.sectionCategory}>MI OBJETIVO</Text>
-              <Text style={styles.sectionTitle}>Crear una aplicación web</Text>
-            </View>
-          </View>
+        {isLoading ? (
+          <ActivityIndicator size="large" color="#174A62" style={{ marginVertical: 30 }} />
+        ) : (
+          <>
+            {/* Tarjeta 1: Resumen del Objetivo (HU-21) */}
+            <View style={styles.card}>
+              <View style={styles.cardHeaderRow}>
+                <View style={styles.iconCircle}>
+                  <Feather name="target" size={16} color="#174A62" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sectionCategory}>MI OBJETIVO</Text>
+                  <Text style={styles.sectionTitle} numberOfLines={2}>
+                    {chartData.goal_title || 'Objetivo'}
+                  </Text>
+                </View>
+              </View>
 
-          <View style={styles.percentageRow}>
-            <Text style={styles.bigPercentage}>25%</Text>
-            <Text style={styles.percentageSub}>del objetivo completado</Text>
-          </View>
+              <View style={styles.percentageRow}>
+                <Text style={styles.bigPercentage}>{displayPercent}%</Text>
+                <Text style={styles.percentageSub}>del objetivo completado</Text>
+              </View>
 
-          {/* Barra de progreso */}
-          <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: '25%' }]} />
-          </View>
+              {/* Barra de progreso */}
+              <View style={styles.progressBarBg}>
+                <View style={[styles.progressBarFill, { width: `${displayPercent}%` }]} />
+              </View>
 
-          <View style={styles.statsSummaryRow}>
-            <View style={styles.statMiniCol}>
-              <Text style={styles.statMiniNum}>3</Text>
-              <Text style={styles.statMiniLabel}>completadas</Text>
+              <View style={styles.statsSummaryRow}>
+                <View style={styles.statMiniCol}>
+                  <Text style={styles.statMiniNum}>{chartData.summary.completed_activities}</Text>
+                  <Text style={styles.statMiniLabel}>completadas</Text>
+                </View>
+                <View style={styles.verticalDivider} />
+                <View style={styles.statMiniCol}>
+                  <Text style={styles.statMiniNum}>
+                    {chartData.status_distribution?.pending ??
+                      chartData.summary.total_activities - chartData.summary.completed_activities}
+                  </Text>
+                  <Text style={styles.statMiniLabel}>pendientes</Text>
+                </View>
+                <View style={styles.verticalDivider} />
+                <View style={styles.statMiniCol}>
+                  <Text style={styles.statMiniNum}>
+                    {chartData.status_distribution?.skipped ?? 0}
+                  </Text>
+                  <Text style={styles.statMiniLabel}>no completada</Text>
+                </View>
+              </View>
             </View>
-            <View style={styles.verticalDivider} />
-            <View style={styles.statMiniCol}>
-              <Text style={styles.statMiniNum}>8</Text>
-              <Text style={styles.statMiniLabel}>pendientes</Text>
-            </View>
-            <View style={styles.verticalDivider} />
-            <View style={styles.statMiniCol}>
-              <Text style={styles.statMiniNum}>1</Text>
-              <Text style={styles.statMiniLabel}>no completada</Text>
-            </View>
-          </View>
-        </View>
 
-        {/* Mensaje motivacional */}
-        <View style={styles.motivationalCard}>
-          <View style={styles.avatarMiniCircle}>
-            <Feather name="smile" size={18} color="#FFFFFF" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.motivationalTitle}>¡Vas avanzando!</Text>
-            <Text style={styles.motivationalDesc}>Cada actividad te acerca a tu objetivo.</Text>
-          </View>
-        </View>
+            {/* Mensaje motivacional */}
+            <View
+              style={[
+                styles.motivationalCard,
+                isBehind && { backgroundColor: '#FEF3C7' },
+              ]}
+            >
+              <View
+                style={[
+                  styles.avatarMiniCircle,
+                  isBehind && { backgroundColor: '#D97706' },
+                ]}
+              >
+                <Feather
+                  name={isBehind ? 'alert-circle' : 'smile'}
+                  size={18}
+                  color="#FFFFFF"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.motivationalTitle,
+                    isBehind && { color: '#92400E' },
+                  ]}
+                >
+                  {motivationalMessage.title}
+                </Text>
+                <Text
+                  style={[
+                    styles.motivationalDesc,
+                    isBehind && { color: '#B45309' },
+                  ]}
+                >
+                  {motivationalMessage.desc}
+                </Text>
+              </View>
+            </View>
 
-        {/* Tarjeta 2: Ritmo de Avance (HU-22) */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRowSpace}>
-            <View>
-              <Text style={styles.sectionCategory}>RITMO DE AVANCE</Text>
-              <Text style={styles.sectionTitle}>Vas según lo planificado</Text>
-            </View>
-            <View style={styles.badgeInRhythm}>
-              <Text style={styles.badgeInRhythmText}>EN RITMO</Text>
-            </View>
-          </View>
+            {/* Tarjeta 2: Ritmo de Avance (HU-22 & HU-24) */}
+            <View style={styles.card}>
+              <View style={styles.cardHeaderRowSpace}>
+                <View>
+                  <Text style={styles.sectionCategory}>RITMO DE AVANCE</Text>
+                  <Text style={styles.sectionTitle}>
+                    {isBehind ? 'Alerta de retraso' : 'Vas según lo planificado'}
+                  </Text>
+                </View>
+                <View
+                  style={
+                    isOnTrack
+                      ? styles.badgeInRhythm
+                      : isBehind
+                      ? styles.badgeBehind
+                      : styles.badgeNoSchedule
+                  }
+                >
+                  <Text
+                    style={
+                      isOnTrack
+                        ? styles.badgeInRhythmText
+                        : isBehind
+                        ? styles.badgeBehindText
+                        : styles.badgeNoScheduleText
+                    }
+                  >
+                    {isOnTrack
+                      ? 'EN RITMO'
+                      : isBehind
+                      ? 'RETRASADO'
+                      : 'SIN CRONOGRAMA'}
+                  </Text>
+                </View>
+              </View>
 
-          <View style={styles.paceBarContainer}>
-            <View style={styles.paceLabelRow}>
-              <Text style={styles.paceLabelText}>Progreso actual</Text>
-              <Text style={styles.paceValueText}>25%</Text>
-            </View>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: '25%' }]} />
-            </View>
-          </View>
+              <View style={styles.paceBarContainer}>
+                <View style={styles.paceLabelRow}>
+                  <Text style={styles.paceLabelText}>Progreso actual</Text>
+                  <Text style={styles.paceValueText}>{displayPercent}%</Text>
+                </View>
+                <View style={styles.progressBarBg}>
+                  <View style={[styles.progressBarFill, { width: `${displayPercent}%` }]} />
+                </View>
+              </View>
 
-          <View style={styles.paceBarContainer}>
-            <View style={styles.paceLabelRow}>
-              <Text style={styles.paceLabelText}>Progreso esperado</Text>
-              <Text style={styles.paceValueText}>23%</Text>
-            </View>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFillExpected, { width: '23%' }]} />
-            </View>
-          </View>
+              <View style={styles.paceBarContainer}>
+                <View style={styles.paceLabelRow}>
+                  <Text style={styles.paceLabelText}>Progreso esperado</Text>
+                  <Text style={styles.paceValueText}>{displayExpectedPercent}%</Text>
+                </View>
+                <View style={styles.progressBarBg}>
+                  <View
+                    style={[
+                      styles.progressBarFillExpected,
+                      { width: `${displayExpectedPercent}%` },
+                    ]}
+                  />
+                </View>
+              </View>
 
-          <View style={styles.infoAlertBox}>
-            <Text style={styles.infoAlertText}>
-              Estás 2 puntos por encima del ritmo previsto para hoy. Mantén tu constancia.
-            </Text>
-          </View>
-        </View>
+              <View
+                style={[
+                  styles.infoAlertBox,
+                  isBehind && { backgroundColor: '#FEE2E2' },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.infoAlertText,
+                    isBehind && { color: '#991B1B' },
+                  ]}
+                >
+                  {paceData.alert_message ||
+                    (isOnTrack
+                      ? 'Estás dentro del ritmo previsto para hoy. ¡Mantén tu constancia!'
+                      : 'No hay cronogramas activos asignados aún para calcular el ritmo esperado.')}
+                </Text>
+              </View>
+            </View>
 
-        {/* Tarjeta 3: Progreso por Etapa (HU-24) */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRowSpace}>
-            <Text style={styles.sectionTitle}>Progreso por etapa</Text>
-            <TouchableOpacity onPress={() => router.push('/activity-history' as any)}>
-              <Text style={styles.linkText}>Ver historial</Text>
+            {/* Tarjeta 3: Progreso por Etapa (HU-24) */}
+            <View style={styles.card}>
+              <View style={styles.cardHeaderRowSpace}>
+                <Text style={styles.sectionTitle}>Progreso por etapa</Text>
+                <TouchableOpacity
+                  onPress={() =>
+                    router.push({
+                      pathname: '/activity-history',
+                      params: { goalId: activeGoalId ? String(activeGoalId) : '' },
+                    })
+                  }
+                >
+                  <Text style={styles.linkText}>Ver historial</Text>
+                </TouchableOpacity>
+              </View>
+
+              {chartData.stage_progress && chartData.stage_progress.length > 0 ? (
+                chartData.stage_progress.map((stage, idx) => {
+                  const stagePercent = Math.min(
+                    100,
+                    Math.max(0, Math.round(parseFloat(stage.progress_percentage || '0')))
+                  );
+                  return (
+                    <View key={stage.stage_id ?? idx} style={styles.stageProgressItem}>
+                      <View style={styles.stageProgressHeader}>
+                        <View style={styles.stageMiniBadge}>
+                          <Text style={styles.stageMiniText}>
+                            {String(stage.sort_order ?? idx + 1).padStart(2, '0')}
+                          </Text>
+                        </View>
+                        <Text style={styles.stageNameText} numberOfLines={1}>
+                          {stage.stage_name}
+                        </Text>
+                        <Text style={styles.stageCountText}>
+                          {stage.completed_activities} de {stage.total_activities}
+                        </Text>
+                        <Text style={styles.stagePercentText}>{stagePercent}%</Text>
+                      </View>
+                      <View style={styles.progressBarBg}>
+                        <View
+                          style={[styles.progressBarFill, { width: `${stagePercent}%` }]}
+                        />
+                      </View>
+                    </View>
+                  );
+                })
+              ) : (
+                <Text style={styles.emptyStagesText}>No hay etapas registradas para este objetivo.</Text>
+              )}
+            </View>
+
+            {/* Botón Inferior Principal */}
+            <TouchableOpacity
+              style={styles.bottomNavButton}
+              onPress={() =>
+                router.push({
+                  pathname: '/activity-history',
+                  params: { goalId: activeGoalId ? String(activeGoalId) : '' },
+                })
+              }
+              activeOpacity={0.85}
+            >
+              <Text style={styles.bottomNavButtonText}>Ver historial de actividades</Text>
+              <Feather name="arrow-right" size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
             </TouchableOpacity>
-          </View>
-
-          {/* Etapa 1 */}
-          <View style={styles.stageProgressItem}>
-            <View style={styles.stageProgressHeader}>
-              <View style={styles.stageMiniBadge}><Text style={styles.stageMiniText}>01</Text></View>
-              <Text style={styles.stageNameText}>Aprendizaje</Text>
-              <Text style={styles.stageCountText}>2 de 4 actividades</Text>
-              <Text style={styles.stagePercentText}>50%</Text>
-            </View>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: '50%' }]} />
-            </View>
-          </View>
-
-          {/* Etapa 2 */}
-          <View style={styles.stageProgressItem}>
-            <View style={styles.stageProgressHeader}>
-              <View style={styles.stageMiniBadge}><Text style={styles.stageMiniText}>02</Text></View>
-              <Text style={styles.stageNameText}>Desarrollo</Text>
-              <Text style={styles.stageCountText}>1 de 5 actividades</Text>
-              <Text style={styles.stagePercentText}>20%</Text>
-            </View>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: '20%' }]} />
-            </View>
-          </View>
-
-          {/* Etapa 3 */}
-          <View style={styles.stageProgressItem}>
-            <View style={styles.stageProgressHeader}>
-              <View style={styles.stageMiniBadge}><Text style={styles.stageMiniText}>03</Text></View>
-              <Text style={styles.stageNameText}>Pruebas</Text>
-              <Text style={styles.stageCountText}>0 de 3 actividades</Text>
-              <Text style={styles.stagePercentText}>0%</Text>
-            </View>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: '0%' }]} />
-            </View>
-          </View>
-        </View>
-
-        {/* Botón Inferior Principal */}
-        <TouchableOpacity
-          style={styles.bottomNavButton}
-          onPress={() => router.back()}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.bottomNavButtonText}>Continuar avanzando</Text>
-          <Feather name="arrow-right" size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
-        </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </Screen>
   );
@@ -378,6 +601,32 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#234E52',
   },
+  badgeBehind: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#DC2626',
+  },
+  badgeBehindText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#991B1B',
+  },
+  badgeNoSchedule: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  badgeNoScheduleText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#4B5563',
+  },
   paceBarContainer: {
     marginBottom: 10,
   },
@@ -446,6 +695,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
     color: '#174A62',
+  },
+  emptyStagesText: {
+    fontSize: 12,
+    color: '#627D98',
+    fontStyle: 'italic',
+    paddingVertical: 8,
   },
   bottomNavButton: {
     backgroundColor: '#174A62',
