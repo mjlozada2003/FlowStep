@@ -1,0 +1,467 @@
+{
+  "info": {
+    "_postman_id": "flowstep-sprint-3-collection",
+    "name": "FlowStep - Sprint 3 (Tracking, Progreso y Analítica)",
+    "description": "Colección completa de pruebas Postman para los endpoints implementados en el Sprint 3 de FlowStep: HU-17, HU-18, HU-19, HU-20, HU-21, HU-22 y HU-24.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "goalId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "activityId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Autenticación",
+      "item": [
+        {
+          "name": "Login (Obtener Token JWT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.access_token) {",
+                  "    pm.collectionVariables.set('token', jsonData.access_token);",
+                  "    console.log('Token JWT guardado automáticamente en la colección');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@test.com\",\n  \"password\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Inicia sesión y extrae automáticamente el JWT guardándolo en la variable {{token}} de la colección."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. HU-17 & HU-18: Tiempo y Dificultades",
+      "item": [
+        {
+          "name": "Registrar Sesión de Trabajo con Dificultad (POST)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"minutes_spent\": 45,\n  \"session_date\": \"2026-11-05\",\n  \"difficulty_level\": 3,\n  \"difficulty_notes\": \"Tuve problemas al inicio pero logré avanzar buen ritmo.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/activities/{{activityId}}/sessions",
+              "host": ["{{baseUrl}}"],
+              "path": ["activities", "{{activityId}}", "sessions"]
+            },
+            "description": "Registra el tiempo dedicado (HU-17) y el nivel de dificultad 1-5 junto a notas (HU-18)."
+          }
+        },
+        {
+          "name": "Consultar Sesiones de la Actividad (GET)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/activities/{{activityId}}/sessions",
+              "host": ["{{baseUrl}}"],
+              "path": ["activities", "{{activityId}}", "sessions"]
+            },
+            "description": "Retorna el acumulado de minutos dedicados y el listado cronológico de sesiones de trabajo."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. HU-19: Causas de Incumplimiento",
+      "item": [
+        {
+          "name": "Consultar Catálogo de Motivos (GET)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/activities/miss-reasons",
+              "host": ["{{baseUrl}}"],
+              "path": ["activities", "miss-reasons"]
+            },
+            "description": "Obtiene la lista de razones predefinidas (Falta de tiempo, Imprevisto, etc.) para que el frontend arme el dropdown."
+          }
+        },
+        {
+          "name": "Registrar Incumplimiento de Actividad (POST)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason_id\": 1,\n  \"details\": \"Surgió una urgencia familiar y no pude conectarme al horario previsto.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/activities/{{activityId}}/miss",
+              "host": ["{{baseUrl}}"],
+              "path": ["activities", "{{activityId}}", "miss"]
+            },
+            "description": "Registra una incidencia de incumplimiento asociada a la versión vigente del cronograma."
+          }
+        },
+        {
+          "name": "Consultar Incumplimientos de Actividad (GET)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/activities/{{activityId}}/misses",
+              "host": ["{{baseUrl}}"],
+              "path": ["activities", "{{activityId}}", "misses"]
+            },
+            "description": "Lista el historial de incumplimientos de la actividad."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. HU-20: Historial y Cronología",
+      "item": [
+        {
+          "name": "Línea de Tiempo Global (GET)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/activities/history?limit=30&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["activities", "history"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "30"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Retorna todos los eventos unificados (sesiones, cambios de estado, reprogramaciones e incidencias) del usuario."
+          }
+        },
+        {
+          "name": "Línea de Tiempo Filtrada por Evento (GET)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/activities/history?goal_id={{goalId}}&event_type=work_session",
+              "host": ["{{baseUrl}}"],
+              "path": ["activities", "history"],
+              "query": [
+                {
+                  "key": "goal_id",
+                  "value": "{{goalId}}"
+                },
+                {
+                  "key": "event_type",
+                  "value": "work_session"
+                }
+              ]
+            },
+            "description": "Permite filtrar la cronología por objetivo y tipo de evento (work_session, status_change, schedule_miss, schedule_version)."
+          }
+        },
+        {
+          "name": "Historial de una Actividad Específica (GET)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/activities/{{activityId}}/history",
+              "host": ["{{baseUrl}}"],
+              "path": ["activities", "{{activityId}}", "history"]
+            },
+            "description": "Retorna la cronología detallada de eventos de una sola actividad."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. HU-22: Porcentaje de Avance",
+      "item": [
+        {
+          "name": "Progreso de Todos los Objetivos (GET)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/goals/progress",
+              "host": ["{{baseUrl}}"],
+              "path": ["goals", "progress"]
+            },
+            "description": "Obtiene porcentaje ponderado y métricas de avance de todos los objetivos del usuario."
+          }
+        },
+        {
+          "name": "Progreso de un Objetivo Específico (GET)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/goals/{{goalId}}/progress",
+              "host": ["{{baseUrl}}"],
+              "path": ["goals", "{{goalId}}", "progress"]
+            },
+            "description": "Retorna porcentaje ponderado, total de actividades y minutos completados para una meta."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. HU-24: Comparativa de Ritmo y Retrasos",
+      "item": [
+        {
+          "name": "Ritmo de Todos los Objetivos (GET)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/goals/pace",
+              "host": ["{{baseUrl}}"],
+              "path": ["goals", "pace"]
+            },
+            "description": "Lista el estado de ritmo (on_track, behind, no_schedule) y alertas de retraso de todas las metas."
+          }
+        },
+        {
+          "name": "Ritmo y Alerta de una Meta Específica (GET)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/goals/{{goalId}}/pace",
+              "host": ["{{baseUrl}}"],
+              "path": ["goals", "{{goalId}}", "pace"]
+            },
+            "description": "Calcula si la meta está retrasada respecto al cronograma actual, informando delay_minutes y alert_message."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. HU-21: Gráficos y Dashboard",
+      "item": [
+        {
+          "name": "Dataset Consolidado para Gráficos (GET)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/goals/{{goalId}}/charts",
+              "host": ["{{baseUrl}}"],
+              "path": ["goals", "{{goalId}}", "charts"]
+            },
+            "description": "Retorna en una sola petición el resumen, avance semanal, avance por fases y distribución por estados para renderizar gráficos en el frontend."
+          }
+        },
+        {
+          "name": "Serie Temporal de Progreso Semanal (GET)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/goals/{{goalId}}/weekly-progress",
+              "host": ["{{baseUrl}}"],
+              "path": ["goals", "{{goalId}}", "weekly-progress"]
+            },
+            "description": "Retorna la evolución semana a semana de minutos dedicados reales vs estimados."
+          }
+        }
+      ]
+    }
+  ]
+}
