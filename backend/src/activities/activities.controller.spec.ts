@@ -15,6 +15,8 @@ describe('ActivitiesController', () => {
     remove: jest.fn(),
     reschedule: jest.fn(),
     getScheduleHistory: jest.fn(),
+    logWorkSession: jest.fn(),
+    getWorkSessions: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -87,6 +89,48 @@ describe('ActivitiesController', () => {
       const result = await controller.markAsPending(req, 1);
       expect(result).toEqual(expectedResult);
       expect(mockActivitiesService.markAsPending).toHaveBeenCalledWith(7, 1);
+    });
+  });
+
+  describe('logWorkSession (HU-17, HU-18)', () => {
+    it('should log a work session', async () => {
+      const dto = {
+        minutes_spent: 45,
+        session_date: '2026-11-04',
+        difficulty_level: 3,
+        difficulty_notes: 'Buen avance',
+      };
+      const expectedResult = {
+        session_id: 1,
+        activity_id: 1,
+        ...dto,
+      };
+
+      mockActivitiesService.logWorkSession.mockResolvedValue(expectedResult);
+
+      const req = { user: { userId: 7 } };
+      const result = await controller.logWorkSession(req, 1, dto);
+      expect(result).toEqual(expectedResult);
+      expect(mockActivitiesService.logWorkSession).toHaveBeenCalledWith(7, 1, dto);
+    });
+  });
+
+  describe('getWorkSessions (HU-17)', () => {
+    it('should retrieve work sessions for an activity', async () => {
+      const expectedResult = {
+        activity_id: 1,
+        activity_title: 'Práctica',
+        estimated_minutes: 60,
+        total_logged_minutes: 45,
+        sessions: [],
+      };
+
+      mockActivitiesService.getWorkSessions.mockResolvedValue(expectedResult);
+
+      const req = { user: { userId: 7 } };
+      const result = await controller.getWorkSessions(req, 1);
+      expect(result).toEqual(expectedResult);
+      expect(mockActivitiesService.getWorkSessions).toHaveBeenCalledWith(7, 1);
     });
   });
 });

@@ -3,6 +3,7 @@ import { Stage } from '../../stages/entities/stage.entity';
 import { ActivityType, ActivityStatus, ActivityOrigin } from '../enums/activity.enum';
 import { PriorityLevel } from '../../goals/enums/goal.enum';
 import { ActivitySchedule } from './activity-schedule.entity';
+import { WorkSession } from './work-session.entity';
 
 @Entity('ACTIVITY')
 export class Activity {
@@ -67,4 +68,7 @@ export class Activity {
 
   @OneToMany(() => ActivitySchedule, (schedule) => schedule.activity)
   schedules: ActivitySchedule[];
+
+  @OneToMany(() => WorkSession, (session) => session.activity)
+  work_sessions: WorkSession[];
 }

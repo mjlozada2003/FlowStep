@@ -4,6 +4,7 @@ import { ActivitiesService } from './activities.service';
 import { Activity } from './entities/activity.entity';
 import { Stage } from '../stages/entities/stage.entity';
 import { ActivitySchedule } from './entities/activity-schedule.entity';
+import { WorkSession } from './entities/work-session.entity';
 import { ActivityOrigin, ActivityStatus, ActivityType } from './enums/activity.enum';
 import { ScheduleReason } from './enums/schedule-reason.enum';
 import { BadRequestException } from '@nestjs/common';
@@ -37,6 +38,12 @@ describe('ActivitiesService', () => {
     findOne: jest.fn(),
   };
 
+  const mockWorkSessionRepository = {
+    create: jest.fn(),
+    save: jest.fn(),
+    find: jest.fn(),
+  };
+
   const mockScheduleRepository = {
     create: jest.fn(),
     save: jest.fn(),
@@ -60,6 +67,10 @@ describe('ActivitiesService', () => {
         {
           provide: getRepositoryToken(ActivitySchedule),
           useValue: mockScheduleRepository,
+        },
+        {
+          provide: getRepositoryToken(WorkSession),
+          useValue: mockWorkSessionRepository,
         },
       ],
     }).compile();
@@ -254,5 +265,61 @@ describe('ActivitiesService', () => {
       }),
     );
     expect(mockActivityRepository.save).not.toHaveBeenCalled();
+  });
+
+  describe('logWorkSession (HU-17, HU-18)', () => {
+    it('should log a work session successfully', async () => {
+      const activity = { activity_id: 1, title: 'Test Activity', estimated_minutes: 60 };
+      mockActivityRepository.findOne.mockResolvedValue(activity);
+
+      const dto = {
+        minutes_spent: 45,
+        session_date: '2026-11-04',
+        difficulty_level: 3,
+        difficulty_notes: 'Práctica moderada',
+      };
+
+      const expectedSession = {
+        session_id: 1,
+        activity_id: 1,
+        ...dto,
+      };
+
+      mockWorkSessionRepository.create.mockReturnValue(expectedSession);
+      mockWorkSessionRepository.save.mockResolvedValue(expectedSession);
+
+      const result = await service.logWorkSession(7, 1, dto);
+      expect(result).toEqual(expectedSession);
+      expect(mockWorkSessionRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          activity_id: 1,
+          minutes_spent: 45,
+          session_date: '2026-11-04',
+          difficulty_level: 3,
+          difficulty_notes: 'Práctica moderada',
+        }),
+      );
+      expect(mockWorkSessionRepository.save).toHaveBeenCalledWith(expectedSession);
+    });
+  });
+
+  describe('getWorkSessions (HU-17)', () => {
+    it('should return session history and total logged minutes', async () => {
+      const activity = { activity_id: 1, title: 'Test Activity', estimated_minutes: 60 };
+      mockActivityRepository.findOne.mockResolvedValue(activity);
+
+      const sessions = [
+        { session_id: 1, minutes_spent: 30, session_date: '2026-11-04' },
+        { session_id: 2, minutes_spent: 20, session_date: '2026-11-03' },
+      ];
+      mockWorkSessionRepository.find.mockResolvedValue(sessions);
+
+      const result = await service.getWorkSessions(7, 1);
+      expect(result.activity_id).toBe(1);
+      expect(result.total_logged_minutes).toBe(50);
+      expect(result.estimated_minutes).toBe(60);
+      expect(result.sessions).toEqual(sessions);
+    });
+  });
   });
 });

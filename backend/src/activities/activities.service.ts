@@ -9,9 +9,11 @@ import { Activity } from './entities/activity.entity';
 import { Stage } from '../stages/entities/stage.entity';
 import { ActivitySchedule } from './entities/activity-schedule.entity';
 import { ActivityStatusHistory } from './entities/activity-status-history.entity';
+import { WorkSession } from './entities/work-session.entity';
 import { CreateActivityDto } from './dto/create-activity.dto';
 import { UpdateActivityDto } from './dto/update-activity.dto';
 import { RescheduleActivityDto } from './dto/reschedule-activity.dto';
+import { CreateWorkSessionDto } from './dto/create-work-session.dto';
 import { ActivityOrigin, ActivityStatus } from './enums/activity.enum';
 import { PriorityLevel } from '../goals/enums/goal.enum';
 import { ScheduleReason } from './enums/schedule-reason.enum';
@@ -25,6 +27,8 @@ export class ActivitiesService {
     private stagesRepository: Repository<Stage>,
     @InjectRepository(ActivitySchedule)
     private schedulesRepository: Repository<ActivitySchedule>,
+    @InjectRepository(WorkSession)
+    private workSessionsRepository: Repository<WorkSession>,
   ) {}
 
   private findOwnedActivity(
@@ -287,6 +291,64 @@ export class ActivitiesService {
       where: { activity_id: activityId },
       order: { version_number: 'ASC' },
     });
+  }
+
+  async logWorkSession(
+    userId: number,
+    activityId: number,
+    dto: CreateWorkSessionDto,
+  ): Promise<WorkSession> {
+    const activity = await this.findOwnedActivity(userId, activityId);
+    if (!activity) {
+      throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
+    }
+
+    const sessionDate =
+      dto.session_date || new Date().toISOString().split('T')[0];
+
+    const workSession = this.workSessionsRepository.create({
+      activity_id: activityId,
+      minutes_spent: dto.minutes_spent,
+      session_date: sessionDate,
+      difficulty_level: dto.difficulty_level ?? null,
+      difficulty_notes: dto.difficulty_notes ?? null,
+    });
+
+    return this.workSessionsRepository.save(workSession);
+  }
+
+  async getWorkSessions(
+    userId: number,
+    activityId: number,
+  ): Promise<{
+    activity_id: number;
+    activity_title: string;
+    estimated_minutes: number;
+    total_logged_minutes: number;
+    sessions: WorkSession[];
+  }> {
+    const activity = await this.findOwnedActivity(userId, activityId);
+    if (!activity) {
+      throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
+    }
+
+    const sessions = await this.workSessionsRepository.find({
+      where: { activity_id: activityId },
+      order: { session_date: 'DESC', created_at: 'DESC' },
+    });
+
+    const totalLoggedMinutes = sessions.reduce(
+      (acc, s) => acc + (s.minutes_spent || 0),
+      0,
+    );
+
+    return {
+      activity_id: activity.activity_id,
+      activity_title: activity.title,
+      estimated_minutes: activity.estimated_minutes || 0,
+      total_logged_minutes: totalLoggedMinutes,
+      sessions,
+    };
   }
 
   private timeToSeconds(time: string): number {

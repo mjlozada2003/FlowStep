@@ -14,6 +14,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam } from '@ne
 import { ActivitiesService } from './activities.service';
 import { UpdateActivityDto } from './dto/update-activity.dto';
 import { RescheduleActivityDto } from './dto/reschedule-activity.dto';
+import { CreateWorkSessionDto } from './dto/create-work-session.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('Actividades')
@@ -185,5 +186,82 @@ export class ActivitiesController {
   })
   getScheduleHistory(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
     return this.activitiesService.getScheduleHistory(req.user.userId, id);
+  }
+
+  @Post(':id/sessions')
+  @ApiOperation({
+    summary: 'Registrar tiempo dedicado y dificultades en una actividad (HU-17, HU-18)',
+    description: 'Permite registrar los minutos dedicados a una actividad, fecha, nivel de dificultad percibido (1 a 5) y notas u observaciones.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la actividad', example: 1 })
+  @ApiResponse({
+    status: 201,
+    description: 'Sesión de trabajo y retroalimentación registrada exitosamente.',
+    schema: {
+      example: {
+        session_id: 1,
+        activity_id: 1,
+        minutes_spent: 45,
+        session_date: '2026-11-04',
+        difficulty_level: 3,
+        difficulty_notes: 'Me costó entender los primeros conceptos pero logré avanzar.',
+        created_at: '2026-11-04T15:16:00.000Z',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Datos de sesión inválidos o dificultad fuera de rango (1-5).',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Actividad no encontrada o no pertenece al usuario autenticado.',
+  })
+  logWorkSession(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateWorkSessionDto,
+  ) {
+    return this.activitiesService.logWorkSession(req.user.userId, id, dto);
+  }
+
+  @Get(':id/sessions')
+  @ApiOperation({
+    summary: 'Consultar sesiones de trabajo y tiempo total dedicado (HU-17)',
+    description: 'Retorna el historial de sesiones registradas para la actividad y el total acumulado de minutos invertidos comparado con el tiempo estimado.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la actividad', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Historial de sesiones y minutos acumulados.',
+    schema: {
+      example: {
+        activity_id: 1,
+        activity_title: 'Estudiar gramática básica',
+        estimated_minutes: 60,
+        total_logged_minutes: 45,
+        sessions: [
+          {
+            session_id: 1,
+            activity_id: 1,
+            minutes_spent: 45,
+            session_date: '2026-11-04',
+            difficulty_level: 3,
+            difficulty_notes: 'Me costó entender los primeros conceptos pero logré avanzar.',
+            created_at: '2026-11-04T15:16:00.000Z',
+          },
+        ],
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Actividad no encontrada.',
+  })
+  getWorkSessions(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.activitiesService.getWorkSessions(req.user.userId, id);
   }
 }

@@ -4,11 +4,12 @@ import { Activity } from './entities/activity.entity';
 import { Stage } from '../stages/entities/stage.entity';
 import { ActivitySchedule } from './entities/activity-schedule.entity';
 import { ActivityStatusHistory } from './entities/activity-status-history.entity';
+import { WorkSession } from './entities/work-session.entity';
 import { ActivitiesService } from './activities.service';
 import { ActivitiesController } from './activities.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Activity, Stage, ActivitySchedule, ActivityStatusHistory])],
+  imports: [TypeOrmModule.forFeature([Activity, Stage, ActivitySchedule, ActivityStatusHistory, WorkSession])],
   providers: [ActivitiesService],
   controllers: [ActivitiesController],
   exports: [TypeOrmModule, ActivitiesService],

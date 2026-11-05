@@ -36,4 +36,6 @@ export class User {
 
   @OneToMany(() => Availability, (availability) => availability.user)
   availabilities: Availability[];
+
+
 }
