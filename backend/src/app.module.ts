@@ -24,7 +24,8 @@ import { AvailabilityModule } from './availability/availability.module';
       password: process.env.DB_PASSWORD || 'password',
       database: process.env.DB_NAME || 'flowstep_db',
       autoLoadEntities: true,
-      synchronize: true, // SOLO EN DESARROLLO
+      // El esquema se administra mediante los scripts versionados de database/.
+      synchronize: process.env.DB_SYNCHRONIZE === 'true',
     }),
     UsersModule,
     AuthModule,

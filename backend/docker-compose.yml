@@ -9,7 +9,7 @@ services:
       TZ: America/La_Paz
       PGTZ: America/La_Paz
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ../database:/docker-entrypoint-initdb.d:ro
