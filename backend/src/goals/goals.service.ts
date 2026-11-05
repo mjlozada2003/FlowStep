@@ -256,6 +256,108 @@ export class GoalsService {
     };
   }
 
+  async getAllGoalsProgress(userId: number): Promise<any[]> {
+    return this.goalsRepository.query(
+      'SELECT * FROM v_goal_progress WHERE user_id = $1 ORDER BY goal_id ASC',
+      [userId],
+    );
+  }
+
+  async getGoalPace(goalId: number, userId: number): Promise<any> {
+    const goal = await this.goalsRepository.findOne({
+      where: { goal_id: goalId, user_id: userId },
+    });
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    const result = await this.goalsRepository.query(
+      'SELECT * FROM v_goal_pace WHERE goal_id = $1 AND user_id = $2',
+      [goalId, userId],
+    );
+
+    const paceData = result && result.length > 0 ? result[0] : null;
+
+    if (!paceData) {
+      return {
+        goal_id: goal.goal_id,
+        user_id: goal.user_id,
+        goal_title: goal.title,
+        goal_status: goal.status,
+        pace_status: 'no_schedule',
+        is_delayed: false,
+        delay_minutes: 0,
+        delay_percentage: 0,
+        alert_message: 'Aún no cuentas con actividades programadas en el cronograma para medir el ritmo.',
+      };
+    }
+
+    const completedMinutes = Number(paceData.completed_estimated_minutes || 0);
+    const expectedMinutes = Number(paceData.expected_completed_minutes || 0);
+    const currentProgress = Number(paceData.progress_percentage || 0);
+    const expectedProgress = Number(paceData.expected_progress_percentage || 0);
+
+    const isDelayed = paceData.pace_status === 'behind';
+    const delayMinutes = isDelayed ? Math.max(0, expectedMinutes - completedMinutes) : 0;
+    const delayPercentage = isDelayed
+      ? Number(Math.max(0, expectedProgress - currentProgress).toFixed(2))
+      : 0;
+
+    let alertMessage = '';
+    if (isDelayed) {
+      alertMessage = `Atención: Tienes un posible retraso de ${delayMinutes} minutos (${delayPercentage}% por debajo del plan esperado a la fecha). Te recomendamos reprogramar o dedicar una sesión de estudio.`;
+    } else if (paceData.pace_status === 'on_track') {
+      alertMessage = '¡Excelente! Tu avance está al día con el cronograma planificado.';
+    } else {
+      alertMessage = 'Aún no cuentas con actividades programadas en el cronograma para medir el ritmo.';
+    }
+
+    return {
+      ...paceData,
+      is_delayed: isDelayed,
+      delay_minutes: delayMinutes,
+      delay_percentage: delayPercentage,
+      alert_message: alertMessage,
+    };
+  }
+
+  async getAllGoalsPace(userId: number): Promise<any[]> {
+    const results = await this.goalsRepository.query(
+      'SELECT * FROM v_goal_pace WHERE user_id = $1 ORDER BY goal_id ASC',
+      [userId],
+    );
+
+    return results.map((row: any) => {
+      const isDelayed = row.pace_status === 'behind';
+      const completedMinutes = Number(row.completed_estimated_minutes || 0);
+      const expectedMinutes = Number(row.expected_completed_minutes || 0);
+      const currentProgress = Number(row.progress_percentage || 0);
+      const expectedProgress = Number(row.expected_progress_percentage || 0);
+
+      const delayMinutes = isDelayed ? Math.max(0, expectedMinutes - completedMinutes) : 0;
+      const delayPercentage = isDelayed
+        ? Number(Math.max(0, expectedProgress - currentProgress).toFixed(2))
+        : 0;
+
+      let alertMessage = '';
+      if (isDelayed) {
+        alertMessage = `Posible retraso de ${delayMinutes} min (${delayPercentage}% por debajo del plan).`;
+      } else if (row.pace_status === 'on_track') {
+        alertMessage = 'Avance al día.';
+      } else {
+        alertMessage = 'Sin cronograma activo.';
+      }
+
+      return {
+        ...row,
+        is_delayed: isDelayed,
+        delay_minutes: delayMinutes,
+        delay_percentage: delayPercentage,
+        alert_message: alertMessage,
+      };
+    });
+  }
+
   async updatePriority(userId: number, goalId: number, priority: PriorityLevel): Promise<Goal> {
     const goal = await this.goalsRepository.findOne({
       where: { goal_id: goalId, user_id: userId },
