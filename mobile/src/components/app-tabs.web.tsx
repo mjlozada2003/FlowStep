@@ -14,7 +14,7 @@ import {
   View,
   StyleSheet,
 } from 'react-native';
-import type { PressableInstance } from 'react-native';
+import type { View as ViewType } from 'react-native';
 
 import { ExternalLink } from './external-link';
 import { ThemedText } from './themed-text';
@@ -42,7 +42,7 @@ export default function AppTabs() {
   );
 }
 
-export const TabButton = forwardRef<PressableInstance, TabButtonProps>(
+export const TabButton = forwardRef<ViewType, TabButtonProps>(
   function TabButton({ children, isFocused, ...props }, ref) {
     return (
       <Pressable
