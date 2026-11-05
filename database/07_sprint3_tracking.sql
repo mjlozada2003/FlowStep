@@ -90,4 +90,33 @@ FROM v_goal_progress p
 JOIN "APP_USER" u ON u.user_id = p.user_id AND u.deleted_at IS NULL
 LEFT JOIN planned pl ON pl.goal_id = p.goal_id;
 
+-- HU-21: serie semanal con unidades separadas para esfuerzo real y avance.
+CREATE OR REPLACE VIEW v_goal_weekly_progress AS
+WITH activities AS (
+    SELECT g.user_id, g.goal_id, a.activity_id, a.status, a.completed_at, a.estimated_minutes
+    FROM "ACTIVITY" a
+    JOIN "STAGE" s ON s.stage_id = a.stage_id
+    JOIN "GOAL" g ON g.goal_id = s.goal_id
+    JOIN "APP_USER" u ON u.user_id = g.user_id
+    WHERE a.deleted_at IS NULL AND g.deleted_at IS NULL AND u.deleted_at IS NULL
+), metrics AS (
+    SELECT a.user_id, a.goal_id, w.session_date AS metric_date,
+           w.minutes_spent, 0 AS completed_minutes, 0 AS planned_minutes
+    FROM activities a
+    JOIN "WORK_SESSION" w ON w.activity_id = a.activity_id
+    UNION ALL
+    SELECT user_id, goal_id, completed_at::date, 0, COALESCE(estimated_minutes, 0), 0
+    FROM activities
+    WHERE status = 'completed' AND completed_at IS NOT NULL
+    UNION ALL
+    SELECT user_id, goal_id, scheduled_date, 0, 0, COALESCE(estimated_minutes, 0)
+    FROM v_activity_current_schedule
+)
+SELECT user_id, goal_id, date_trunc('week', metric_date::timestamp)::date AS week_start,
+       SUM(minutes_spent) AS minutes_spent,
+       SUM(completed_minutes) AS completed_estimated_minutes,
+       SUM(planned_minutes) AS planned_estimated_minutes
+FROM metrics
+GROUP BY user_id, goal_id, week_start;
+
 COMMIT;
