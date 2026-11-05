@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -26,80 +26,77 @@ interface HistoryItem {
   status_label: string;
 }
 
+const mockItems: HistoryItem[] = [
+  {
+    id: 1,
+    stage_title: 'Etapa 1 · Aprendizaje',
+    activity_title: 'Introducción a React',
+    date_str: '16 jun · 18:45',
+    duration_str: '45 min',
+    status: 'completed',
+    status_label: 'Completada',
+  },
+  {
+    id: 2,
+    stage_title: 'Etapa 1 · Aprendizaje',
+    activity_title: 'Componentes de React',
+    date_str: '14 jun · 19:10',
+    duration_str: '1 h 10 min',
+    status: 'completed',
+    status_label: 'Completada',
+  },
+  {
+    id: 3,
+    stage_title: 'Etapa 2 · Desarrollo',
+    activity_title: 'Maquetar la vista principal',
+    date_str: '12 jun · 16:30',
+    duration_str: '65 min',
+    status: 'completed',
+    status_label: 'Completada',
+  },
+  {
+    id: 4,
+    stage_title: 'Etapa 1 · Aprendizaje',
+    activity_title: 'Consumo de APIs',
+    date_str: '10 jun · 18:00',
+    status: 'missed',
+    status_label: 'No completada',
+  },
+  {
+    id: 5,
+    stage_title: 'Etapa 1 · Aprendizaje',
+    activity_title: 'Hooks',
+    date_str: 'Programada · 21 jun',
+    status: 'pending',
+    status_label: 'Pendiente',
+  },
+];
+
 export default function ActivityHistoryScreen() {
   const { token } = useAuth();
   const params = useLocalSearchParams<{ goalId?: string }>();
 
   const [filter, setFilter] = useState<FilterType>('all');
   const [isLoading, setIsLoading] = useState(true);
-  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
-  const [stats, setStats] = useState({
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>(mockItems);
+  const stats = {
     completedCount: 3,
     hoursSpent: '3 h',
     uncompletedCount: 1,
-  });
-
-  // Datos mock de respaldo con la misma estructura del prototipo por si la API aún no devuelve items
-  const mockItems: HistoryItem[] = [
-    {
-      id: 1,
-      stage_title: 'Etapa 1 · Aprendizaje',
-      activity_title: 'Introducción a React',
-      date_str: '16 jun · 18:45',
-      duration_str: '45 min',
-      status: 'completed',
-      status_label: 'Completada',
-    },
-    {
-      id: 2,
-      stage_title: 'Etapa 1 · Aprendizaje',
-      activity_title: 'Componentes de React',
-      date_str: '14 jun · 19:10',
-      duration_str: '1 h 10 min',
-      status: 'completed',
-      status_label: 'Completada',
-    },
-    {
-      id: 3,
-      stage_title: 'Etapa 2 · Desarrollo',
-      activity_title: 'Maquetar la vista principal',
-      date_str: '12 jun · 16:30',
-      duration_str: '65 min',
-      status: 'completed',
-      status_label: 'Completada',
-    },
-    {
-      id: 4,
-      stage_title: 'Etapa 1 · Aprendizaje',
-      activity_title: 'Consumo de APIs',
-      date_str: '10 jun · 18:00',
-      status: 'missed',
-      status_label: 'No completada',
-    },
-    {
-      id: 5,
-      stage_title: 'Etapa 1 · Aprendizaje',
-      activity_title: 'Hooks',
-      date_str: 'Programada · 21 jun',
-      status: 'pending',
-      status_label: 'Pendiente',
-    },
-  ];
+  };
 
   const fetchHistory = useCallback(async () => {
-    if (!token) {
-      setHistoryItems(mockItems);
-      setIsLoading(false);
-      return;
-    }
     try {
       setIsLoading(true);
+      if (!token) {
+        setHistoryItems(mockItems);
+        return;
+      }
       const data = await trackingApi.getActivityHistory(
         params.goalId ? { goal_id: Number(params.goalId) } : undefined,
         token
       );
       if (Array.isArray(data) && data.length > 0) {
-        // Mapear según respuesta real de tu backend NestJS
         setHistoryItems(data);
       } else {
         setHistoryItems(mockItems);
@@ -111,7 +108,10 @@ export default function ActivityHistoryScreen() {
     }
   }, [token, params.goalId]);
 
-  // Filtrado de items
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
+
   const filteredItems = historyItems.filter((item) => {
     if (filter === 'completed') return item.status === 'completed';
     if (filter === 'pending') return item.status === 'pending';
@@ -122,7 +122,6 @@ export default function ActivityHistoryScreen() {
   return (
     <Screen style={styles.screenBg}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        {/* Top Header */}
         <View style={styles.topBar}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton} activeOpacity={0.7}>
             <Feather name="chevron-left" size={24} color="#0F2C40" />
@@ -131,14 +130,12 @@ export default function ActivityHistoryScreen() {
           <BrandHeader />
         </View>
 
-        {/* Título de la vista */}
         <Text style={styles.categorySubLabel}>TU RECORRIDO</Text>
         <Text style={styles.mainTitle}>Historial de actividades</Text>
         <Text style={styles.descriptionText}>
           Consulta lo que has realizado y cómo has avanzado.
         </Text>
 
-        {/* Banner de Estadísticas Resumidas */}
         <View style={styles.statsBanner}>
           <View style={styles.statCol}>
             <Text style={styles.statNumber}>{stats.completedCount}</Text>
@@ -156,7 +153,6 @@ export default function ActivityHistoryScreen() {
           </View>
         </View>
 
-        {/* Píldoras de Filtro */}
         <View style={styles.filterRow}>
           <TouchableOpacity
             style={[styles.filterPill, filter === 'all' && styles.filterPillActive]}
@@ -191,7 +187,6 @@ export default function ActivityHistoryScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Lista Timeline */}
         {isLoading ? (
           <ActivityIndicator size="large" color="#174A62" style={{ marginVertical: 30 }} />
         ) : (
@@ -201,9 +196,7 @@ export default function ActivityHistoryScreen() {
               return (
                 <View key={item.id} style={styles.timelineCardWrapper}>
                   {!isLast && <View style={styles.timelineConnectorLine} />}
-
                   <View style={styles.cardItem}>
-                    {/* Icono estado */}
                     <View style={styles.statusIconContainer}>
                       {item.status === 'completed' && (
                         <View style={[styles.iconCircle, styles.bgSuccess]}>
@@ -222,7 +215,6 @@ export default function ActivityHistoryScreen() {
                       )}
                     </View>
 
-                    {/* Info Actividad */}
                     <View style={styles.cardContent}>
                       <View style={styles.cardHeaderRow}>
                         <Text style={styles.stageTitleText}>{item.stage_title}</Text>
@@ -266,7 +258,6 @@ export default function ActivityHistoryScreen() {
           </View>
         )}
 
-        {/* Botón Navegación a Progreso y Estadísticas (HU-21, HU-22) */}
         <TouchableOpacity
           style={styles.bottomNavButton}
           onPress={() => router.push('/progress-analytics' as any)}
@@ -281,243 +272,51 @@ export default function ActivityHistoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  screenBg: {
-    backgroundColor: '#FDFBF7',
-  },
-  container: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E4E7EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  topBarTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#627D98',
-    letterSpacing: 0.5,
-  },
-  categorySubLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#174A62',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  mainTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#0F2C40',
-    marginBottom: 6,
-  },
-  descriptionText: {
-    fontSize: 13,
-    color: '#627D98',
-    marginBottom: 20,
-  },
-  statsBanner: {
-    backgroundColor: '#174A62',
-    borderRadius: 16,
-    paddingVertical: 18,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    marginBottom: 20,
-  },
-  statCol: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  statNumber: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 2,
-  },
-  statLabel: {
-    fontSize: 10,
-    color: '#9FB3C8',
-  },
-  statDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 20,
-  },
-  filterPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E4E7EB',
-    backgroundColor: '#FFFFFF',
-  },
-  filterPillActive: {
-    backgroundColor: '#174A62',
-    borderColor: '#174A62',
-  },
-  filterText: {
-    fontSize: 12,
-    color: '#627D98',
-  },
-  filterTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  timelineList: {
-    marginBottom: 24,
-  },
-  timelineCardWrapper: {
-    position: 'relative',
-    marginBottom: 12,
-  },
-  timelineConnectorLine: {
-    position: 'absolute',
-    left: 27,
-    top: 36,
-    bottom: -20,
-    width: 2,
-    backgroundColor: '#E4E7EB',
-    zIndex: 0,
-  },
-  cardItem: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#E4E7EB',
-    alignItems: 'center',
-    zIndex: 1,
-  },
-  statusIconContainer: {
-    marginRight: 12,
-  },
-  iconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bgSuccess: {
-    backgroundColor: '#38A169',
-  },
-  bgMissed: {
-    backgroundColor: '#DD6B20',
-  },
-  bgPending: {
-    backgroundColor: '#A0AEC0',
-  },
-  exclamationText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  innerPendingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FFFFFF',
-  },
-  cardContent: {
-    flex: 1,
-  },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  stageTitleText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#627D98',
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-  },
-  badgeSuccess: {
-    backgroundColor: '#E6FFFA',
-  },
-  badgeMissed: {
-    backgroundColor: '#FEEBC8',
-  },
-  badgePending: {
-    backgroundColor: '#EDF2F7',
-  },
-  statusBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  badgeSuccessText: {
-    color: '#234E52',
-  },
-  badgeMissedText: {
-    color: '#7B341E',
-  },
-  badgePendingText: {
-    color: '#4A5568',
-  },
-  activityTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#0F2C40',
-    marginBottom: 6,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  dateText: {
-    fontSize: 11,
-    color: '#829AB1',
-    marginRight: 12,
-  },
-  durationTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  durationText: {
-    fontSize: 11,
-    color: '#627D98',
-    fontWeight: '500',
-  },
-  bottomNavButton: {
-    backgroundColor: '#174A62',
-    borderRadius: 14,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#174A62',
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  bottomNavButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
+  screenBg: { backgroundColor: '#FDFBF7' },
+  container: { padding: 16, paddingBottom: 40 },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  backButton: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, borderColor: '#E4E7EB', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
+  topBarTitle: { fontSize: 11, fontWeight: '700', color: '#627D98', letterSpacing: 0.5 },
+  categorySubLabel: { fontSize: 11, fontWeight: '700', color: '#174A62', letterSpacing: 0.5, marginBottom: 4 },
+  mainTitle: { fontSize: 24, fontWeight: 'bold', color: '#0F2C40', marginBottom: 6 },
+  descriptionText: { fontSize: 13, color: '#627D98', marginBottom: 20 },
+  statsBanner: { backgroundColor: '#174A62', borderRadius: 16, paddingVertical: 18, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', marginBottom: 20 },
+  statCol: { alignItems: 'center', flex: 1 },
+  statNumber: { fontSize: 22, fontWeight: 'bold', color: '#FFFFFF', marginBottom: 2 },
+  statLabel: { fontSize: 10, color: '#9FB3C8' },
+  statDivider: { width: 1, height: 28, backgroundColor: 'rgba(255, 255, 255, 0.15)' },
+  filterRow: { flexDirection: 'row', gap: 6, marginBottom: 20 },
+  filterPill: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: '#E4E7EB', backgroundColor: '#FFFFFF' },
+  filterPillActive: { backgroundColor: '#174A62', borderColor: '#174A62' },
+  filterText: { fontSize: 12, color: '#627D98' },
+  filterTextActive: { color: '#FFFFFF', fontWeight: '600' },
+  timelineList: { marginBottom: 24 },
+  timelineCardWrapper: { position: 'relative', marginBottom: 12 },
+  timelineConnectorLine: { position: 'absolute', left: 27, top: 36, bottom: -20, width: 2, backgroundColor: '#E4E7EB', zIndex: 0 },
+  cardItem: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: '#E4E7EB', alignItems: 'center', zIndex: 1 },
+  statusIconContainer: { marginRight: 12 },
+  iconCircle: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  bgSuccess: { backgroundColor: '#38A169' },
+  bgMissed: { backgroundColor: '#DD6B20' },
+  bgPending: { backgroundColor: '#A0AEC0' },
+  exclamationText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 14 },
+  innerPendingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFFFFF' },
+  cardContent: { flex: 1 },
+  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  stageTitleText: { fontSize: 10, fontWeight: '600', color: '#627D98' },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  badgeSuccess: { backgroundColor: '#E6FFFA' },
+  badgeMissed: { backgroundColor: '#FEEBC8' },
+  badgePending: { backgroundColor: '#EDF2F7' },
+  statusBadgeText: { fontSize: 10, fontWeight: '600' },
+  badgeSuccessText: { color: '#234E52' },
+  badgeMissedText: { color: '#7B341E' },
+  badgePendingText: { color: '#4A5568' },
+  activityTitle: { fontSize: 14, fontWeight: 'bold', color: '#0F2C40', marginBottom: 6 },
+  metaRow: { flexDirection: 'row', alignItems: 'center' },
+  dateText: { fontSize: 11, color: '#829AB1', marginRight: 12 },
+  durationTag: { flexDirection: 'row', alignItems: 'center' },
+  durationText: { fontSize: 11, color: '#627D98', fontWeight: '500' },
+  bottomNavButton: { backgroundColor: '#174A62', borderRadius: 14, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', shadowColor: '#174A62', shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
+  bottomNavButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: 'bold' },
 });
