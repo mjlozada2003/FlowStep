@@ -33,4 +33,38 @@ CREATE TABLE IF NOT EXISTS "SCHEDULE_MISS" (
     recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- HU-20: una fila por evento, con datos especificos en details.
+CREATE OR REPLACE VIEW v_activity_timeline AS
+WITH events AS (
+    SELECT activity_id, 'work_session'::text AS event_type, session_id AS event_id,
+           session_date AS event_date, created_at AS recorded_at,
+           jsonb_build_object('minutes_spent', minutes_spent, 'difficulty_level', difficulty_level,
+                              'difficulty_notes', difficulty_notes) AS details
+    FROM "WORK_SESSION"
+    UNION ALL
+    SELECT activity_id, 'status_change', activity_status_history_id, changed_at::date, changed_at,
+           jsonb_build_object('previous_status', previous_status, 'new_status', new_status,
+                              'previous_completed_at', previous_completed_at)
+    FROM "ACTIVITY_STATUS_HISTORY"
+    UNION ALL
+    SELECT activity_id, 'schedule_version', schedule_id, created_at::date, created_at,
+           jsonb_build_object('version_number', version_number, 'scheduled_date', scheduled_date,
+                              'start_time', start_time, 'end_time', end_time, 'reason', reason)
+    FROM "ACTIVITY_SCHEDULE"
+    UNION ALL
+    SELECT sc.activity_id, 'schedule_miss', m.miss_id, m.recorded_at::date, m.recorded_at,
+           jsonb_build_object('schedule_id', sc.schedule_id, 'scheduled_date', sc.scheduled_date,
+                              'reason_id', r.reason_id, 'reason', r.name, 'notes', m.details)
+    FROM "SCHEDULE_MISS" m
+    JOIN "ACTIVITY_SCHEDULE" sc ON sc.schedule_id = m.schedule_id
+    JOIN "MISS_REASON" r ON r.reason_id = m.reason_id
+)
+SELECT g.user_id, g.goal_id, s.stage_id, a.title AS activity_title, e.*
+FROM events e
+JOIN "ACTIVITY" a ON a.activity_id = e.activity_id
+JOIN "STAGE" s ON s.stage_id = a.stage_id
+JOIN "GOAL" g ON g.goal_id = s.goal_id
+JOIN "APP_USER" u ON u.user_id = g.user_id
+WHERE u.deleted_at IS NULL AND g.deleted_at IS NULL AND a.deleted_at IS NULL;
+
 COMMIT;
