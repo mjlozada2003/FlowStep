@@ -1,9 +1,9 @@
 import {
+  IsDateString,
   IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
-  Matches,
   Max,
   MaxLength,
   Min,
@@ -22,12 +22,12 @@ export class CreateWorkSessionDto {
   minutes_spent: number;
 
   @ApiPropertyOptional({
-    description: 'Fecha en la que se realizó la sesión (formato YYYY-MM-DD). Si se omite, se usa la fecha actual.',
+    description: 'Fecha en la que se realizó la sesión (formato YYYY-MM-DD o ISO 8601). Si se omite, se usa la fecha actual.',
     example: '2026-11-04',
   })
   @IsOptional()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-    message: 'La fecha debe tener formato YYYY-MM-DD',
+  @IsDateString({}, {
+    message: 'La fecha debe ser una fecha válida (formato YYYY-MM-DD o ISO 8601)',
   })
   session_date?: string;
 

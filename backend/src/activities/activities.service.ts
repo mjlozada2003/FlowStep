@@ -311,8 +311,7 @@ export class ActivitiesService {
       throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
     }
 
-    const sessionDate =
-      dto.session_date || new Date().toISOString().split('T')[0];
+    const sessionDate = dto.session_date ? dto.session_date.split('T')[0] : new Date().toISOString().split('T')[0];
 
     const workSession = this.workSessionsRepository.create({
       activity_id: activityId,
