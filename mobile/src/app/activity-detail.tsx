@@ -22,22 +22,37 @@ interface MissReason {
   description?: string;
 }
 
+const DIFFICULTY_TAGS = [
+  'Falta de conocimientos',
+  'Falta de tiempo',
+  'Difícil de comprender',
+  'Problemas externos',
+  'Otra',
+];
+
 export default function ActivityDetailScreen() {
   const params = useLocalSearchParams<{
     activityId?: string;
     title?: string;
     duration?: string;
+    stageTitle?: string;
+    description?: string;
   }>();
   const { token } = useAuth();
 
   const activityId = params.activityId && /^\d+$/.test(params.activityId) ? Number(params.activityId) : null;
-  const activityTitle = params.title || 'Detalle de Actividad';
-  const defaultDuration = params.duration ? Number(params.duration) : 30;
+  const activityTitle = params.title || 'Introducción a React';
+  const stageInfo = params.stageTitle || 'ETAPA 1 · APRENDIZAJE';
+  const activityDesc = params.description || 'Comprende los fundamentos y prepara tu entorno de trabajo.';
+  const defaultDuration = params.duration ? Number(params.duration) : 45;
 
-  // Estados de formulario (HU-17 y HU-18)
+  // Estados de tiempo (HU-17)
+  const [hoursSpent, setHoursSpent] = useState('0');
   const [minutesSpent, setMinutesSpent] = useState(String(defaultDuration));
-  const [difficultyLevel, setDifficultyLevel] = useState<number>(3);
-  const [difficultyNotes, setDifficultyNotes] = useState('');
+
+  // Estados de dificultad (HU-18) - Píldoras y notas
+  const [selectedDifficultyTag, setSelectedDifficultyTag] = useState<string>('Falta de conocimientos');
+  const [difficultyNotes, setDifficultyNotes] = useState('Me costó entender cómo se conectan los componentes.');
 
   // Estados de modales y catálogo (HU-19)
   const [missModalVisible, setMissModalVisible] = useState(false);
@@ -70,9 +85,12 @@ export default function ActivityDetailScreen() {
   // HU-17 & HU-18: Guardar sesión de trabajo y dificultad
   const handleSaveSession = async () => {
     if (!activityId || !token) return;
-    const parsedMinutes = Number(minutesSpent);
-    if (isNaN(parsedMinutes) || parsedMinutes <= 0) {
-      setErrorMessage('Ingresa un tiempo válido en minutos.');
+    const h = Number(hoursSpent) || 0;
+    const m = Number(minutesSpent) || 0;
+    const totalMinutes = h * 60 + m;
+
+    if (totalMinutes <= 0) {
+      setErrorMessage('Ingresa un tiempo válido.');
       return;
     }
 
@@ -82,13 +100,12 @@ export default function ActivityDetailScreen() {
       await trackingApi.logWorkSession(
         activityId,
         {
-          minutes_spent: parsedMinutes,
-          difficulty_level: difficultyLevel,
-          difficulty_notes: difficultyNotes.trim() || undefined,
+          minutes_spent: totalMinutes,
+          difficulty_notes: `[${selectedDifficultyTag}] ${difficultyNotes.trim()}`,
         },
         token
       );
-      setSuccessMessage('¡Sesión y dificultad registradas con éxito!');
+      setSuccessMessage('¡Progreso guardado con éxito!');
       setTimeout(() => router.back(), 1500);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Error al registrar la sesión.');
@@ -126,94 +143,158 @@ export default function ActivityDetailScreen() {
   };
 
   return (
-    <Screen>
-      <BrandHeader />
+    <Screen style={styles.screenBg}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Feather name="arrow-left" size={22} color="#0F2C40" />
+        {/* Cabecera superior idéntica al prototipo */}
+        <View style={styles.topBar}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton} activeOpacity={0.7}>
+            <Feather name="chevron-left" size={24} color="#0F2C40" />
           </TouchableOpacity>
-          <Text style={styles.screenMainTitle}>Seguimiento de Actividad</Text>
+          <Text style={styles.topBarTitle}>DETALLE DE ACTIVIDAD</Text>
+          <BrandHeader />
         </View>
-
-        <Text style={styles.activityTitle}>{activityTitle}</Text>
 
         {errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
         {successMessage && <Text style={styles.successText}>{successMessage}</Text>}
 
-        {/* HU-17: Tiempo Dedicado */}
-        <View style={styles.card}>
-          <Text style={styles.label}>Tiempo invertido (minutos)</Text>
-          <TextInput
-            style={styles.input}
-            value={minutesSpent}
-            onChangeText={setMinutesSpent}
-            keyboardType="numeric"
-            placeholder="Ej. 45"
-            placeholderTextColor="#9CA3AF"
-          />
+        {/* Tarjeta principal de la Actividad */}
+        <View style={styles.mainActivityCard}>
+          <View style={styles.activityBadgeRow}>
+            <View style={styles.badgeContainer}>
+              <Text style={styles.badgeText}>D1</Text>
+            </View>
+            <Text style={styles.stageInfoText}>{stageInfo}</Text>
+          </View>
+          <Text style={styles.activityMainTitle}>{activityTitle}</Text>
+          <Text style={styles.activityDescText}>{activityDesc}</Text>
         </View>
 
-        {/* HU-18: Nivel de Dificultad */}
+        <View style={styles.metaInfoRow}>
+          <View style={styles.metaItem}>
+            <Feather name="calendar" size={14} color="#627D98" />
+            <Text style={styles.metaText}>Lun 16 · 18:00</Text>
+          </View>
+          <Text style={styles.metaText}>20 min estimadas</Text>
+        </View>
+
+        {/* Tarjeta 1: Registro de Tiempo (HU-17) */}
         <View style={styles.card}>
-          <Text style={styles.label}>¿Qué tan difícil fue?</Text>
-          <View style={styles.difficultyContainer}>
-            {[1, 2, 3, 4, 5].map((lvl) => (
-              <TouchableOpacity
-                key={lvl}
-                style={[
-                  styles.difficultyButton,
-                  difficultyLevel === lvl && styles.difficultyButtonSelected,
-                ]}
-                onPress={() => setDifficultyLevel(lvl)}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[
-                    styles.difficultyButtonText,
-                    difficultyLevel === lvl && styles.difficultyButtonTextSelected,
-                  ]}
-                >
-                  {lvl}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.iconCircle}>
+              <Feather name="clock" size={16} color="#174A62" />
+            </View>
+            <View>
+              <Text style={styles.sectionCategory}>REGISTRO DE TIEMPO</Text>
+              <Text style={styles.sectionTitle}>¿Cuánto tiempo dedicaste?</Text>
+            </View>
           </View>
 
-          <Text style={[styles.label, { marginTop: 16 }]}>Notas sobre la dificultad (opcional)</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={difficultyNotes}
-            onChangeText={setDifficultyNotes}
-            placeholder="Ej. Me costó entender la lógica de los estados..."
-            placeholderTextColor="#9CA3AF"
-            multiline
-            numberOfLines={3}
-          />
+          <View style={styles.timeInputsRow}>
+            <View style={styles.timeBoxContainer}>
+              <TextInput
+                style={styles.timeInput}
+                value={hoursSpent}
+                onChangeText={setHoursSpent}
+                keyboardType="numeric"
+                maxLength={2}
+              />
+              <Text style={styles.timeUnitLabel}>horas</Text>
+            </View>
+            <Text style={styles.timeSeparator}>:</Text>
+            <View style={styles.timeBoxContainer}>
+              <TextInput
+                style={styles.timeInput}
+                value={minutesSpent}
+                onChangeText={setMinutesSpent}
+                keyboardType="numeric"
+                maxLength={3}
+              />
+              <Text style={styles.timeUnitLabel}>minutos</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.actionButtonLight}
+            onPress={handleSaveSession}
+            disabled={isSubmitting}
+            activeOpacity={0.8}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color="#174A62" />
+            ) : (
+              <Text style={styles.actionButtonLightText}>Guardar tiempo</Text>
+            )}
+          </TouchableOpacity>
         </View>
 
-        {/* Botones de Acción */}
+        {/* Tarjeta 2: Registro de Dificultad (HU-18) */}
+        <View style={styles.card}>
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.iconCircle}>
+              <Feather name="alert-circle" size={16} color="#174A62" />
+            </View>
+            <View>
+              <Text style={styles.sectionCategory}>EXPERIENCIA</Text>
+              <Text style={styles.sectionTitle}>¿Tuviste alguna dificultad?</Text>
+            </View>
+          </View>
+
+          {/* Píldoras de Dificultad */}
+          <View style={styles.pillsContainer}>
+            {DIFFICULTY_TAGS.map((tag) => {
+              const isSelected = selectedDifficultyTag === tag;
+              return (
+                <TouchableOpacity
+                  key={tag}
+                  style={[styles.pillButton, isSelected && styles.pillButtonSelected]}
+                  onPress={() => setSelectedDifficultyTag(tag)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
+                    {tag}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Text style={styles.subLabel}>CUÉNTANOS UN POCO MÁS</Text>
+          <TextInput
+            style={styles.textArea}
+            value={difficultyNotes}
+            onChangeText={setDifficultyNotes}
+            placeholder="Me costó entender cómo se conectan los componentes..."
+            placeholderTextColor="#9CA3AF"
+            multiline
+          />
+
+          <TouchableOpacity
+            style={styles.actionButtonLight}
+            onPress={handleSaveSession}
+            disabled={isSubmitting}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.actionButtonLightText}>Guardar dificultad</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Botón Inferior 1: Marcar como completada */}
         <TouchableOpacity
-          style={[styles.primaryButton, isSubmitting && styles.buttonDisabled]}
+          style={styles.primaryActionButton}
           onPress={handleSaveSession}
-          disabled={isSubmitting}
-          activeOpacity={0.8}
+          activeOpacity={0.85}
         >
-          {isSubmitting ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.primaryButtonText}>Guardar y Completar</Text>
-          )}
+          <Feather name="check" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+          <Text style={styles.primaryActionText}>Marcar como completada</Text>
         </TouchableOpacity>
 
+        {/* Botón Inferior 2: No pude completar esta actividad */}
         <TouchableOpacity
-          style={styles.secondaryButton}
+          style={styles.outlineActionButton}
           onPress={handleOpenMissModal}
-          disabled={isSubmitting}
           activeOpacity={0.8}
         >
-          <Feather name="alert-circle" size={18} color="#D97706" style={{ marginRight: 8 }} />
-          <Text style={styles.secondaryButtonText}>No pude completar esta actividad</Text>
+          <Text style={styles.outlineActionText}>No pude completar esta actividad</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -221,59 +302,60 @@ export default function ActivityDetailScreen() {
       <AppModal
         visible={missModalVisible}
         onClose={() => setMissModalVisible(false)}
-        title="Motivo de Incompletado"
+        title="Registrar Resultado"
       >
         {isLoadingReasons ? (
-          <ActivityIndicator size="large" color="#2563EB" style={{ marginVertical: 20 }} />
+          <ActivityIndicator size="large" color="#174A62" style={{ marginVertical: 20 }} />
         ) : (
           <View style={{ width: '100%' }}>
-            <Text style={styles.modalSubtitle}>Selecciona la razón principal:</Text>
-            {missReasons.map((reason) => (
-              <TouchableOpacity
-                key={reason.reason_id}
-                style={[
-                  styles.reasonOption,
-                  selectedReasonId === reason.reason_id && styles.reasonOptionSelected,
-                ]}
-                onPress={() => setSelectedReasonId(reason.reason_id)}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[
-                    styles.reasonText,
-                    selectedReasonId === reason.reason_id && styles.reasonTextSelected,
-                  ]}
-                >
-                  {reason.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            <Text style={styles.modalTitleQuestion}>¿Por qué no pudiste completarla?</Text>
+            
+            <View style={styles.pillsContainer}>
+              {missReasons.map((reason) => {
+                const isSelected = selectedReasonId === reason.reason_id;
+                return (
+                  <TouchableOpacity
+                    key={reason.reason_id}
+                    style={[styles.pillButton, isSelected && styles.pillButtonSelected]}
+                    onPress={() => setSelectedReasonId(reason.reason_id)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
+                      {reason.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
-            <Text style={[styles.label, { marginTop: 12 }]}>Detalles adicionales (opcional)</Text>
+            <Text style={[styles.subLabel, { marginTop: 16 }]}>DETALLES OPCIONALES</Text>
             <TextInput
-              style={[styles.input, styles.textArea]}
+              style={styles.textArea}
               value={missDetails}
               onChangeText={setMissDetails}
-              placeholder="Explica brevemente..."
+              placeholder="Añade una explicación personal..."
               placeholderTextColor="#9CA3AF"
               multiline
             />
 
             <TouchableOpacity
-              style={[
-                styles.primaryButton,
-                { marginTop: 16 },
-                (!selectedReasonId || isSubmitting) && styles.buttonDisabled,
-              ]}
+              style={[styles.primaryActionButton, { marginTop: 20 }, !selectedReasonId && styles.buttonDisabled]}
               onPress={handleSubmitMiss}
               disabled={!selectedReasonId || isSubmitting}
-              activeOpacity={0.8}
+              activeOpacity={0.85}
             >
               {isSubmitting ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text style={styles.primaryButtonText}>Confirmar Motivo</Text>
+                <Text style={styles.primaryActionText}>Guardar motivo</Text>
               )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setMissModalVisible(false)}
+              style={{ marginTop: 12, alignItems: 'center' }}
+            >
+              <Text style={{ fontSize: 13, color: '#627D98' }}>Volver a la actividad</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -283,159 +365,268 @@ export default function ActivityDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  screenBg: {
+    backgroundColor: '#FDFBF7',
+  },
   container: {
     padding: 16,
     paddingBottom: 40,
   },
-  headerRow: {
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'space-between',
+    marginBottom: 20,
   },
   backButton: {
-    padding: 4,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E4E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  topBarTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#627D98',
+    letterSpacing: 0.5,
+  },
+  mainActivityCard: {
+    backgroundColor: '#174A62',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 8,
+  },
+  activityBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  badgeContainer: {
+    backgroundColor: '#E2EEF1',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     marginRight: 8,
   },
-  screenMainTitle: {
+  badgeText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#174A62',
+  },
+  stageInfoText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#829AB1',
+    letterSpacing: 0.5,
+  },
+  activityMainTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#0F2C40',
+    color: '#FFFFFF',
+    marginBottom: 6,
   },
-  activityTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#627D98',
+  activityDescText: {
+    fontSize: 13,
+    color: '#C4D1DB',
+    lineHeight: 18,
+  },
+  metaInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
     marginBottom: 16,
-    marginLeft: 34,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  metaText: {
+    fontSize: 12,
+    color: '#627D98',
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
     borderWidth: 1,
-    borderColor: '#F0F4F8',
+    borderColor: '#E4E7EB',
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#334E68',
-    marginBottom: 8,
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
   },
-  input: {
+  iconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#E2EEF1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  sectionCategory: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#174A62',
+    letterSpacing: 0.5,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#0F2C40',
+  },
+  timeInputsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  timeBoxContainer: {
+    alignItems: 'center',
+    flex: 1,
+    maxWidth: 100,
+  },
+  timeInput: {
+    width: '100%',
+    height: 56,
     borderWidth: 1,
     borderColor: '#D9E2EC',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
+    borderRadius: 12,
+    textAlign: 'center',
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#0F2C40',
     backgroundColor: '#F8FAFC',
-    color: '#102A43',
+    marginBottom: 4,
+  },
+  timeUnitLabel: {
+    fontSize: 11,
+    color: '#627D98',
+  },
+  timeSeparator: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#627D98',
+    marginHorizontal: 12,
+  },
+  pillsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 14,
+  },
+  pillButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#D9E2EC',
+    backgroundColor: '#F8FAFC',
+  },
+  pillButtonSelected: {
+    borderColor: '#174A62',
+    backgroundColor: '#E2EEF1',
+  },
+  pillText: {
+    fontSize: 12,
+    color: '#334E68',
+  },
+  pillTextSelected: {
+    color: '#174A62',
+    fontWeight: '600',
+  },
+  subLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#627D98',
+    marginBottom: 6,
+    letterSpacing: 0.5,
   },
   textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  difficultyContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  difficultyButton: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#D9E2EC',
-    alignItems: 'center',
+    borderRadius: 10,
+    padding: 10,
+    height: 75,
+    fontSize: 13,
+    color: '#0F2C40',
     backgroundColor: '#F8FAFC',
+    textAlignVertical: 'top',
+    marginBottom: 12,
   },
-  difficultyButtonSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  difficultyButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#486581',
-  },
-  difficultyButtonTextSelected: {
-    color: '#FFFFFF',
-  },
-  primaryButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    paddingVertical: 14,
+  actionButtonLight: {
+    backgroundColor: '#E2EEF1',
+    borderRadius: 10,
+    paddingVertical: 12,
     alignItems: 'center',
-    marginTop: 8,
-    shadowColor: '#2563EB',
+  },
+  actionButtonLightText: {
+    color: '#174A62',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  primaryActionButton: {
+    backgroundColor: '#174A62',
+    borderRadius: 12,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+    shadowColor: '#174A62',
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 2,
   },
-  primaryButtonText: {
+  primaryActionText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
   },
-  secondaryButton: {
-    flexDirection: 'row',
-    backgroundColor: '#FEF3C7',
+  outlineActionButton: {
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#F59E0B',
-    borderRadius: 8,
-    paddingVertical: 14,
+    borderColor: '#D9E2EC',
+    borderRadius: 12,
+    paddingVertical: 15,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
+    marginBottom: 20,
   },
-  secondaryButtonText: {
-    color: '#B45309',
-    fontSize: 15,
+  outlineActionText: {
+    color: '#627D98',
+    fontSize: 14,
     fontWeight: '600',
   },
   buttonDisabled: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
   errorText: {
     color: '#DC2626',
     marginBottom: 12,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
   },
   successText: {
     color: '#16A34A',
     marginBottom: 12,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
   },
-  modalSubtitle: {
-    fontSize: 14,
-    color: '#486581',
-    marginBottom: 12,
-  },
-  reasonOption: {
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D9E2EC',
-    marginBottom: 8,
-    backgroundColor: '#F8FAFC',
-  },
-  reasonOptionSelected: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
-  },
-  reasonText: {
-    fontSize: 14,
-    color: '#334E68',
-  },
-  reasonTextSelected: {
-    color: '#1D4ED8',
+  modalTitleQuestion: {
+    fontSize: 16,
     fontWeight: 'bold',
+    color: '#0F2C40',
+    marginBottom: 14,
   },
 });
