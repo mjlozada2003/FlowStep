@@ -14,6 +14,11 @@ describe('GoalsController', () => {
     getProgress: jest.fn(),
     updatePriority: jest.fn(),
     update: jest.fn(),
+    getAllGoalsProgress: jest.fn(),
+    getGoalPace: jest.fn(),
+    getAllGoalsPace: jest.fn(),
+    getGoalChartData: jest.fn(),
+    getGoalWeeklyProgress: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -62,6 +67,57 @@ describe('GoalsController', () => {
       const result = await controller.getProgress(req, 1);
       expect(result).toEqual(expectedProgress);
       expect(mockGoalsService.getProgress).toHaveBeenCalledWith(1, 1);
+    });
+  });
+
+  describe('getAllProgress (HU-22)', () => {
+    it('should return progress of all goals', async () => {
+      const req = { user: { userId: 1 } };
+      const expected = [{ goal_id: 1, progress_percentage: '50.00' }];
+
+      mockGoalsService.getAllGoalsProgress.mockResolvedValue(expected);
+
+      const result = await controller.getAllProgress(req);
+      expect(result).toEqual(expected);
+      expect(mockGoalsService.getAllGoalsProgress).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe('getGoalPace (HU-24)', () => {
+    it('should return goal pace and delay status', async () => {
+      const req = { user: { userId: 1 } };
+      const expectedPace = {
+        goal_id: 1,
+        pace_status: 'behind',
+        is_delayed: true,
+        delay_minutes: 30,
+        alert_message: 'Posible retraso',
+      };
+
+      mockGoalsService.getGoalPace.mockResolvedValue(expectedPace);
+
+      const result = await controller.getGoalPace(req, 1);
+      expect(result).toEqual(expectedPace);
+      expect(mockGoalsService.getGoalPace).toHaveBeenCalledWith(1, 1);
+    });
+  });
+
+  describe('getGoalChartData (HU-21)', () => {
+    it('should return aggregated charts data', async () => {
+      const req = { user: { userId: 1 } };
+      const expectedCharts = {
+        goal_id: 1,
+        summary: { progress_percentage: '50.00' },
+        weekly_progress: [],
+        status_distribution: { completed: 2, pending: 2 },
+        stage_progress: [],
+      };
+
+      mockGoalsService.getGoalChartData.mockResolvedValue(expectedCharts);
+
+      const result = await controller.getGoalChartData(req, 1);
+      expect(result).toEqual(expectedCharts);
+      expect(mockGoalsService.getGoalChartData).toHaveBeenCalledWith(1, 1);
     });
   });
 });

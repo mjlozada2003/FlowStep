@@ -8,27 +8,21 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AuthProvider>
-        <Stack>
-          <Stack.Screen
-            name="index"
-            options={{
-              headerShown: false,
-            }}
-          />
-
-          <Stack.Screen
-            name="login"
-            options={{
-              headerShown: false,
-            }}
-          />
-
-          <Stack.Screen
-            name="register"
-            options={{
-              headerShown: false,
-            }}
-          />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="login" />
+          <Stack.Screen name="register" />
+          <Stack.Screen name="home" />
+          <Stack.Screen name="create-goal" />
+          <Stack.Screen name="availability" />
+          <Stack.Screen name="generating-plan" />
+          <Stack.Screen name="goal-plan" />
+          <Stack.Screen name="schedule" />
+          <Stack.Screen name="stage-detail" />
+          <Stack.Screen name="activity-detail" />
+          <Stack.Screen name="goal-success" />
+          <Stack.Screen name="progress-analytics" />
+          <Stack.Screen name="activity-history" />
         </Stack>
       </AuthProvider>
     </ThemeProvider>

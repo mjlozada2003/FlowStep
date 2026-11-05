@@ -4,10 +4,12 @@ import {
   Column,
   CreateDateColumn,
   ManyToOne,
+  OneToOne,
   JoinColumn,
   Index,
 } from 'typeorm';
 import { Activity } from './activity.entity';
+import { ScheduleMiss } from './schedule-miss.entity';
 import { ScheduleReason } from '../enums/schedule-reason.enum';
 
 @Entity('ACTIVITY_SCHEDULE')
@@ -48,4 +50,7 @@ export class ActivitySchedule {
 
   @CreateDateColumn({ type: 'timestamp' })
   created_at: Date;
+
+  @OneToOne(() => ScheduleMiss, (miss) => miss.schedule)
+  miss?: ScheduleMiss;
 }

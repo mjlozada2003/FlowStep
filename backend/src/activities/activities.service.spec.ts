@@ -4,6 +4,9 @@ import { ActivitiesService } from './activities.service';
 import { Activity } from './entities/activity.entity';
 import { Stage } from '../stages/entities/stage.entity';
 import { ActivitySchedule } from './entities/activity-schedule.entity';
+import { WorkSession } from './entities/work-session.entity';
+import { MissReason } from './entities/miss-reason.entity';
+import { ScheduleMiss } from './entities/schedule-miss.entity';
 import { ActivityOrigin, ActivityStatus, ActivityType } from './enums/activity.enum';
 import { ScheduleReason } from './enums/schedule-reason.enum';
 import { BadRequestException } from '@nestjs/common';
@@ -16,6 +19,7 @@ describe('ActivitiesService', () => {
     save: jest.fn(),
     findOne: jest.fn(),
     remove: jest.fn(),
+    query: jest.fn(),
   };
 
   const mockStatusHistoryRepository = {
@@ -34,6 +38,24 @@ describe('ActivitiesService', () => {
   };
 
   const mockStageRepository = {
+    findOne: jest.fn(),
+  };
+
+  const mockWorkSessionRepository = {
+    create: jest.fn(),
+    save: jest.fn(),
+    find: jest.fn(),
+  };
+
+  const mockMissReasonRepository = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+  };
+
+  const mockScheduleMissRepository = {
+    create: jest.fn(),
+    save: jest.fn(),
+    find: jest.fn(),
     findOne: jest.fn(),
   };
 
@@ -60,6 +82,18 @@ describe('ActivitiesService', () => {
         {
           provide: getRepositoryToken(ActivitySchedule),
           useValue: mockScheduleRepository,
+        },
+        {
+          provide: getRepositoryToken(WorkSession),
+          useValue: mockWorkSessionRepository,
+        },
+        {
+          provide: getRepositoryToken(MissReason),
+          useValue: mockMissReasonRepository,
+        },
+        {
+          provide: getRepositoryToken(ScheduleMiss),
+          useValue: mockScheduleMissRepository,
         },
       ],
     }).compile();
@@ -255,4 +289,173 @@ describe('ActivitiesService', () => {
     );
     expect(mockActivityRepository.save).not.toHaveBeenCalled();
   });
+
+  describe('logWorkSession (HU-17, HU-18)', () => {
+    it('should log a work session successfully', async () => {
+      const activity = { activity_id: 1, title: 'Test Activity', estimated_minutes: 60 };
+      mockActivityRepository.findOne.mockResolvedValue(activity);
+
+      const dto = {
+        minutes_spent: 45,
+        session_date: '2026-11-04',
+        difficulty_level: 3,
+        difficulty_notes: 'Práctica moderada',
+      };
+
+      const expectedSession = {
+        session_id: 1,
+        activity_id: 1,
+        ...dto,
+      };
+
+      mockWorkSessionRepository.create.mockReturnValue(expectedSession);
+      mockWorkSessionRepository.save.mockResolvedValue(expectedSession);
+
+      const result = await service.logWorkSession(7, 1, dto);
+      expect(result).toEqual(expectedSession);
+      expect(mockWorkSessionRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          activity_id: 1,
+          minutes_spent: 45,
+          session_date: '2026-11-04',
+          difficulty_level: 3,
+          difficulty_notes: 'Práctica moderada',
+        }),
+      );
+      expect(mockWorkSessionRepository.save).toHaveBeenCalledWith(expectedSession);
+    });
+  });
+
+  describe('getWorkSessions (HU-17)', () => {
+    it('should return session history and total logged minutes', async () => {
+      const activity = { activity_id: 1, title: 'Test Activity', estimated_minutes: 60 };
+      mockActivityRepository.findOne.mockResolvedValue(activity);
+
+      const sessions = [
+        { session_id: 1, minutes_spent: 30, session_date: '2026-11-04' },
+        { session_id: 2, minutes_spent: 20, session_date: '2026-11-03' },
+      ];
+      mockWorkSessionRepository.find.mockResolvedValue(sessions);
+
+      const result = await service.getWorkSessions(7, 1);
+      expect(result.activity_id).toBe(1);
+      expect(result.total_logged_minutes).toBe(50);
+      expect(result.estimated_minutes).toBe(60);
+      expect(result.sessions).toEqual(sessions);
+    });
+  });
+
+  describe('recordMiss (HU-19)', () => {
+    it('should record an activity miss successfully', async () => {
+      const activity = { activity_id: 1, title: 'Test Activity' };
+      const reason = { reason_id: 1, name: 'Falta de tiempo' };
+      const schedule = { schedule_id: 10, activity_id: 1, version_number: 1 };
+
+      mockActivityRepository.findOne.mockResolvedValue(activity);
+      mockMissReasonRepository.findOne.mockResolvedValue(reason);
+      mockScheduleRepository.findOne.mockResolvedValue(schedule);
+      mockScheduleMissRepository.findOne.mockResolvedValue(null);
+
+      const expectedMiss = {
+        miss_id: 1,
+        schedule_id: 10,
+        reason_id: 1,
+        details: 'Demasiado trabajo',
+        reason,
+      };
+
+      mockScheduleMissRepository.create.mockReturnValue(expectedMiss);
+      mockScheduleMissRepository.save.mockResolvedValue(expectedMiss);
+
+      const result = await service.recordMiss(7, 1, {
+        reason_id: 1,
+        details: 'Demasiado trabajo',
+      });
+
+      expect(result).toEqual(expectedMiss);
+      expect(mockScheduleMissRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          schedule_id: 10,
+          reason_id: 1,
+          details: 'Demasiado trabajo',
+        }),
+      );
+      expect(mockScheduleMissRepository.save).toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException if miss already exists for schedule', async () => {
+      const activity = { activity_id: 1 };
+      const reason = { reason_id: 1, name: 'Falta de tiempo' };
+      const schedule = { schedule_id: 10, activity_id: 1 };
+
+      mockActivityRepository.findOne.mockResolvedValue(activity);
+      mockMissReasonRepository.findOne.mockResolvedValue(reason);
+      mockScheduleRepository.findOne.mockResolvedValue(schedule);
+      mockScheduleMissRepository.findOne.mockResolvedValue({ miss_id: 99 });
+
+      await expect(
+        service.recordMiss(7, 1, { reason_id: 1 }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('getMissReasons (HU-19)', () => {
+    it('should return catalog of miss reasons', async () => {
+      const reasons = [{ reason_id: 1, name: 'Falta de tiempo' }];
+      mockMissReasonRepository.find.mockResolvedValue(reasons);
+
+      const result = await service.getMissReasons();
+      expect(result).toEqual(reasons);
+    });
+  });
+
+  describe('getActivityTimeline (HU-20)', () => {
+    it('should query timeline view with filters', async () => {
+      const mockEvents = [
+        {
+          activity_id: 1,
+          event_type: 'work_session',
+          event_date: '2026-11-04',
+          details: { minutes_spent: 30 },
+        },
+      ];
+
+      mockActivityRepository.query.mockResolvedValue(mockEvents);
+
+      const result = await service.getActivityTimeline(7, {
+        goal_id: 1,
+        event_type: 'work_session',
+      });
+
+      expect(result).toEqual(mockEvents);
+      expect(mockActivityRepository.query).toHaveBeenCalledWith(
+        expect.stringContaining('SELECT * FROM v_activity_timeline WHERE user_id = $1'),
+        expect.arrayContaining([7, 1, 'work_session', 50, 0]),
+      );
+    });
+
+    it('should throw BadRequestException when from is an impossible date (HU-20)', async () => {
+      await expect(
+        service.getActivityTimeline(7, { from: '2026-99-99' }),
+      ).rejects.toThrow();
+    });
+
+    it('should throw BadRequestException when from date is after to date (HU-20)', async () => {
+      await expect(
+        service.getActivityTimeline(7, { from: '2026-11-30', to: '2026-11-01' }),
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('getActivityHistoryById (HU-20)', () => {
+    it('should retrieve history for a specific owned activity', async () => {
+      const activity = { activity_id: 1, title: 'Activity 1' };
+      mockActivityRepository.findOne.mockResolvedValue(activity);
+      mockActivityRepository.query.mockResolvedValue([]);
+
+      const result = await service.getActivityHistoryById(7, 1);
+      expect(result).toEqual([]);
+      expect(mockActivityRepository.findOne).toHaveBeenCalled();
+  });
+});
 });

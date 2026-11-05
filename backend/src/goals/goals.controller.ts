@@ -83,6 +83,47 @@ export class GoalsController {
     return this.goalsService.findAllByUser(req.user.userId);
   }
 
+  @Get('progress')
+  @ApiOperation({
+    summary: 'Consultar porcentaje de avance de todos los objetivos del usuario (HU-22)',
+    description: 'Consulta el porcentaje ponderado y métricas de avance de todos los objetivos activos del usuario autenticado a través de la vista v_goal_progress.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado de avance de los objetivos.',
+    schema: {
+      example: [
+        {
+          goal_id: 1,
+          user_id: 1,
+          goal_title: 'Aprender Francés Básico',
+          goal_status: 'active',
+          total_activities: 8,
+          completed_activities: 4,
+          total_estimated_minutes: 240,
+          completed_estimated_minutes: 120,
+          progress_percentage: '50.00',
+        },
+      ],
+    },
+  })
+  getAllProgress(@Request() req: any) {
+    return this.goalsService.getAllGoalsProgress(req.user.userId);
+  }
+
+  @Get('pace')
+  @ApiOperation({
+    summary: 'Consultar comparativa de ritmo esperado y real de todos los objetivos (HU-24)',
+    description: 'Retorna el estado de ritmo (on_track, behind, no_schedule), avance esperado vs. real y posibles retrasos de todas las metas del usuario mediante v_goal_pace.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado de ritmo y posibles alertas de retraso.',
+  })
+  getAllPace(@Request() req: any) {
+    return this.goalsService.getAllGoalsPace(req.user.userId);
+  }
+
   @Get(':id')
   @ApiOperation({
     summary: 'Consultar detalle completo de un objetivo con etapas y actividades',
@@ -130,6 +171,120 @@ export class GoalsController {
   })
   getProgress(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
     return this.goalsService.getProgress(id, req.user.userId);
+  }
+
+  @Get(':id/pace')
+  @ApiOperation({
+    summary: 'Comparar ritmo esperado y real de un objetivo (HU-24)',
+    description: 'Compara el progreso real acumulado contra el cronograma esperado a la fecha actual, identificando retrasos y retornando alertas oportunas (pace_status, delay_minutes, alert_message).',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Comparativa de ritmo y detección de retraso.',
+    schema: {
+      example: {
+        goal_id: 1,
+        user_id: 1,
+        goal_title: 'Aprender Francés Básico',
+        goal_status: 'active',
+        total_activities: 8,
+        completed_activities: 2,
+        total_estimated_minutes: 240,
+        completed_estimated_minutes: 60,
+        progress_percentage: '25.00',
+        as_of_date: '2026-11-04',
+        scheduled_estimated_minutes: 240,
+        expected_completed_minutes: 120,
+        expected_progress_percentage: '50.00',
+        pace_status: 'behind',
+        is_delayed: true,
+        delay_minutes: 60,
+        delay_percentage: 25.0,
+        alert_message: 'Atención: Tienes un posible retraso de 60 minutos (25% por debajo del plan esperado a la fecha). Te recomendamos reprogramar o dedicar una sesión de estudio.',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Objetivo no encontrado.',
+  })
+  getGoalPace(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.goalsService.getGoalPace(id, req.user.userId);
+  }
+
+  @Get(':id/charts')
+  @ApiOperation({
+    summary: 'Consultar datos agregados para visualización gráfica del progreso (HU-21)',
+    description: 'Retorna datos estructurados para renderizar gráficos en la aplicación móvil: serie temporal semanal de esfuerzo y avance (v_goal_weekly_progress), distribución por estados (dona/pastel) y barras de avance comparativo por etapa (v_stage_progress).',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Datos analíticos y de gráficas del objetivo recuperados exitosamente.',
+    schema: {
+      example: {
+        goal_id: 1,
+        goal_title: 'Aprender Francés Básico',
+        summary: {
+          progress_percentage: '50.00',
+          total_activities: 8,
+          completed_activities: 4,
+          total_estimated_minutes: 240,
+          completed_estimated_minutes: 120,
+          total_minutes_spent: 105,
+        },
+        weekly_progress: [
+          {
+            week_start: '2026-11-02',
+            minutes_spent: 45,
+            completed_estimated_minutes: 60,
+            planned_estimated_minutes: 60,
+          },
+        ],
+        status_distribution: {
+          completed: 4,
+          in_progress: 0,
+          pending: 4,
+          skipped: 0,
+        },
+        stage_progress: [
+          {
+            stage_id: 1,
+            stage_name: 'Fundamentos de Francés',
+            sort_order: 1,
+            total_activities: 4,
+            completed_activities: 2,
+            progress_percentage: '50.00',
+          },
+        ],
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Objetivo no encontrado.',
+  })
+  getGoalChartData(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.goalsService.getGoalChartData(id, req.user.userId);
+  }
+
+  @Get(':id/weekly-progress')
+  @ApiOperation({
+    summary: 'Consultar serie semanal de esfuerzo y avance de un objetivo (HU-21)',
+    description: 'Consulta directamente la vista v_goal_weekly_progress retornando la serie histórica semanal de minutos dedicados, completados y planificados.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Serie temporal semanal recuperada exitosamente.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Objetivo no encontrado.',
+  })
+  getWeeklyProgress(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.goalsService.getGoalWeeklyProgress(id, req.user.userId);
   }
 
   @Patch(':id/priority')

@@ -42,7 +42,7 @@ Se crearon datos representativos en `database/03_seeds.sql` que validan el compo
 ## 4. Observaciones Técnicas para el Backend
 1. **Consumo de la vista de progreso:** Para el Sprint 2 o integración final, el backend debe habilitar una consulta o endpoint (`GET /goals/:id/progress`) que consuma `v_goal_progress`.
 2. **Normalización de Enums:** En `goal.entity.ts` y `activity.entity.ts`, agregar `enumName: 'priority_level_enum'` para unificar el enum de prioridad en el ORM.
-3. **Bandera synchronize:** Se aconseja cambiar `synchronize: true` a configurable por variable de entorno para evitar colisiones con los esquemas versionados.
+3. **Bandera synchronize:** La sincronización automática se controla con `DB_SYNCHRONIZE` y está desactivada por defecto. Al usar los esquemas versionados, mantener `DB_SYNCHRONIZE=false` o dejar la variable sin definir.
 
 ## 5. Estado de la Rama
 Todos los entregables de base de datos se encuentran completados en la rama `feature/bd`.

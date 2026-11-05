@@ -15,6 +15,13 @@ describe('ActivitiesController', () => {
     remove: jest.fn(),
     reschedule: jest.fn(),
     getScheduleHistory: jest.fn(),
+    logWorkSession: jest.fn(),
+    getWorkSessions: jest.fn(),
+    getMissReasons: jest.fn(),
+    recordMiss: jest.fn(),
+    getActivityMisses: jest.fn(),
+    getActivityTimeline: jest.fn(),
+    getActivityHistoryById: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -87,6 +94,96 @@ describe('ActivitiesController', () => {
       const result = await controller.markAsPending(req, 1);
       expect(result).toEqual(expectedResult);
       expect(mockActivitiesService.markAsPending).toHaveBeenCalledWith(7, 1);
+    });
+  });
+
+  describe('logWorkSession (HU-17, HU-18)', () => {
+    it('should log a work session', async () => {
+      const dto = {
+        minutes_spent: 45,
+        session_date: '2026-11-04',
+        difficulty_level: 3,
+        difficulty_notes: 'Buen avance',
+      };
+      const expectedResult = {
+        session_id: 1,
+        activity_id: 1,
+        ...dto,
+      };
+
+      mockActivitiesService.logWorkSession.mockResolvedValue(expectedResult);
+
+      const req = { user: { userId: 7 } };
+      const result = await controller.logWorkSession(req, 1, dto);
+      expect(result).toEqual(expectedResult);
+      expect(mockActivitiesService.logWorkSession).toHaveBeenCalledWith(7, 1, dto);
+    });
+  });
+
+  describe('getWorkSessions (HU-17)', () => {
+    it('should retrieve work sessions for an activity', async () => {
+      const expectedResult = {
+        activity_id: 1,
+        activity_title: 'Práctica',
+        estimated_minutes: 60,
+        total_logged_minutes: 45,
+        sessions: [],
+      };
+
+      mockActivitiesService.getWorkSessions.mockResolvedValue(expectedResult);
+
+      const req = { user: { userId: 7 } };
+      const result = await controller.getWorkSessions(req, 1);
+      expect(result).toEqual(expectedResult);
+      expect(mockActivitiesService.getWorkSessions).toHaveBeenCalledWith(7, 1);
+    });
+  });
+
+  describe('recordMiss (HU-19)', () => {
+    it('should record an activity miss', async () => {
+      const dto = { reason_id: 1, details: 'Imprevisto' };
+      const expectedResult = { miss_id: 1, schedule_id: 5, ...dto };
+
+      mockActivitiesService.recordMiss.mockResolvedValue(expectedResult);
+
+      const req = { user: { userId: 7 } };
+      const result = await controller.recordMiss(req, 1, dto);
+      expect(result).toEqual(expectedResult);
+      expect(mockActivitiesService.recordMiss).toHaveBeenCalledWith(7, 1, dto);
+    });
+  });
+
+  describe('getMissReasons (HU-19)', () => {
+    it('should retrieve miss reasons catalog', async () => {
+      const reasons = [{ reason_id: 1, name: 'Falta de tiempo' }];
+      mockActivitiesService.getMissReasons.mockResolvedValue(reasons);
+
+      const result = await controller.getMissReasons();
+      expect(result).toEqual(reasons);
+    });
+  });
+
+  describe('getTimeline (HU-20)', () => {
+    it('should retrieve activity timeline events', async () => {
+      const events = [{ event_id: 1, event_type: 'work_session' }];
+      mockActivitiesService.getActivityTimeline.mockResolvedValue(events);
+
+      const req = { user: { userId: 7 } };
+      const result = await controller.getTimeline(req, { goal_id: 1 });
+      expect(result).toEqual(events);
+      expect(mockActivitiesService.getActivityTimeline).toHaveBeenCalledWith(7, { goal_id: 1 });
+    });
+  });
+
+  describe('getActivityHistory (HU-20)', () => {
+    it('should retrieve history for a specific activity', async () => {
+      const events = [{ event_id: 1, event_type: 'status_change' }];
+      mockActivitiesService.getActivityHistoryById.mockResolvedValue(events);
+
+      const req = { user: { userId: 7 } };
+      const result = await controller.getActivityHistory(req, 1);
+      expect(result).toEqual(events);
+      expect(mockActivitiesService.getActivityHistoryById).toHaveBeenCalledWith(7, 1);
     });
   });
 });

@@ -354,6 +354,27 @@ export default function StageDetailScreen() {
             <Text style={styles.bannerAction}>Ver agenda</Text>
           </TouchableOpacity>
 
+          {/* Banner Historial de Actividades (HU-20) */}
+          <TouchableOpacity
+            style={[styles.adaptedBanner, { marginTop: -6, backgroundColor: '#FFFFFF', borderColor: '#E2EEF1' }]}
+            onPress={() =>
+              router.push({
+                pathname: '/activity-history',
+                params: { goalId: goalId ? String(goalId) : '' },
+              })
+            }
+            activeOpacity={0.8}
+          >
+            <View style={styles.bannerLeft}>
+              <Feather name="clock" size={18} color="#174A62" />
+              <View>
+                <Text style={styles.bannerTitle}>Historial de actividades</Text>
+                <Text style={styles.bannerSub}>Revisa sesiones completadas e incidencias</Text>
+              </View>
+            </View>
+            <Text style={styles.bannerAction}>Ver historial</Text>
+          </TouchableOpacity>
+
           {/* List Section */}
           <View style={styles.bodyContainer}>
             <View style={styles.sectionHeader}>
