@@ -67,4 +67,27 @@ JOIN "GOAL" g ON g.goal_id = s.goal_id
 JOIN "APP_USER" u ON u.user_id = g.user_id
 WHERE u.deleted_at IS NULL AND g.deleted_at IS NULL AND a.deleted_at IS NULL;
 
+-- HU-22 y HU-24: conserva el progreso de HU-03 y agrega la referencia de agenda.
+CREATE OR REPLACE VIEW v_goal_pace AS
+WITH planned AS (
+    SELECT goal_id, SUM(estimated_minutes) AS scheduled_minutes,
+           SUM(estimated_minutes) FILTER (WHERE scheduled_date <= CURRENT_DATE) AS due_minutes
+    FROM v_activity_current_schedule
+    GROUP BY goal_id
+)
+SELECT p.*, CURRENT_DATE AS as_of_date,
+       COALESCE(pl.scheduled_minutes, 0) AS scheduled_estimated_minutes,
+       COALESCE(pl.due_minutes, 0) AS expected_completed_minutes,
+       CASE WHEN pl.scheduled_minutes > 0 THEN
+           ROUND(100 * COALESCE(pl.due_minutes, 0)::numeric / NULLIF(p.total_estimated_minutes, 0), 2)
+       END AS expected_progress_percentage,
+       CASE
+           WHEN COALESCE(pl.scheduled_minutes, 0) = 0 THEN 'no_schedule'
+           WHEN p.completed_estimated_minutes < COALESCE(pl.due_minutes, 0) THEN 'behind'
+           ELSE 'on_track'
+       END AS pace_status
+FROM v_goal_progress p
+JOIN "APP_USER" u ON u.user_id = p.user_id AND u.deleted_at IS NULL
+LEFT JOIN planned pl ON pl.goal_id = p.goal_id;
+
 COMMIT;
