@@ -242,7 +242,7 @@ export default function CreateGoalScreen() {
             </View>
 
             <View style={styles.infoBanner}>
-              <Feather name="plus" size={16} color="#174A62" style={styles.bannerIcon} />
+              <Feather name="compass" size={16} color="#174A62" style={styles.bannerIcon} />
               <View style={styles.bannerTextContainer}>
                 <Text style={styles.bannerTitle}>
                   Un objetivo claro es el primer paso.
