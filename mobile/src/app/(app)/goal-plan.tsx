@@ -3,6 +3,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -46,6 +47,9 @@ export default function GoalPlanScreen() {
   const [progressError, setProgressError] = useState<string | null>(null);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [weeklyHours, setWeeklyHours] = useState<number | null>(null);
+
+  // Estado para el menú flotante del Sprint 4 (Pausar, Cambiar fecha, Archivar)
+  const [menuVisible, setMenuVisible] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -167,21 +171,80 @@ export default function GoalPlanScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.container}>
-          {/* Header Superior con BackButton unificado */}
+          {/* Header Superior con BackButton y Menú de Opciones (Sprint 4) */}
           <View style={styles.topRow}>
             <View style={styles.headerLeftContainer}>
               <BackButton />
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.badge}>TU PLAN PERSONALIZADO</Text>
-                <Text style={styles.mainTitle}>Tu plan personalizado</Text>
+                <Text style={styles.mainTitle} numberOfLines={1}>Tu Plan Personalizado</Text>
               </View>
             </View>
 
-            <View style={styles.avatarWrapper}>
-              <FlowMascotAvatar />
-              <Text style={styles.avatarLabel}>¡Vamos!</Text>
+            <View style={styles.headerRightActions}>
+              <TouchableOpacity
+                style={styles.optionsButton}
+                onPress={() => setMenuVisible(true)}
+                activeOpacity={0.8}
+                accessibilityLabel="Opciones del objetivo"
+              >
+                <Feather name="more-horizontal" size={20} color="#174A62" />
+              </TouchableOpacity>
+              <View style={styles.avatarWrapper}>
+                <FlowMascotAvatar />
+              </View>
             </View>
           </View>
+
+          {/* Menú Modal de Opciones del Sprint 4 (Pausar, Cambiar fecha, Archivar) */}
+          <Modal
+            visible={menuVisible}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => setMenuVisible(false)}
+          >
+            <TouchableOpacity 
+              style={styles.modalOverlay} 
+              activeOpacity={1} 
+              onPress={() => setMenuVisible(false)}
+            >
+              <View style={styles.menuDropdown}>
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={() => {
+                    setMenuVisible(false);
+                    // Lógica mock o navegación para pausar (HU-32)
+                  }}
+                >
+                  <Feather name="pause-circle" size={16} color="#174A62" />
+                  <Text style={styles.menuItemText}>Pausar objetivo</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={() => {
+                    setMenuVisible(false);
+                    // Lógica mock o navegación para cambiar fecha límite (HU-34)
+                  }}
+                >
+                  <Feather name="calendar" size={16} color="#174A62" />
+                  <Text style={styles.menuItemText}>Cambiar fecha límite</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.menuItem, styles.menuItemDanger]} 
+                  onPress={() => {
+                    setMenuVisible(false);
+                    // Lógica mock o navegación para archivar (HU-46)
+                    router.push('/archived-goals' as any);
+                  }}
+                >
+                  <Feather name="archive" size={16} color="#C53030" />
+                  <Text style={[styles.menuItemText, styles.menuItemTextDanger]}>Archivar objetivo</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Modal>
 
           {/* Tarjeta Principal del Objetivo */}
           <GoalOverviewCard
@@ -276,6 +339,24 @@ export default function GoalPlanScreen() {
             <Feather name="arrow-right" size={18} color="#174A62" />
           </TouchableOpacity>
 
+          {/* Tarjeta de Acceso al Calendario General (Sprint 4 - HU-50) */}
+          <TouchableOpacity
+            style={styles.scheduleAccessCard}
+            activeOpacity={0.85}
+            onPress={() => router.push('/calendar' as any)}
+          >
+            <View style={styles.scheduleCardLeft}>
+              <View style={[styles.calendarIconBox, { backgroundColor: '#E2EEF1' }]}>
+                <Feather name="calendar" size={18} color="#174A62" />
+              </View>
+              <View>
+                <Text style={styles.scheduleCardTag}>PLANIFICACIÓN ACTUALIZADA</Text>
+                <Text style={styles.scheduleCardTitle}>Consultar en calendario</Text>
+              </View>
+            </View>
+            <Feather name="arrow-right" size={18} color="#174A62" />
+          </TouchableOpacity>
+
           {/* Tarjeta de Acceso a Seguimiento y Métricas */}
           <TouchableOpacity
             style={styles.scheduleAccessCard}
@@ -360,12 +441,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
   },
   headerLeftContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
     flex: 1,
+    minWidth: 0,
+  },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  optionsButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#174A62',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    elevation: 1,
   },
   badge: {
     fontSize: 10,
@@ -375,7 +477,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   mainTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: '#0F2C40',
     letterSpacing: -0.5,
@@ -383,11 +485,44 @@ const styles = StyleSheet.create({
   avatarWrapper: {
     alignItems: 'center',
   },
-  avatarLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#174A62',
-    marginTop: 2,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: 80,
+    paddingRight: 20,
+  },
+  menuDropdown: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingVertical: 8,
+    width: 200,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  menuItemDanger: {
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  menuItemText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F2C40',
+  },
+  menuItemTextDanger: {
+    color: '#C53030',
   },
   metricsRow: {
     flexDirection: 'row',
