@@ -1,4 +1,4 @@
-# Módulo de Base de Datos - FlowStep (Sprints 1 y 2)
+# Módulo de Base de Datos - FlowStep (Sprints 1 a 3)
 
 Este módulo contiene los esquemas DDL, vistas, migración del Sprint 2, datos de demostración y pruebas de PostgreSQL de **FlowStep**. El Sprint 2 cubre HU-06, HU-07, HU-11, HU-13, HU-14, HU-16, HU-35 y HU-36, según el ER y las entidades existentes del backend.
 
@@ -155,8 +155,15 @@ database/
 ├── 04_sprint2_schema.sql # Migración aditiva: disponibilidad y cronogramas
 ├── 05_sprint2_views.sql  # Tiempo disponible, programación vigente y compatibilidad
 ├── 06_sprint2_seeds.sql  # Demo independiente del Sprint 2
+├── 07_sprint3_tracking.sql # Sesiones, incumplimientos, cronología y ritmo
+├── 08_sprint3_seeds.sql    # Demo de seguimiento
+├── 09_goal_management_schema.sql # Preferencias, historiales, avisos, sesiones y triggers
+├── 10_goal_management_views.sql  # Visión general, alertas, resumen, calendario
+├── 11_goal_management_seeds.sql  # Demo de gestión de objetivos
 ├── tests/
 │   ├── sprint2.sql # Pruebas de integridad y de las ocho HU con ROLLBACK
+│   ├── sprint3.sql # Pruebas de seguimiento (HU-17 a HU-24)
+│   ├── goal_management.sql # Pruebas de las 14 HU de gestión de objetivos
 │   └── backend.integration.cjs # Servicios y entidades reales contra PostgreSQL
 └── README.md      # Este documento
 ```
@@ -168,7 +175,7 @@ cd backend
 # Iniciar PostgreSQL (los scripts se ejecutan si el volumen es nuevo):
 docker compose up -d db
 ```
-El contenedor monta `../database` en `/docker-entrypoint-initdb.d:ro` y ejecuta los seis scripts raíz en orden. PostgreSQL solo inicializa volúmenes vacíos; un volumen existente debe actualizarse con la migración descrita abajo. No hace falta eliminar el volumen ni sus datos. Las pruebas están en una subcarpeta y no se ejecutan durante la inicialización.
+El contenedor monta `../database` en `/docker-entrypoint-initdb.d:ro` y ejecuta todos los scripts raíz (`01` a `11`) en orden. PostgreSQL solo inicializa volúmenes vacíos; un volumen existente debe actualizarse con la migración descrita abajo. No hace falta eliminar el volumen ni sus datos. Las pruebas están en una subcarpeta y no se ejecutan durante la inicialización.
 
 ### Ejecución Manual con `psql`
 ```bash
@@ -371,3 +378,158 @@ SELECT * FROM v_goal_weekly_progress
 WHERE user_id = (SELECT user_id FROM "APP_USER" WHERE email = 'sprint3.demo@flowstep.test')
 ORDER BY goal_id, week_start;
 ```
+
+## 10. Sprint 3 · Gestión de objetivos, avisos y cuenta
+
+Aplica `09_goal_management_schema.sql` y `10_goal_management_views.sql` después de `07`.
+Ambos son transaccionales y se pueden repetir; no modifican filas existentes.
+`11_goal_management_seeds.sql` es opcional (solo demostración).
+
+Para un volumen existente, desde la raíz del repositorio y con el backend detenido:
+
+```powershell
+docker compose -f backend/docker-compose.yml up -d db
+docker compose -f backend/docker-compose.yml exec -T db psql -v ON_ERROR_STOP=1 -U postgres -d flowstep_db -f /docker-entrypoint-initdb.d/09_goal_management_schema.sql
+docker compose -f backend/docker-compose.yml exec -T db psql -v ON_ERROR_STOP=1 -U postgres -d flowstep_db -f /docker-entrypoint-initdb.d/10_goal_management_views.sql
+# Opcional:
+docker compose -f backend/docker-compose.yml exec -T db psql -v ON_ERROR_STOP=1 -U postgres -d flowstep_db -f /docker-entrypoint-initdb.d/11_goal_management_seeds.sql
+```
+
+### Diagrama de las tablas nuevas
+
+```mermaid
+erDiagram
+    APP_USER ||--o| USER_PREFERENCE : "configura (HU-49)"
+    APP_USER ||--o{ AUTH_SESSION : "inicia y cierra sesión (HU-55)"
+    APP_USER ||--o{ NOTIFICATION : "recibe (HU-23, HU-25)"
+    GOAL ||--o{ NOTIFICATION : "origina alertas"
+    GOAL ||--o{ GOAL_STATUS_HISTORY : "pausa, reanuda, archiva"
+    GOAL ||--o{ GOAL_DEADLINE_HISTORY : "cambia fecha límite"
+
+    USER_PREFERENCE {
+        int user_id PK, FK
+        boolean reminders_enabled
+        int reminder_minutes_before
+        boolean delay_alerts_enabled
+        boolean periodic_summary_enabled
+        enum summary_frequency
+        enum summary_day_of_week
+        time summary_time
+        enum goals_sort_by
+        varchar timezone
+    }
+    GOAL_STATUS_HISTORY {
+        int goal_status_history_id PK
+        int goal_id FK
+        enum previous_status
+        enum new_status
+        text reason
+        timestamp changed_at
+    }
+    GOAL_DEADLINE_HISTORY {
+        int goal_deadline_history_id PK
+        int goal_id FK
+        date previous_due_date
+        date new_due_date
+        text reason
+        timestamp changed_at
+    }
+    NOTIFICATION {
+        int notification_id PK
+        int user_id FK
+        int goal_id FK
+        enum type
+        varchar title
+        text body
+        jsonb payload
+        date period_start
+        date period_end
+        timestamp read_at
+    }
+    AUTH_SESSION {
+        uuid session_id PK
+        int user_id FK
+        timestamp expires_at
+        timestamp revoked_at
+        varchar user_agent
+    }
+```
+
+`ACTIVITY` recibe la columna opcional `deletion_reason` (HU-12).
+
+### Cobertura
+
+| Historia | Soporte de base de datos |
+| --- | --- |
+| HU-12 | Borrado **lógico**: `ACTIVITY.deleted_at` + `deletion_reason`. Un trigger elimina también las sub-actividades y, al restaurar, devuelve solo las que se borraron junto con la actividad padre. Progreso, ritmo, agenda, calendario y cronología ya excluyen actividades eliminadas, y su historial se conserva. |
+| HU-23 | `fn_progress_summary(user_id, inicio, fin)` devuelve un JSON con planificadas, completadas, pendientes, tasa de cumplimiento, minutos, días activos, tendencia frente al periodo anterior, serie diaria y desglose por objetivo. `v_pending_periodic_summaries` indica qué resumen corresponde entregar según la frecuencia, día, hora y zona horaria del usuario. Lo entregado se guarda en `NOTIFICATION` (`periodic_summary`). |
+| HU-25 | `v_goal_delay_alert`: objetivos **activos** detrás del ritmo, con actividades vencidas o con la fecha límite pasada; incluye la actividad más atrasada, días de retraso, nivel (`warning`/`critical`) y mensaje listo para mostrar. `v_pending_delay_alerts` respeta `delay_alerts_enabled` y evita repetir la alerta el mismo día. |
+| HU-32 | `GOAL.status = 'paused'`. El trigger valida la transición y registra `GOAL_STATUS_HISTORY`. Un objetivo pausado no genera alertas ni marca días del calendario como atrasados. |
+| HU-33 | `paused → active`. `v_goal_pause_periods` da cada periodo de pausa y sus días, para que el backend desplace la agenda si lo desea. |
+| HU-34 | Cambio de `GOAL.due_date` con historial automático en `GOAL_DEADLINE_HISTORY`. Se rechaza una fecha pasada, anterior al inicio o en un objetivo completado/archivado. `v_goal_overview.activities_after_due_date` avisa de actividades que quedan después de la nueva fecha. |
+| HU-44 | `v_goal_overview` (una fila por objetivo) y `v_user_goal_summary` (totales por estado, objetivos atrasados y avance global ponderado). |
+| HU-45 | `priority_rank` y `sort_position`: activos primero y, dentro de cada estado, el criterio de `goals_sort_by` (por defecto prioridad alta → baja, luego fecha límite). |
+| HU-46 | `active/paused/completed → archived`; `closed_at` se fija automáticamente y se limpia al restaurar (`archived → active`). Los archivados salen del calendario y de las alertas. |
+| HU-47 | `v_goal_history`: completados y archivados con fecha de cierre, avance, actividades y minutos registrados. |
+| HU-48 | `v_goal_overview`: avance, ritmo, minutos dedicados, actividades vencidas, próxima actividad, días restantes y estado de pausa. |
+| HU-49 | `USER_PREFERENCE` con CHECKs y validación de zona horaria; `v_user_preferences` devuelve valores por defecto si el usuario aún no guardó nada e incluye la duración de sesión del Sprint 2. |
+| HU-50 | `v_calendar_activities` (versión vigente de cada horario, con `is_overdue`) y `v_calendar_day_summary` (un registro por día con `day_status` = `completed`, `pending` u `overdue`). |
+| HU-55 | `AUTH_SESSION`: cada login crea una sesión cuyo `session_id` va en el JWT (claim `sid`); cerrar sesión llena `revoked_at`. `v_active_auth_session` responde si el token sigue siendo válido. |
+
+### Transiciones de estado permitidas (trigger `trg_goal_status_before`)
+
+| Desde | Hacia |
+| --- | --- |
+| `active` | `paused`, `completed`, `archived` |
+| `paused` | `active`, `archived` |
+| `completed` | `active`, `archived` |
+| `archived` | `active` |
+
+Una transición no permitida produce `check_violation` (SQLSTATE `23514`); el backend debe responder 400.
+Para guardar un motivo en el historial, ejecutar en la misma transacción
+`SELECT set_config('flowstep.change_reason', 'Semana de exámenes', true);` antes del `UPDATE`.
+
+### Indicaciones para el backend
+
+1. **HU-12**: reemplazar `activitiesRepository.remove(...)` por `softDelete`/`softRemove` (y guardar `deletion_reason` si se recibe). El borrado físico elimina en cascada sesiones, horarios e incumplimientos.
+2. **HU-32/33/34/46**: basta con actualizar `GOAL.status` o `GOAL.due_date`; historial y `closed_at` los maneja la base. Mapear `23514` a 400.
+3. **HU-23/HU-25**: una tarea programada (por ejemplo cada hora) recorre `v_pending_periodic_summaries` y `v_pending_delay_alerts` e inserta en `NOTIFICATION`; la app lee `NOTIFICATION` y marca `read_at`.
+4. **HU-55**: en `login`, insertar en `AUTH_SESSION` (con `expires_at` = vencimiento del JWT) y firmar el token con `sid`; en `JwtStrategy.validate`, comprobar `v_active_auth_session`; `POST /auth/logout` llena `revoked_at`.
+5. Filtrar siempre por el `user_id` autenticado.
+
+Consultas de ejemplo:
+
+```sql
+-- HU-44, HU-45, HU-48
+SELECT * FROM v_goal_overview WHERE user_id = $1 ORDER BY sort_position;
+SELECT * FROM v_user_goal_summary WHERE user_id = $1;
+-- HU-47
+SELECT * FROM v_goal_history WHERE user_id = $1 AND status = $2 ORDER BY closed_at DESC;
+-- HU-50 (mes visible)
+SELECT * FROM v_calendar_day_summary WHERE user_id = $1 AND scheduled_date BETWEEN $2 AND $3;
+SELECT * FROM v_calendar_activities WHERE user_id = $1 AND scheduled_date = $2 ORDER BY start_time NULLS LAST;
+-- HU-23 (semana actual, lunes a domingo)
+SELECT fn_progress_summary($1, date_trunc('week', CURRENT_DATE)::date, date_trunc('week', CURRENT_DATE)::date + 6);
+-- HU-25
+SELECT * FROM v_goal_delay_alert WHERE user_id = $1 ORDER BY priority_rank, max_days_late DESC;
+```
+
+### Demostración
+
+`11_goal_management_seeds.sql` crea `gestion.demo@flowstep.test` (contraseña `Password123!`) con
+cinco objetivos: uno activo de prioridad alta con la alerta *"Consumo de APIs" lleva 2 días de retraso*
+y una actividad eliminada con su sub-actividad, uno activo con la fecha límite ampliada, uno pausado
+(con una pausa anterior ya reanudada), uno archivado y uno completado. También guarda preferencias,
+una sesión cerrada y otra vigente, y el resumen semanal de la semana anterior.
+
+### Pruebas
+
+Sobre una base con los scripts aplicados (los seeds no son necesarios):
+
+```powershell
+psql -v ON_ERROR_STOP=1 -U postgres -d flowstep_db -f database/tests/goal_management.sql
+```
+
+Cubre las 14 historias, incluidos los casos inválidos (transiciones prohibidas, fechas pasadas,
+preferencias fuera de catálogo, alertas y resúmenes duplicados, sesiones cerradas o expiradas).
+Termina con `ROLLBACK`.
