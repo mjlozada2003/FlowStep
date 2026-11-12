@@ -8,6 +8,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text,
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
+import { BackButton } from '@/components/ui/BackButton';
 import { useAuth } from '@/contexts/auth-context';
 import { trackingApi } from '@/services/api/tracking';
 import {
@@ -99,9 +100,7 @@ export default function ActivityHistoryScreen() {
     <Screen style={styles.screenBg}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton} activeOpacity={0.7}>
-            <Feather name="chevron-left" size={24} color="#0F2C40" />
-          </TouchableOpacity>
+          <BackButton />
           <Text style={styles.topBarTitle} numberOfLines={1}>SEGUIMIENTO</Text>
           <BrandHeader />
         </View>
@@ -185,7 +184,6 @@ const styles = StyleSheet.create({
   screenBg: { backgroundColor: '#FAF6F0' },
   container: { paddingVertical: 20, paddingBottom: 40 },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  backButton: { width: 38, height: 38, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   topBarTitle: { fontSize: 11, fontWeight: '800', color: '#627D98', letterSpacing: 0.8, flex: 1, textAlign: 'center', marginHorizontal: 8 },
   categorySubLabel: { fontSize: 10, fontWeight: '800', color: '#174A62', letterSpacing: 1, marginBottom: 4 },
   mainTitle: { fontSize: 24, fontWeight: '800', color: '#0F2C40', marginBottom: 6, letterSpacing: -0.5 },

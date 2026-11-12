@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 
 import { Screen } from '@/components/ui/Screen';
+import { BackButton } from '@/components/ui/BackButton';
 import { useAuth } from '@/contexts/auth-context';
 import {
   getGoalById,
@@ -165,11 +166,14 @@ export default function GoalPlanScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.container}>
-          {/* Header Superior */}
+          {/* Header Superior con BackButton unificado */}
           <View style={styles.topRow}>
-            <View>
-              <Text style={styles.badge}>TU PLAN PERSONALIZADO</Text>
-              <Text style={styles.mainTitle}>Tu plan personalizado</Text>
+            <View style={styles.headerLeftContainer}>
+              <BackButton />
+              <View>
+                <Text style={styles.badge}>TU PLAN PERSONALIZADO</Text>
+                <Text style={styles.mainTitle}>Tu plan personalizado</Text>
+              </View>
             </View>
 
             <View style={styles.avatarWrapper}>
@@ -273,7 +277,7 @@ export default function GoalPlanScreen() {
             <Feather name="arrow-right" size={18} color="#174A62" />
           </TouchableOpacity>
 
-          {/* Tarjeta de Acceso a Seguimiento y Métricas (Duplicado corregido) */}
+          {/* Tarjeta de Acceso a Seguimiento y Métricas */}
           <TouchableOpacity
             style={styles.scheduleAccessCard}
             activeOpacity={0.85}
@@ -362,11 +366,18 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     alignSelf: 'center',
     gap: 14,
+    paddingHorizontal: 16,
   },
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+  },
+  headerLeftContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
   },
   badge: {
     fontSize: 10,
@@ -376,7 +387,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   mainTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
     color: '#0F2C40',
     letterSpacing: -0.5,

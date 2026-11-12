@@ -18,6 +18,7 @@ import {
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { AppModal } from '@/components/ui/Modal';
 import { Screen } from '@/components/ui/Screen';
+import { BackButton } from '@/components/ui/BackButton';
 import { useAuth } from '@/contexts/auth-context';
 import {
   completeActivity,
@@ -322,15 +323,9 @@ export default function StageDetailScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.container}>
-          {/* Top Bar */}
+          {/* Top Bar con BackButton unificado */}
           <View style={styles.topBar}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => router.back()}
-              activeOpacity={0.7}
-            >
-              <Feather name="chevron-left" size={24} color="#0F2C40" />
-            </TouchableOpacity>
+            <BackButton />
             <Text style={styles.headerStepTag}>ETAPA ACTIVA</Text>
             <BrandHeader showTagline={false} />
           </View>
@@ -572,21 +567,12 @@ const styles = StyleSheet.create({
     maxWidth: 440,
     alignSelf: 'center',
     gap: 16,
+    paddingHorizontal: 16,
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  backButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
   },
   headerStepTag: {
     fontSize: 11,

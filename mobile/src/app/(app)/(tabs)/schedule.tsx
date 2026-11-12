@@ -12,6 +12,7 @@ import {
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
+import { BackButton } from '@/components/ui/BackButton';
 import { useAuth } from '@/contexts/auth-context';
 import {
   getActivitySchedules,
@@ -207,13 +208,7 @@ export default function ScheduleScreen() {
       >
         <View style={styles.container}>
           <View style={styles.topRow}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => router.back()}
-              activeOpacity={0.7}
-            >
-              <Feather name="chevron-left" size={24} color="#0F2C40" />
-            </TouchableOpacity>
+            <BackButton />
             <Text style={styles.weekIndicator}>SEMANA ACTUAL</Text>
             <BrandHeader showTagline={false} />
           </View>
@@ -312,18 +307,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    elevation: 2,
   },
   weekIndicator: {
     fontSize: 11,

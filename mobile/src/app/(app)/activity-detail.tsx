@@ -11,6 +11,7 @@ import {
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
+import { BackButton } from '@/components/ui/BackButton';
 import { useAuth } from '@/contexts/auth-context';
 import { trackingApi } from '@/services/api/tracking';
 import { ActivityMissModal } from '@/components/features/ActivityMissModal';
@@ -132,9 +133,7 @@ export default function ActivityDetailScreen() {
     <Screen style={styles.screenBg}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton} activeOpacity={0.7}>
-            <Feather name="chevron-left" size={24} color="#0F2C40" />
-          </TouchableOpacity>
+          <BackButton />
           <Text style={styles.topBarTitle} numberOfLines={1}>DETALLE DE ACTIVIDAD</Text>
           <BrandHeader />
         </View>
@@ -219,7 +218,6 @@ const styles = StyleSheet.create({
   screenBg: { backgroundColor: '#FAF6F0' },
   container: { paddingVertical: 20, paddingBottom: 40, gap: 14 },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  backButton: { width: 38, height: 38, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   topBarTitle: { fontSize: 11, fontWeight: '800', color: '#627D98', letterSpacing: 0.8, flex: 1, textAlign: 'center', marginHorizontal: 8 },
   mainActivityCard: { backgroundColor: '#174A62', borderRadius: 20, padding: 18, shadowColor: '#174A62', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.1, elevation: 4 },
   activityBadgeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },

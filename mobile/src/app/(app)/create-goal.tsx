@@ -17,6 +17,7 @@ import {
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
+import { BackButton } from '@/components/ui/BackButton';
 import { useAuth } from '@/contexts/auth-context';
 import {
   getAvailability,
@@ -136,9 +137,11 @@ export default function CreateGoalScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.container}>
+            {/* Cabecera superior con BackButton unificado y el indicador de paso */}
             <View style={styles.topRow}>
-              <BrandHeader showTagline={false} />
+              <BackButton />
               <Text style={styles.stepIndicator}>PASO 1 DE 1</Text>
+              <BrandHeader showTagline={false} />
             </View>
 
             <View style={styles.avatarContainer}>
@@ -181,7 +184,7 @@ export default function CreateGoalScreen() {
               onChangeHours={(newHours) => setWeeklyHours(newHours)}
               isLoadingAvailability={isAvailabilityLoading}
               availabilityErrorMessage={availabilityErrorMessage}
-              />
+            />
 
             {/* Fecha Límite */}
             <View style={styles.fieldSection}>

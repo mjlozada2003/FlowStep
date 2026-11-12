@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
+import { BackButton } from '@/components/ui/BackButton';
 import { useAuth } from '@/contexts/auth-context';
 import { getUserGoals } from '@/services/api/goals';
 import { trackingApi, type GoalChartData, type GoalPaceData } from '@/services/api/tracking';
@@ -158,11 +159,9 @@ export default function ProgressAnalyticsScreen() {
   return (
     <Screen style={styles.screenBg}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        {/* Cabecera superior */}
+        {/* Cabecera superior con BackButton unificado */}
         <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton} activeOpacity={0.7}>
-            <Feather name="chevron-left" size={24} color="#0F2C40" />
-          </TouchableOpacity>
+          <BackButton />
           <Text style={styles.topBarTitle}>SEGUIMIENTO</Text>
           <BrandHeader />
         </View>
@@ -397,16 +396,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 16,
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E4E7EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
   },
   topBarTitle: {
     fontSize: 11,
