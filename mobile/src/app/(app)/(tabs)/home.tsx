@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,45 +15,78 @@ import { BrandHeader } from '@/components/ui/BrandHeader';
 import { FlowMascotAvatar } from '@/components/features/FlowMascotAvatar';
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/contexts/auth-context';
+import {
+  getGoalsOverview,
+  getDelayAlerts,
+  getWeeklySummary,
+  type GoalOverviewItem,
+  type DelayAlert,
+  type WeeklySummaryData,
+} from '@/services/api/goals';
 
 export default function HomeScreen() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   
-  // TODO: Reemplazar este mock state por getUserGoals(token) cuando el backend esté integrado
-  const [goals] = useState([
-    {
-      id: 1,
-      title: 'Crear una aplicación web',
-      priority: 'ALTA',
-      status: 'En curso',
-      progress: 25,
-      completed: 3,
-      total: 12,
-    },
-    {
-      id: 2,
-      title: 'Mejorar mi inglés',
-      priority: 'MEDIA',
-      status: 'En curso',
-      progress: 62,
-      completed: 3,
-      total: 13,
-    },
-    {
-      id: 3,
-      title: 'Correr mi primera 10K',
-      priority: 'BAJA',
-      status: 'En pausa',
-      progress: 40,
-      completed: 6,
-      total: 15,
-    },
-  ]);
+  const [goals, setGoals] = useState<GoalOverviewItem[]>([]);
+  const [alerts, setAlerts] = useState<DelayAlert[]>([]);
+  const [weeklySummary, setWeeklySummary] = useState<WeeklySummaryData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [sortByPriority, setSortByPriority] = useState(false);
+
+  const loadData = useCallback(async () => {
+    if (!token) return;
+    try {
+      const [overviewData, alertData, weeklyData] = await Promise.all([
+        getGoalsOverview(token).catch(() => []),
+        getDelayAlerts(token).catch(() => []),
+        getWeeklySummary(token).catch(() => null),
+      ]);
+      setGoals(overviewData);
+      setAlerts(alertData);
+      if (weeklyData) setWeeklySummary(weeklyData);
+    } catch {
+      // Ignorar fallos de red en polling de home
+    } finally {
+      setIsLoading(false);
+    }
+  }, [token]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData]),
+  );
 
   const displayName = user?.name ? user.name.split(' ')[0] : 'Lucía';
   const initials = user?.name 
     ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) 
     : 'LM';
+
+  const priorityOrder: Record<string, number> = { high: 3, medium: 2, low: 1 };
+
+  const displayedGoals = [...goals].sort((a, b) => {
+    if (sortByPriority) {
+      const pA = priorityOrder[a.priority?.toLowerCase() || ''] || 0;
+      const pB = priorityOrder[b.priority?.toLowerCase() || ''] || 0;
+      return pB - pA;
+    }
+    return 0;
+  });
+
+  const getPriorityLabel = (priority?: string) => {
+    const p = priority?.toLowerCase();
+    if (p === 'high') return 'ALTA';
+    if (p === 'medium') return 'MEDIA';
+    if (p === 'low') return 'BAJA';
+    return 'MEDIA';
+  };
+
+  const getStatusLabel = (status?: string) => {
+    if (status === 'paused') return 'En pausa';
+    if (status === 'completed') return 'Completado';
+    if (status === 'archived') return 'Archivado';
+    return 'En curso';
+  };
 
   return (
     <Screen style={styles.screen}>
@@ -88,32 +122,47 @@ export default function HomeScreen() {
         </View>
 
         {/* Alerta de Retraso (HU-25) */}
-        <TouchableOpacity 
-          style={styles.alertBanner} 
-          activeOpacity={0.85}
-          onPress={() => router.push('/progress-analytics')}
-        >
-          <View style={styles.alertIconBox}>
-            <Feather name="alert-circle" size={18} color="#FFFFFF" />
-          </View>
-          <View style={styles.alertTextContent}>
-            <Text style={styles.alertTitle}>Una actividad necesita tu atención</Text>
-            <Text style={styles.alertSubtitle}>"Consumo de APIs" lleva 2 días de retraso.</Text>
-          </View>
-          <Feather name="chevron-right" size={18} color="#7B341E" />
-        </TouchableOpacity>
+        {alerts.length > 0 && (
+          <TouchableOpacity 
+            style={styles.alertBanner} 
+            activeOpacity={0.85}
+            onPress={() => router.push('/calendar' as any)}
+          >
+            <View style={styles.alertIconBox}>
+              <Feather name="alert-circle" size={18} color="#FFFFFF" />
+            </View>
+            <View style={styles.alertTextContent}>
+              <Text style={styles.alertTitle}>Una actividad necesita tu atención</Text>
+              <Text style={styles.alertSubtitle}>{alerts[0].alert_message}</Text>
+            </View>
+            <Feather name="chevron-right" size={18} color="#7B341E" />
+          </TouchableOpacity>
+        )}
 
         {/* Sección Objetivos Activos con botones */}
         <View style={styles.sectionHeaderRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.sectionHeaderTitle}>Objetivos activos</Text>
-            <Text style={styles.sectionCounter}>3 objetivos</Text>
+            <Text style={styles.sectionCounter}>
+              {goals.length} {goals.length === 1 ? 'objetivo' : 'objetivos'}
+            </Text>
           </View>
 
           <View style={styles.actionsRow}>
-            <TouchableOpacity style={styles.filterBtn} activeOpacity={0.8}>
-              <Feather name="sliders" size={12} color="#174A62" style={{ marginRight: 4 }} />
-              <Text style={styles.filterBtnText}>Prioridad</Text>
+            <TouchableOpacity 
+              style={[styles.filterBtn, sortByPriority && styles.filterBtnActive]} 
+              activeOpacity={0.8}
+              onPress={() => setSortByPriority((prev) => !prev)}
+            >
+              <Feather 
+                name="sliders" 
+                size={12} 
+                color={sortByPriority ? '#FFFFFF' : '#174A62'} 
+                style={{ marginRight: 4 }} 
+              />
+              <Text style={[styles.filterBtnText, sortByPriority && styles.filterBtnTextActive]}>
+                Prioridad
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -129,48 +178,60 @@ export default function HomeScreen() {
 
         {/* Lista de Tarjetas de Objetivos */}
         <View style={styles.goalsList}>
-          {goals.map((item) => (
-            <TouchableOpacity
-              key={item.id}
-              style={styles.goalCard}
-              activeOpacity={0.9}
-              onPress={() =>
-                router.push({
-                  pathname: '/goal-plan',
-                  params: { goalId: String(item.id), title: item.title },
-                })
-              }
-            >
-              <View style={styles.goalCardTopRow}>
-                <View style={[
-                  styles.priorityBadge,
-                  item.priority === 'ALTA' && styles.priorityHigh,
-                  item.priority === 'MEDIA' && styles.priorityMedium,
-                  item.priority === 'BAJA' && styles.priorityLow,
-                ]}>
-                  <Text style={[
-                    styles.priorityText,
-                    item.priority === 'ALTA' && styles.priorityHighText,
-                  ]}>{item.priority}</Text>
-                </View>
-                <Text style={styles.statusText}>{item.status}</Text>
-              </View>
+          {isLoading && goals.length === 0 ? (
+            <ActivityIndicator size="small" color="#174A62" style={{ marginVertical: 20 }} />
+          ) : displayedGoals.length === 0 ? (
+            <Text style={styles.emptyGoalsText}>No tienes objetivos activos en este momento.</Text>
+          ) : (
+            displayedGoals.map((item) => {
+              const priorityLabel = getPriorityLabel(item.priority);
+              const progressPct = Math.round(item.progress_percentage || 0);
+              return (
+                <TouchableOpacity
+                  key={item.goal_id}
+                  style={styles.goalCard}
+                  activeOpacity={0.9}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/goal-plan',
+                      params: { goalId: String(item.goal_id), title: item.title },
+                    })
+                  }
+                >
+                  <View style={styles.goalCardTopRow}>
+                    <View style={[
+                      styles.priorityBadge,
+                      priorityLabel === 'ALTA' && styles.priorityHigh,
+                      priorityLabel === 'MEDIA' && styles.priorityMedium,
+                      priorityLabel === 'BAJA' && styles.priorityLow,
+                    ]}>
+                      <Text style={[
+                        styles.priorityText,
+                        priorityLabel === 'ALTA' && styles.priorityHighText,
+                      ]}>{priorityLabel}</Text>
+                    </View>
+                    <Text style={styles.statusText}>{getStatusLabel(item.status)}</Text>
+                  </View>
 
-              <Text style={styles.goalTitle}>{item.title}</Text>
+                  <Text style={styles.goalTitle}>{item.title}</Text>
 
-              <View style={styles.progressBarBg}>
-                <View style={[styles.progressBarFill, { width: `${item.progress}%` }]} />
-              </View>
+                  <View style={styles.progressBarBg}>
+                    <View style={[styles.progressBarFill, { width: `${progressPct}%` }]} />
+                  </View>
 
-              <View style={styles.goalCardFooter}>
-                <Text style={styles.goalFooterText}>{item.completed} de {item.total} actividades</Text>
-                <View style={styles.goalFooterRight}>
-                  <Text style={styles.progressPercentText}>{item.progress}%</Text>
-                  <Feather name="arrow-right" size={16} color="#174A62" style={{ marginLeft: 6 }} />
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))}
+                  <View style={styles.goalCardFooter}>
+                    <Text style={styles.goalFooterText}>
+                      {item.completed_activities || 0} de {item.total_activities || 0} actividades
+                    </Text>
+                    <View style={styles.goalFooterRight}>
+                      <Text style={styles.progressPercentText}>{progressPct}%</Text>
+                      <Feather name="arrow-right" size={16} color="#174A62" style={{ marginLeft: 6 }} />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          )}
         </View>
 
         {/* Banner Resumen Semanal */}
@@ -185,7 +246,11 @@ export default function HomeScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.weeklyTag}>RESUMEN SEMANAL</Text>
-              <Text style={styles.weeklyTitle}>Esta semana completaste 4 actividades</Text>
+              <Text style={styles.weeklyTitle}>
+                {weeklySummary
+                  ? `Esta semana completaste ${weeklySummary.completedCount} actividades`
+                  : 'Consulta tu resumen semanal'}
+              </Text>
               <Text style={styles.weeklySubtitle}>Consulta tu evolución y los próximos pasos</Text>
             </View>
             <Feather name="chevron-right" size={20} color="#FFFFFF" />
@@ -489,5 +554,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#174A62',
+  },
+  filterBtnActive: {
+    backgroundColor: '#174A62',
+    borderColor: '#174A62',
+  },
+  filterBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  emptyGoalsText: {
+    fontSize: 13,
+    color: '#627D98',
+    textAlign: 'center',
+    marginVertical: 24,
   },
 });

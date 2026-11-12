@@ -287,3 +287,170 @@ export async function updateGoalPriority(
   }
   return response as CreatedGoal;
 }
+
+// Sprint 4: Interfaces y funciones para gestión avanzada de objetivos
+
+export interface GoalOverviewItem {
+  goal_id: number;
+  title: string;
+  description?: string;
+  priority: 'high' | 'medium' | 'low';
+  status: 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'archived';
+  due_date?: string | null;
+  start_date?: string;
+  total_stages?: number;
+  total_activities: number;
+  completed_activities: number;
+  progress_percentage: number;
+}
+
+export interface GoalHistoryItem {
+  goal_id: number;
+  title: string;
+  description?: string;
+  priority?: string;
+  status: string;
+  start_date?: string;
+  end_date?: string;
+  due_date?: string;
+  status_changed_at?: string;
+  total_activities: number;
+  completed_activities: number;
+  progress_percentage: number;
+  total_minutes_invested?: number;
+  last_reason?: string;
+}
+
+export interface DelayAlert {
+  goal_id: number;
+  goal_title: string;
+  activity_id?: number;
+  activity_title?: string;
+  due_date?: string;
+  days_delayed: number;
+  alert_message: string;
+}
+
+export interface WeeklySummaryData {
+  period: string;
+  tagline: string;
+  title: string;
+  description: string;
+  completionRate: number;
+  completedCount: number;
+  pendingCount: number;
+  hoursSpent: string;
+  daysActivity: Array<{ day: string; active: boolean; height: number }>;
+  goalsBreakdown: Array<{ id: number; title: string; detail: string; progress: string }>;
+  mascotTip: string;
+}
+
+export async function getGoalsOverview(
+  token: string,
+  sortBy?: 'priority' | 'due_date' | 'progress',
+): Promise<GoalOverviewItem[]> {
+  const query = sortBy ? `?sortBy=${encodeURIComponent(sortBy)}` : '';
+  const response = await apiRequest<unknown>(`/goals/overview${query}`, {
+    method: 'GET',
+    token,
+  });
+
+  if (!Array.isArray(response)) {
+    throw new ApiResponseError('La lista de resumen de objetivos no tiene el formato esperado.');
+  }
+
+  return response as GoalOverviewItem[];
+}
+
+export async function getGoalHistory(token: string): Promise<GoalHistoryItem[]> {
+  const response = await apiRequest<unknown>('/goals/history', {
+    method: 'GET',
+    token,
+  });
+
+  if (!Array.isArray(response)) {
+    throw new ApiResponseError('El historial de objetivos no tiene el formato esperado.');
+  }
+
+  return response as GoalHistoryItem[];
+}
+
+export async function getDelayAlerts(token: string): Promise<DelayAlert[]> {
+  const response = await apiRequest<unknown>('/goals/delay-alerts', {
+    method: 'GET',
+    token,
+  });
+
+  if (!Array.isArray(response)) {
+    return [];
+  }
+
+  return response as DelayAlert[];
+}
+
+export async function getWeeklySummary(
+  token: string,
+  startDate?: string,
+  endDate?: string,
+): Promise<WeeklySummaryData> {
+  const params = new URLSearchParams();
+  if (startDate) params.append('startDate', startDate);
+  if (endDate) params.append('endDate', endDate);
+  const query = params.toString() ? `?${params.toString()}` : '';
+
+  const response = await apiRequest<WeeklySummaryData>(`/goals/weekly-summary${query}`, {
+    method: 'GET',
+    token,
+  });
+
+  return response;
+}
+
+export async function pauseGoal(
+  goalId: number,
+  token: string,
+  reason?: string,
+): Promise<{ message: string; goal: any }> {
+  return apiRequest<{ message: string; goal: any }>(`/goals/${goalId}/pause`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function resumeGoal(
+  goalId: number,
+  token: string,
+  reason?: string,
+): Promise<{ message: string; goal: any }> {
+  return apiRequest<{ message: string; goal: any }>(`/goals/${goalId}/resume`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function archiveGoal(
+  goalId: number,
+  token: string,
+  reason?: string,
+): Promise<{ message: string; goal: any }> {
+  return apiRequest<{ message: string; goal: any }>(`/goals/${goalId}/archive`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function updateGoalDueDate(
+  goalId: number,
+  token: string,
+  dueDate: string,
+  reason?: string,
+): Promise<{ message: string; goal: any }> {
+  return apiRequest<{ message: string; goal: any }>(`/goals/${goalId}/due-date`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify({ due_date: dueDate, reason }),
+  });
+}
