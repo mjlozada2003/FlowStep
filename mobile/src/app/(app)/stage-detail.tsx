@@ -7,7 +7,6 @@ import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -30,16 +29,8 @@ import {
   updateActivity,
 } from '@/services/api/stages';
 
-interface Activity {
-  id: number;
-  title: string;
-  duration: number | null;
-  type: string;
-  date: string;
-  rawDate?: string;
-  rawTime?: string;
-  completed: boolean;
-}
+import { StageBanners } from '@/components/features/StageBanners';
+import { StageActivityCard, type StageActivityData } from '@/components/features/StageActivityCard';
 
 async function loadStageActivities(stageId: number, token: string) {
   const serverActivities = await getStageActivities(stageId, token);
@@ -98,7 +89,7 @@ export default function StageDetailScreen() {
   }>();
   const { token } = useAuth();
 
-  const [activities, setActivities] = useState<Activity[]>([]);
+  const [activities, setActivities] = useState<StageActivityData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingError, setIsLoadingError] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -107,7 +98,7 @@ export default function StageDetailScreen() {
   // Modales
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
-  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+  const [selectedActivity, setSelectedActivity] = useState<StageActivityData | null>(null);
 
   // Form states (Nueva actividad)
   const [newTitle, setNewTitle] = useState('');
@@ -241,7 +232,7 @@ export default function StageDetailScreen() {
     }
   };
 
-  const openEditModal = (activity: Activity) => {
+  const openEditModal = (activity: StageActivityData) => {
     setSelectedActivity(activity);
     setEditTitle(activity.title);
     setEditDateValue(parseInitialDate(activity.rawDate, activity.rawTime));
@@ -370,60 +361,21 @@ export default function StageDetailScreen() {
             ) : null}
           </View>
 
-          {/* Banner Adaptado a Disponibilidad */}
-          <TouchableOpacity
-            style={styles.adaptedBanner}
-            onPress={() =>
+          {/* Banners (Agenda e Historial) */}
+          <StageBanners
+            onPressSchedule={() =>
               router.push({
                 pathname: '/schedule',
                 params: { goalId: goalId ? String(goalId) : '' },
               })
             }
-            activeOpacity={0.8}
-          >
-            <View style={styles.bannerLeft}>
-              <Feather name="calendar" size={18} color="#174A62" />
-              <View style={styles.bannerTextFlex}>
-                <Text style={styles.bannerTitle}>
-                  Plan adaptado a tu disponibilidad
-                </Text>
-                <Text style={styles.bannerSub}>
-                  Sesiones organizadas para evitar sobrecargas
-                </Text>
-              </View>
-            </View>
-            <Text style={styles.bannerAction}>Ver agenda</Text>
-          </TouchableOpacity>
-
-          {/* Banner Historial de Actividades */}
-          <TouchableOpacity
-            style={[
-              styles.adaptedBanner,
-              {
-                marginTop: -6,
-                backgroundColor: '#FFFFFF',
-                borderColor: '#E2EEF1',
-              },
-            ]}
-            onPress={() =>
+            onPressHistory={() =>
               router.push({
                 pathname: '/activity-history',
                 params: { goalId: goalId ? String(goalId) : '' },
               })
             }
-            activeOpacity={0.8}
-          >
-            <View style={styles.bannerLeft}>
-              <Feather name="clock" size={18} color="#174A62" />
-              <View style={styles.bannerTextFlex}>
-                <Text style={styles.bannerTitle}>Historial de actividades</Text>
-                <Text style={styles.bannerSub}>
-                  Revisa sesiones completadas e incidencias
-                </Text>
-              </View>
-            </View>
-            <Text style={styles.bannerAction}>Ver historial</Text>
-          </TouchableOpacity>
+          />
 
           {/* List Section */}
           <View style={styles.bodyContainer}>
@@ -454,60 +406,14 @@ export default function StageDetailScreen() {
               ) : null}
 
               {activities.map((activity, index) => (
-                <View
+                <StageActivityCard
                   key={activity.id}
-                  style={[
-                    styles.activityCard,
-                    activity.completed && styles.activityCardCompleted,
-                  ]}
-                >
-                  <Pressable
-                    style={styles.cardMainClickable}
-                    onPress={() => toggleActivity(activity.id)}
-                    disabled={busyActivityId !== null}
-                  >
-                    <View
-                      style={[
-                        styles.checkbox,
-                        activity.completed && styles.checkboxCompleted,
-                      ]}
-                    >
-                      {busyActivityId === activity.id ? (
-                        <ActivityIndicator size="small" color="#174A62" />
-                      ) : activity.completed ? (
-                        <Feather name="check" size={14} color="#FFFFFF" />
-                      ) : null}
-                    </View>
-
-                    <View style={styles.activityInfo}>
-                      <Text style={styles.activityBadge}>
-                        ACTIVIDAD {index + 1}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.activityTitle,
-                          activity.completed && styles.activityTitleCompleted,
-                        ]}
-                      >
-                        {activity.title}
-                      </Text>
-                      {activity.date ? (
-                        <Text style={styles.activityDateText}>
-                          <Feather name="calendar" size={11} color="#627D98" />{' '}
-                          {activity.date}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </Pressable>
-
-                  <TouchableOpacity
-                    style={styles.editIconButton}
-                    onPress={() => openEditModal(activity)}
-                    activeOpacity={0.7}
-                  >
-                    <Feather name="edit-2" size={16} color="#174A62" />
-                  </TouchableOpacity>
-                </View>
+                  activity={activity}
+                  index={index}
+                  isBusy={busyActivityId !== null}
+                  onToggle={() => toggleActivity(activity.id)}
+                  onEdit={() => openEditModal(activity)}
+                />
               ))}
             </View>
 
@@ -693,7 +599,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 18,
-    boxShadow: '0px 6px 14px rgba(23, 74, 98, 0.06)',
+    shadowColor: '#174A62',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
     elevation: 3,
   },
   stageBadge: {
@@ -741,41 +649,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#174A62',
     borderRadius: 4,
   },
-  adaptedBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#EBF5FB',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#D8ECF8',
-    gap: 10,
-  },
-  bannerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-  bannerTextFlex: {
-    flex: 1,
-  },
-  bannerTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0F2C40',
-  },
-  bannerSub: {
-    fontSize: 11,
-    color: '#627D98',
-    marginTop: 2,
-  },
-  bannerAction: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#174A62',
-  },
   bodyContainer: {
     gap: 12,
   },
@@ -796,68 +669,6 @@ const styles = StyleSheet.create({
   },
   activitiesList: {
     gap: 10,
-  },
-  activityCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    gap: 12,
-  },
-  activityCardCompleted: {
-    backgroundColor: '#F8FAFC',
-    borderColor: '#CBD5E1',
-  },
-  cardMainClickable: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#CBD5E1',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkboxCompleted: {
-    backgroundColor: '#174A62',
-    borderColor: '#174A62',
-  },
-  activityInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  activityBadge: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#627D98',
-    letterSpacing: 0.8,
-  },
-  activityTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0F2C40',
-  },
-  activityTitleCompleted: {
-    textDecorationLine: 'line-through',
-    color: '#94A3B8',
-  },
-  activityDateText: {
-    fontSize: 11,
-    color: '#627D98',
-    marginTop: 2,
-  },
-  editIconButton: {
-    padding: 8,
-    borderRadius: 10,
-    backgroundColor: '#F1F5F9',
   },
   addActivityButton: {
     backgroundColor: '#174A62',
