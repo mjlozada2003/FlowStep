@@ -26,18 +26,9 @@ import {
   getUserGoals,
 } from '@/services/api/goals';
 
-interface ScheduleItem {
-  id: number;
-  day: string;
-  date: string;
-  scheduledDate: string;
-  time: string;
-  title: string;
-  stage: string;
-  stageId?: number;
-  status: string | null;
-  durationMinutes: number | null;
-}
+import { ScheduleMetricsCard } from '@/components/features/ScheduleMetricsCard';
+import { ScheduleItemCard, type ScheduleItemData } from '@/components/features/ScheduleItemCard';
+import { ScheduleFreeTimeCard } from '@/components/features/ScheduleFreeTimeCard';
 
 const SPANISH_DAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 
@@ -45,7 +36,7 @@ export default function ScheduleScreen() {
   const params = useLocalSearchParams<{ goalId?: string }>();
   const { token } = useAuth();
 
-  const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([]);
+  const [scheduleItems, setScheduleItems] = useState<ScheduleItemData[]>([]);
   const [targetStageId, setTargetStageId] = useState<number | null>(null);
   const [activeGoalId, setActiveGoalId] = useState<number | null>(null);
   const [totalSessions, setTotalSessions] = useState<number | null>(null);
@@ -58,136 +49,136 @@ export default function ScheduleScreen() {
 
   useFocusEffect(
     useCallback(() => {
-    let isMounted = true;
-    if (!token) {
+      let isMounted = true;
+      if (!token) {
+        return () => {
+          isMounted = false;
+        };
+      }
+
+      const loadScheduleData = async () => {
+        try {
+          let activeGoalId: number | null = null;
+          if (params.goalId && /^\d+$/.test(params.goalId)) {
+            activeGoalId = Number(params.goalId);
+          } else {
+            const userGoals = await getUserGoals(token);
+            if (userGoals.length > 0) {
+              activeGoalId = userGoals[0].goal_id;
+            }
+          }
+
+          if (!activeGoalId) {
+            if (isMounted) {
+              setIsEmpty(true);
+              setActiveGoalId(null);
+              setScheduleItems([]);
+              setTotalSessions(0);
+            }
+            return;
+          }
+
+          const [goalData, availabilities] = await Promise.all([
+            getGoalById(activeGoalId, token),
+            getAvailability(token),
+          ]);
+
+          if (!isMounted) return;
+          setLoadError(null);
+          setIsEmpty(false);
+
+          const now = new Date();
+          const weekStart = new Date(now);
+          weekStart.setHours(0, 0, 0, 0);
+          weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekEnd.getDate() + 7);
+          const mappedItems: (ScheduleItemData | null)[] = await Promise.all(
+            (goalData.stages ?? []).flatMap((stage, stageIdx) =>
+              (stage.activities ?? []).map(async (activity) => {
+                const schedules: ActivityScheduleVersion[] = await getActivitySchedules(
+                  activity.activity_id,
+                  token,
+                );
+                const sortedSchedules = [...schedules].sort(
+                  (left, right) => left.version_number - right.version_number,
+                );
+                const latestSchedule = sortedSchedules[sortedSchedules.length - 1];
+                if (!latestSchedule?.scheduled_date) return null;
+
+                const scheduledDate = new Date(`${latestSchedule.scheduled_date}T00:00:00`);
+                if (
+                  Number.isNaN(scheduledDate.getTime()) ||
+                  scheduledDate < weekStart ||
+                  scheduledDate >= weekEnd
+                ) {
+                  return null;
+                }
+                const minutes = activity.estimated_minutes;
+                const startTime = latestSchedule.start_time?.slice(0, 5);
+                return {
+                  id: activity.activity_id,
+                  day: SPANISH_DAYS[scheduledDate.getDay()],
+                  date: String(scheduledDate.getDate()),
+                  scheduledDate: latestSchedule.scheduled_date,
+                  time: `${startTime ? `${startTime} · ` : ''}${minutes !== null && minutes !== undefined ? `${minutes} min` : 'Duración no indicada'}`,
+                  title: activity.title,
+                  stage: `Etapa ${stageIdx + 1} · ${stage.name}`,
+                  stageId: stage.stage_id,
+                  status: activity.status === 'completed' ? 'COMPLETADA' : null,
+                  durationMinutes: minutes ?? null,
+                } as ScheduleItemData;
+              }),
+            ),
+          );
+
+          const items = mappedItems
+            .filter((item): item is ScheduleItemData => item !== null)
+            .sort((left, right) => left.scheduledDate.localeCompare(right.scheduledDate));
+          const weeklyAvailableMinutes = getWeeklyAvailabilityMinutes(availabilities);
+          const canCalculatePlannedMinutes = items.every(
+            (item) => item.durationMinutes !== null,
+          );
+          const plannedMinutes = canCalculatePlannedMinutes
+            ? items.reduce((total, item) => total + (item.durationMinutes ?? 0), 0)
+            : null;
+
+          setActiveGoalId(activeGoalId);
+          setIsEmpty(false);
+          setScheduleItems(items);
+          setTotalSessions(items.length);
+          setTargetStageId(items[0]?.stageId ?? goalData.stages?.[0]?.stage_id ?? null);
+          setAvailableTimeStr(`${Number((weeklyAvailableMinutes / 60).toFixed(2))} h`);
+          setPlannedTimeStr(
+            plannedMinutes === null
+              ? '—'
+              : `${Math.floor(plannedMinutes / 60)} h ${plannedMinutes % 60} min`,
+          );
+          const freeMinutes =
+            plannedMinutes === null
+              ? null
+              : Math.max(0, weeklyAvailableMinutes - plannedMinutes);
+          setFreeTimeStr(
+            freeMinutes === null
+              ? '—'
+              : `${Math.floor(freeMinutes / 60)} h ${freeMinutes % 60} min libres`,
+          );
+        } catch (error) {
+          if (!isMounted) return;
+          setScheduleItems([]);
+          setLoadError(
+            error instanceof Error ? error.message : 'No se pudo cargar la agenda.',
+          );
+        } finally {
+          if (isMounted) setIsLoading(false);
+        }
+      };
+
+      loadScheduleData();
+
       return () => {
         isMounted = false;
       };
-    }
-
-    const loadScheduleData = async () => {
-      try {
-        let activeGoalId: number | null = null;
-        if (params.goalId && /^\d+$/.test(params.goalId)) {
-          activeGoalId = Number(params.goalId);
-        } else {
-          const userGoals = await getUserGoals(token);
-          if (userGoals.length > 0) {
-            activeGoalId = userGoals[0].goal_id;
-          }
-        }
-
-        if (!activeGoalId) {
-          if (isMounted) {
-            setIsEmpty(true);
-            setActiveGoalId(null);
-            setScheduleItems([]);
-            setTotalSessions(0);
-          }
-          return;
-        }
-
-        const [goalData, availabilities] = await Promise.all([
-          getGoalById(activeGoalId, token),
-          getAvailability(token),
-        ]);
-
-        if (!isMounted) return;
-        setLoadError(null);
-        setIsEmpty(false);
-
-        const now = new Date();
-        const weekStart = new Date(now);
-        weekStart.setHours(0, 0, 0, 0);
-        weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekEnd.getDate() + 7);
-        const mappedItems: (ScheduleItem | null)[] = await Promise.all(
-          (goalData.stages ?? []).flatMap((stage, stageIdx) =>
-            (stage.activities ?? []).map(async (activity) => {
-              const schedules: ActivityScheduleVersion[] = await getActivitySchedules(
-                activity.activity_id,
-                token,
-              );
-              const sortedSchedules = [...schedules].sort(
-                (left, right) => left.version_number - right.version_number,
-              );
-              const latestSchedule = sortedSchedules[sortedSchedules.length - 1];
-              if (!latestSchedule?.scheduled_date) return null;
-
-              const scheduledDate = new Date(`${latestSchedule.scheduled_date}T00:00:00`);
-              if (
-                Number.isNaN(scheduledDate.getTime()) ||
-                scheduledDate < weekStart ||
-                scheduledDate >= weekEnd
-              ) {
-                return null;
-              }
-              const minutes = activity.estimated_minutes;
-              const startTime = latestSchedule.start_time?.slice(0, 5);
-              return {
-                id: activity.activity_id,
-                day: SPANISH_DAYS[scheduledDate.getDay()],
-                date: String(scheduledDate.getDate()),
-                scheduledDate: latestSchedule.scheduled_date,
-                time: `${startTime ? `${startTime} · ` : ''}${minutes !== null && minutes !== undefined ? `${minutes} min` : 'Duración no indicada'}`,
-                title: activity.title,
-                stage: `Etapa ${stageIdx + 1} · ${stage.name}`,
-                stageId: stage.stage_id,
-                status: activity.status === 'completed' ? 'COMPLETADA' : null,
-                durationMinutes: minutes ?? null,
-              } as ScheduleItem;
-            }),
-          ),
-        );
-
-        const items = mappedItems
-          .filter((item): item is ScheduleItem => item !== null)
-          .sort((left, right) => left.scheduledDate.localeCompare(right.scheduledDate));
-        const weeklyAvailableMinutes = getWeeklyAvailabilityMinutes(availabilities);
-        const canCalculatePlannedMinutes = items.every(
-          (item) => item.durationMinutes !== null,
-        );
-        const plannedMinutes = canCalculatePlannedMinutes
-          ? items.reduce((total, item) => total + (item.durationMinutes ?? 0), 0)
-          : null;
-
-        setActiveGoalId(activeGoalId);
-        setIsEmpty(false);
-        setScheduleItems(items);
-        setTotalSessions(items.length);
-        setTargetStageId(items[0]?.stageId ?? goalData.stages?.[0]?.stage_id ?? null);
-        setAvailableTimeStr(`${Number((weeklyAvailableMinutes / 60).toFixed(2))} h`);
-        setPlannedTimeStr(
-          plannedMinutes === null
-            ? '—'
-            : `${Math.floor(plannedMinutes / 60)} h ${plannedMinutes % 60} min`,
-        );
-        const freeMinutes =
-          plannedMinutes === null
-            ? null
-            : Math.max(0, weeklyAvailableMinutes - plannedMinutes);
-        setFreeTimeStr(
-          freeMinutes === null
-            ? '—'
-            : `${Math.floor(freeMinutes / 60)} h ${freeMinutes % 60} min libres`,
-        );
-      } catch (error) {
-        if (!isMounted) return;
-        setScheduleItems([]);
-        setLoadError(
-          error instanceof Error ? error.message : 'No se pudo cargar la agenda.',
-        );
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    };
-
-    loadScheduleData();
-
-    return () => {
-      isMounted = false;
-    };
     }, [params.goalId, token]),
   );
 
@@ -236,22 +227,11 @@ export default function ScheduleScreen() {
           </View>
 
           {/* Tarjeta de métricas semanales sincronizadas */}
-          <View style={styles.metricsCard}>
-            <View style={styles.metricItem}>
-              <Text style={styles.metricValue}>{totalSessions ?? '—'}</Text>
-              <Text style={styles.metricLabel}>sesiones</Text>
-            </View>
-            <View style={styles.metricDivider} />
-            <View style={styles.metricItem}>
-              <Text style={styles.metricValue}>{plannedTimeStr}</Text>
-              <Text style={styles.metricLabel}>planificadas</Text>
-            </View>
-            <View style={styles.metricDivider} />
-            <View style={styles.metricItem}>
-              <Text style={styles.metricValue}>{availableTimeStr}</Text>
-              <Text style={styles.metricLabel}>disponibles</Text>
-            </View>
-          </View>
+          <ScheduleMetricsCard
+            totalSessions={totalSessions}
+            plannedTimeStr={plannedTimeStr}
+            availableTimeStr={availableTimeStr}
+          />
 
           {/* Lista de actividades programadas */}
           <View style={styles.activitiesList}>
@@ -266,46 +246,19 @@ export default function ScheduleScreen() {
                 {!displayLoadError && !isEmpty && scheduleItems.length === 0 ? (
                   <Text style={styles.emptyText}>No hay actividades programadas para esta semana.</Text>
                 ) : null}
-                {scheduleItems.map((item) => {
-                  return (
-                    <TouchableOpacity
-                      key={item.id}
-                      style={styles.activityCard}
-                      activeOpacity={0.85}
-                      onPress={() => handleNavigateToStage(item.stageId)}
-                    >
-                      <View style={styles.dateBox}>
-                        <Text style={styles.dateBoxDay}>{item.day}</Text>
-                        <Text style={styles.dateBoxNum}>{item.date}</Text>
-                      </View>
-
-                      <View style={styles.activityInfo}>
-                        <View style={styles.activityHeaderRow}>
-                          <Text style={styles.activityTime}>{item.time}</Text>
-                          {item.status ? (
-                            <View style={styles.statusBadge}>
-                              <Text style={styles.statusBadgeText}>{item.status}</Text>
-                            </View>
-                          ) : null}
-                        </View>
-                        <Text style={styles.activityTitle}>{item.title}</Text>
-                        <Text style={styles.activityStage}>{item.stage}</Text>
-                      </View>
-
-                      <Feather name="chevron-right" size={18} color="#94A3B8" />
-                    </TouchableOpacity>
-                  );
-                })}
+                {scheduleItems.map((item) => (
+                  <ScheduleItemCard
+                    key={item.id}
+                    item={item}
+                    onPress={() => handleNavigateToStage(item.stageId)}
+                  />
+                ))}
               </>
             )}
           </View>
 
-          <View style={styles.freeTimeCard}>
-            <Text style={styles.freeTimeTitle}>{freeTimeStr}</Text>
-            <Text style={styles.freeTimeSubtitle}>
-              Tiempo libre calculado con tus horarios y actividades de esta semana.
-            </Text>
-          </View>
+          {/* Tarjeta de tiempo libre */}
+          <ScheduleFreeTimeCard freeTimeStr={freeTimeStr} />
 
           <TouchableOpacity
             style={[styles.submitButton, (!targetStageId || !activeGoalId) && styles.submitButtonDisabled]}
@@ -368,7 +321,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.05)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
     elevation: 2,
   },
   weekIndicator: {
@@ -399,127 +354,8 @@ const styles = StyleSheet.create({
     color: '#627D98',
     lineHeight: 19,
   },
-  metricsCard: {
-    backgroundColor: '#174A62',
-    borderRadius: 24,
-    paddingVertical: 18,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    boxShadow: '0px 8px 16px rgba(23, 74, 98, 0.15)',
-    elevation: 4,
-  },
-  metricItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  metricValue: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: 2,
-  },
-  metricLabel: {
-    fontSize: 11,
-    color: '#90C2DE',
-    fontWeight: '600',
-  },
-  metricDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
   activitiesList: {
     gap: 12,
-  },
-  activityCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    boxShadow: '0px 4px 12px rgba(23, 74, 98, 0.04)',
-    elevation: 2,
-  },
-  activityCardNext: {
-    borderColor: '#174A62',
-    borderWidth: 1.5,
-  },
-  dateBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: '#D8ECF8',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dateBoxDay: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#174A62',
-    letterSpacing: 0.5,
-  },
-  dateBoxNum: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0F2C40',
-  },
-  activityInfo: {
-    flex: 1,
-  },
-  activityHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  activityTime: {
-    fontSize: 11,
-    color: '#627D98',
-    fontWeight: '600',
-  },
-  statusBadge: {
-    backgroundColor: '#E6F4EA',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  statusBadgeText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#137333',
-    letterSpacing: 0.5,
-  },
-  activityTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#0F2C40',
-    marginBottom: 2,
-  },
-  activityStage: {
-    fontSize: 12,
-    color: '#94A3B8',
-  },
-  freeTimeCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    gap: 2,
-  },
-  freeTimeTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#0F2C40',
-  },
-  freeTimeSubtitle: {
-    fontSize: 12,
-    color: '#627D98',
   },
   submitButton: {
     backgroundColor: '#174A62',
@@ -529,7 +365,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 4,
-    boxShadow: '0px 4px 8px rgba(23, 74, 98, 0.25)',
+    shadowColor: '#174A62',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
     elevation: 3,
   },
   submitButtonText: {
@@ -551,7 +389,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 24,
-    boxShadow: '0px 8px 16px rgba(23, 74, 98, 0.3)',
+    shadowColor: '#174A62',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
     elevation: 5,
   },
   floatingMapText: {
