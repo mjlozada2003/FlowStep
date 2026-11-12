@@ -1,11 +1,11 @@
-import { Tabs } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { Tabs } from 'expo-router';
 
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: false, // Ocultamos el header nativo para usar tus diseños personalizados
+        headerShown: false,
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
           borderTopColor: '#E2E8F0',
@@ -13,43 +13,52 @@ export default function TabLayout() {
           paddingBottom: 8,
           paddingTop: 8,
         },
-        tabBarActiveTintColor: '#174A62', // Color de la pestaña activa (tu tono principal)
-        tabBarInactiveTintColor: '#94A3B8', // Color de pestañas inactivas
+        tabBarActiveTintColor: '#174A62',
+        tabBarInactiveTintColor: '#94A3B8',
         tabBarLabelStyle: {
           fontSize: 10,
           fontWeight: '700',
         },
       }}
     >
-      {/* Pestaña de Inicio */}
       <Tabs.Screen
         name="home"
         options={{
           title: 'Inicio',
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="grid" size={size} color={color} />
+          tabBarIcon: ({ focused, size }) => (
+            <Feather
+              name="grid"
+              size={size}
+              color={focused ? '#174A62' : '#94A3B8'}
+            />
           ),
         }}
       />
 
-      {/* Pestaña de Agenda */}
       <Tabs.Screen
         name="schedule"
         options={{
           title: 'Agenda',
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="calendar" size={size} color={color} />
+          tabBarIcon: ({ focused, size }) => (
+            <Feather
+              name="calendar"
+              size={size}
+              color={focused ? '#174A62' : '#94A3B8'}
+            />
           ),
         }}
       />
 
-      {/* Pestaña de Progreso / Estadísticas */}
       <Tabs.Screen
         name="progress-analytics"
         options={{
           title: 'Progreso',
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="trending-up" size={size} color={color} />
+          tabBarIcon: ({ focused, size }) => (
+            <Feather
+              name="trending-up"
+              size={size}
+              color={focused ? '#174A62' : '#94A3B8'}
+            />
           ),
         }}
       />
