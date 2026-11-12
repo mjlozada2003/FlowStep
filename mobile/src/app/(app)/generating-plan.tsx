@@ -20,6 +20,7 @@ import {
   type AvailabilitySlot,
 } from '@/services/api/availability';
 import { createGoal, type CreatedGoal } from '@/services/api/goals';
+import { FlowThinkingMascot } from '@/components/features/FlowThinkingMascot';
 
 const STEPS = [
   'Analizando tu objetivo y prioridad...',
@@ -62,11 +63,11 @@ export default function GeneratingPlanScreen() {
     const priorityMap: Record<string, 'high' | 'medium' | 'low'> = {
       alta: 'high',
       high: 'high',
-        baja: 'low',
-        low: 'low',
-        media: 'medium',
-        medium: 'medium',
-      };
+      baja: 'low',
+      low: 'low',
+      media: 'medium',
+      medium: 'medium',
+    };
     const mappedPriority = priorityMap[params.priority || 'media'] || 'medium';
 
     try {
@@ -183,17 +184,16 @@ export default function GeneratingPlanScreen() {
             <BrandHeader showTagline={false} />
           </View>
 
+          {/* Mascota con Animación de Pensamiento */}
           <View style={styles.avatarContainer}>
-            <View style={styles.avatarCircle}>
-              <Feather name="cpu" size={32} color="#174A62" />
-            </View>
+            <FlowThinkingMascot />
           </View>
 
           <View style={styles.titleSection}>
-            <Text style={styles.badge}>PROCESANDO CON IA</Text>
+            <Text style={styles.badge}>FLOW ESTÁ PENSANDO</Text>
             <Text style={styles.mainTitle}>Estamos creando tu plan personalizado</Text>
             <Text style={styles.subtitle}>
-              Analizando tu objetivo y ajustando las actividades y fechas que necesitas.
+              Analizando tu objetivo y organizando los conocimientos y actividades que necesitas.
             </Text>
           </View>
 
@@ -256,7 +256,7 @@ export default function GeneratingPlanScreen() {
               <View style={styles.bannerTextContainer}>
                 <Text style={styles.bannerTitle}>Guardando tu plan</Text>
                 <Text style={styles.bannerSubtitle}>
-                Se guarda tu disponibilidad antes de crear el objetivo.
+                  Se guarda tu disponibilidad antes de crear el objetivo.
                 </Text>
               </View>
             </View>
@@ -291,16 +291,7 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     alignItems: 'center',
-  },
-  avatarCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#D8ECF8',
-    justifyContent: 'center',
-    alignItems: 'center',
-    boxShadow: '0px 4px 12px rgba(23, 74, 98, 0.1)',
-    elevation: 3,
+    marginVertical: 4,
   },
   titleSection: {
     alignItems: 'center',
@@ -333,7 +324,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 24,
-    boxShadow: '0px 8px 16px rgba(23, 74, 98, 0.08)',
+    shadowColor: '#174A62',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
     elevation: 4,
   },
   stepsList: {
