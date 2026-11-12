@@ -3,7 +3,6 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -21,6 +20,8 @@ import {
   type GoalProgress,
 } from '@/services/api/goals';
 import { getAvailability, getWeeklyAvailabilityMinutes } from '@/services/api/availability';
+import { GoalOverviewCard } from '@/components/features/GoalOverviewCard';
+import { GoalStageTimelineCard } from '@/components/features/GoalStageTimelineCard';
 
 export default function GoalPlanScreen() {
   const params = useLocalSearchParams<{
@@ -46,60 +47,60 @@ export default function GoalPlanScreen() {
 
   useFocusEffect(
     useCallback(() => {
-    let active = true;
-    if (!goalId || !token) return undefined;
+      let active = true;
+      if (!goalId || !token) return undefined;
 
-    getGoalById(goalId, token)
-      .then((serverGoal) => {
-        if (!active) return;
-        setLoadError(null);
-        setGoal(serverGoal);
-        setPriority(serverGoal.priority ?? '');
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        setLoadError(
-          error instanceof Error ? error.message : 'No se pudo cargar el objetivo.',
-        );
-      })
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
+      getGoalById(goalId, token)
+        .then((serverGoal) => {
+          if (!active) return;
+          setLoadError(null);
+          setGoal(serverGoal);
+          setPriority(serverGoal.priority ?? '');
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          setLoadError(
+            error instanceof Error ? error.message : 'No se pudo cargar el objetivo.',
+          );
+        })
+        .finally(() => {
+          if (active) setIsLoading(false);
+        });
 
-    getAvailability(token)
-      .then((slots) => {
-        if (active) {
-          setAvailabilityError(null);
-          setWeeklyHours(getWeeklyAvailabilityMinutes(slots) / 60);
-        }
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        setWeeklyHours(null);
-        setAvailabilityError(
-          error instanceof Error ? error.message : 'No se pudo cargar tu disponibilidad.',
-        );
-      });
+      getAvailability(token)
+        .then((slots) => {
+          if (active) {
+            setAvailabilityError(null);
+            setWeeklyHours(getWeeklyAvailabilityMinutes(slots) / 60);
+          }
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          setWeeklyHours(null);
+          setAvailabilityError(
+            error instanceof Error ? error.message : 'No se pudo cargar tu disponibilidad.',
+          );
+        });
 
-    getGoalProgress(goalId, token)
-      .then((value) => {
-        if (active) {
-          setProgressError(null);
-          setProgress(value);
-        }
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        setProgressError(
-          error instanceof Error
-            ? `No se pudo consultar el progreso: ${error.message}`
-            : 'No se pudo consultar el progreso del objetivo.',
-        );
-      });
+      getGoalProgress(goalId, token)
+        .then((value) => {
+          if (active) {
+            setProgressError(null);
+            setProgress(value);
+          }
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          setProgressError(
+            error instanceof Error
+              ? `No se pudo consultar el progreso: ${error.message}`
+              : 'No se pudo consultar el progreso del objetivo.',
+          );
+        });
 
-    return () => {
-      active = false;
-    };
+      return () => {
+        active = false;
+      };
     }, [goalId, token]),
   );
 
@@ -139,9 +140,6 @@ export default function GoalPlanScreen() {
     (!goalId || !token
       ? 'No se pudo identificar el objetivo. Abre un objetivo guardado desde el inicio.'
       : null);
-  const goalDate = goal?.due_date
-    ? `Fecha límite: ${goal.due_date}`
-    : 'Sin fecha límite';
   const stages = goal?.stages ?? [];
   const activityCount =
     progress?.total_activities ??
@@ -183,18 +181,11 @@ export default function GoalPlanScreen() {
           </View>
 
           {/* Tarjeta Principal del Objetivo */}
-          <View style={styles.goalCard}>
-            <View style={styles.goalIconCircle}>
-              <Feather name="target" size={22} color="#174A62" />
-            </View>
-            <View style={styles.goalTextContainer}>
-              <Text style={styles.goalCardBadge}>TU OBJETIVO</Text>
-              <Text style={styles.goalCardTitle}>
-                {goal?.title ?? (isGoalLoading ? 'Cargando objetivo…' : 'Objetivo no disponible')}
-              </Text>
-              <Text style={styles.goalCardDate}>{goalDate}</Text>
-            </View>
-          </View>
+          <GoalOverviewCard
+            title={goal?.title}
+            dueDate={goal?.due_date}
+            isLoading={isGoalLoading}
+          />
 
           {/* 3 Mini Tarjetas de Métricas (Interactivas) */}
           <View style={styles.metricsRow}>
@@ -257,7 +248,7 @@ export default function GoalPlanScreen() {
             </Text>
           </View>
 
-          {/* Tarjeta de Acceso a la Agenda Adaptada (HU-36) */}
+          {/* Tarjeta de Acceso a la Agenda Adaptada */}
           <TouchableOpacity
             style={styles.scheduleAccessCard}
             activeOpacity={0.85}
@@ -282,32 +273,7 @@ export default function GoalPlanScreen() {
             <Feather name="arrow-right" size={18} color="#174A62" />
           </TouchableOpacity>
 
-          {/* Tarjeta de Acceso a Seguimiento y Métricas (HU-21, HU-22, HU-24) */}
-          <TouchableOpacity
-            style={styles.scheduleAccessCard}
-            activeOpacity={0.85}
-            onPress={() =>
-              router.push({
-                pathname: '/progress-analytics',
-                params: {
-                  goalId: goalId ? String(goalId) : '',
-                },
-              })
-            }
-          >
-            <View style={styles.scheduleCardLeft}>
-              <View style={[styles.calendarIconBox, { backgroundColor: '#E2EEF1' }]}>
-                <Feather name="trending-up" size={18} color="#174A62" />
-              </View>
-              <View>
-                <Text style={styles.scheduleCardTag}>SEGUIMIENTO Y RITMO</Text>
-                <Text style={styles.scheduleCardTitle}>Ver progreso y estadísticas</Text>
-              </View>
-            </View>
-            <Feather name="arrow-right" size={18} color="#174A62" />
-          </TouchableOpacity>
-
-          {/* Tarjeta de Acceso a Seguimiento y Métricas (HU-21, HU-22, HU-24) */}
+          {/* Tarjeta de Acceso a Seguimiento y Métricas (Duplicado corregido) */}
           <TouchableOpacity
             style={styles.scheduleAccessCard}
             activeOpacity={0.85}
@@ -348,48 +314,23 @@ export default function GoalPlanScreen() {
           ) : null}
           <View style={styles.timelineContainer}>
             <View style={styles.timelineLine} />
-            {stages.map((stage, index) => {
-              const isFirst = index === 0;
-              const stageActivityCount = stage.activities?.length ?? 0;
-              return (
-                <Pressable
-                  key={stage.stage_id}
-                  style={[styles.stageCard, styles.stageCardPending]}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/stage-detail',
-                      params: {
-                        stageId: String(stage.stage_id),
-                        goalId: goalId ? String(goalId) : '',
-                        title: stage.name,
-                      },
-                    })
-                  }
-                >
-                  <View style={styles.stageHeader}>
-                    <View style={styles.numberCircle}>
-                      <Text style={styles.numberText}>
-                        {String(index + 1).padStart(2, '0')}
-                      </Text>
-                    </View>
-
-                    <View style={styles.stageInfo}>
-                      <Text style={styles.stageBadge}>
-                        {isFirst ? 'PRIMERA ETAPA' : `ETAPA ${index + 1}`}
-                      </Text>
-                      <Text style={styles.stageTitle}>
-                        Etapa {index + 1} — {stage.name}
-                      </Text>
-                      <Text style={styles.stageSubtitle}>
-                        {stageActivityCount} actividades
-                      </Text>
-                    </View>
-
-                    <Feather name="chevron-right" size={18} color="#94A3B8" />
-                  </View>
-                </Pressable>
-              );
-            })}
+            {stages.map((stage, index) => (
+              <GoalStageTimelineCard
+                key={stage.stage_id}
+                stage={stage}
+                index={index}
+                onPress={() =>
+                  router.push({
+                    pathname: '/stage-detail',
+                    params: {
+                      stageId: String(stage.stage_id),
+                      goalId: goalId ? String(goalId) : '',
+                      title: stage.name,
+                    },
+                  })
+                }
+              />
+            ))}
           </View>
         </View>
       </ScrollView>
@@ -457,44 +398,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#174A62',
     marginTop: 2,
-  },
-  goalCard: {
-    backgroundColor: '#174A62',
-    borderRadius: 22,
-    padding: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    boxShadow: '0px 8px 16px rgba(23, 74, 98, 0.15)',
-    elevation: 4,
-  },
-  goalIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  goalTextContainer: {
-    flex: 1,
-  },
-  goalCardBadge: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#90C2DE',
-    letterSpacing: 1,
-    marginBottom: 2,
-  },
-  goalCardTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: 2,
-  },
-  goalCardDate: {
-    fontSize: 11,
-    color: '#D8ECF8',
   },
   metricsRow: {
     flexDirection: 'row',
@@ -588,54 +491,6 @@ const styles = StyleSheet.create({
     width: 2,
     backgroundColor: '#CBD5E1',
   },
-  stageCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1.2,
-    borderColor: '#E2E8F0',
-    boxShadow: '0px 4px 12px rgba(23, 74, 98, 0.04)',
-    elevation: 2,
-  },
-  stageCardPending: {},
-  stageHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  numberCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#D8ECF8',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  numberText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#174A62',
-  },
-  stageInfo: {
-    flex: 1,
-  },
-  stageBadge: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#627D98',
-    letterSpacing: 0.8,
-    marginBottom: 2,
-  },
-  stageTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#0F2C40',
-    marginBottom: 2,
-  },
-  stageSubtitle: {
-    fontSize: 11,
-    color: '#94A3B8',
-  },
   floatingMapBtn: {
     position: 'absolute',
     bottom: 24,
@@ -647,7 +502,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 24,
-    boxShadow: '0px 8px 16px rgba(23, 74, 98, 0.3)',
+    shadowColor: '#174A62',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
     elevation: 5,
   },
   floatingMapText: {
