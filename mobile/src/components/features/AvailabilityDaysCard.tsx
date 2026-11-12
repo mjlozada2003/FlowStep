@@ -99,11 +99,13 @@ const styles = StyleSheet.create({
   daysRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 4, // Espacio mínimo y controlado entre cada día para que quepan los 7 juntos
   },
   dayCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+    flex: 1, // Se estiran de forma equitativa ocupando exactamente el ancho disponible
+    height: 38,
+    borderRadius: 10,
     backgroundColor: '#FFFFFF',
     borderWidth: 1.2,
     borderColor: '#E2E8F0',
@@ -115,9 +117,10 @@ const styles = StyleSheet.create({
     borderColor: '#174A62',
   },
   dayText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
     color: '#627D98',
+    textAlign: 'center', // Asegura que la letra quede perfectamente centrada
   },
   dayTextSelected: {
     color: '#FFFFFF',
