@@ -16,6 +16,8 @@ import { getUserGoals } from '@/services/api/goals';
 import { trackingApi, type GoalChartData, type GoalPaceData } from '@/services/api/tracking';
 
 import { GoalStageProgressSection } from '@/components/features/GoalStageProgressSection';
+import { GoalEvolutionCard } from '@/components/features/GoalEvolutionCard';
+import { GoalDistributionCard } from '@/components/features/GoalDistributionCard';
 
 const mockChartData: GoalChartData = {
   goal_id: 1,
@@ -338,6 +340,17 @@ export default function ProgressAnalyticsScreen() {
               </View>
             </View>
 
+            {/* Tarjeta 3: Evolución (Gráfica de Línea) */}
+            <GoalEvolutionCard weeklyProgress={chartData.weekly_progress} />
+
+            {/* Tarjeta 4: Distribución (Gráfica de Pastel / Donut) */}
+            <GoalDistributionCard
+              completed={chartData.summary.completed_activities}
+              pending={chartData.status_distribution?.pending ?? (chartData.summary.total_activities - chartData.summary.completed_activities)}
+              skipped={chartData.status_distribution?.skipped ?? 0}
+              total={chartData.summary.total_activities}
+            />
+
             {/* Componente reutilizado de Progreso por Etapa */}
             <GoalStageProgressSection
               stages={chartData.stage_progress}
@@ -373,6 +386,7 @@ export default function ProgressAnalyticsScreen() {
 const styles = StyleSheet.create({
   screenBg: {
     backgroundColor: '#FDFBF7',
+    flex: 1,
   },
   container: {
     padding: 16,
