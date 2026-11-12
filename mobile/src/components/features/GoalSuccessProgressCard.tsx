@@ -16,7 +16,7 @@ export function GoalSuccessProgressCard({
   return (
     <View style={styles.progressCard}>
       <View style={styles.progressHeaderRow}>
-        <Text style={styles.progressCardTitle}>
+        <Text style={styles.progressCardTitle} numberOfLines={1} ellipsizeMode="tail">
           ETAPA · {stageTitle || 'Aprendizaje'}
         </Text>
         <Text style={styles.progressPercentText}>{progressPercent}%</Text>
@@ -48,13 +48,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   progressCardTitle: {
+    flex: 1, // <--- Permite que el texto ocupe el espacio disponible sin desbordar
+    marginRight: 8, // <--- Espacio de separación seguro con el porcentaje
     fontSize: 10,
     fontWeight: '800',
     color: '#174A62',
     letterSpacing: 1,
   },
   progressPercentText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: '#174A62',
   },
