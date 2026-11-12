@@ -63,12 +63,16 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Cabecera superior */}
+        {/* Cabecera superior con navegación al Perfil/Preferencias */}
         <View style={styles.topHeader}>
           <BrandHeader showTagline={false} />
-          <View style={styles.profileBadge}>
+          <TouchableOpacity 
+            style={styles.profileBadge}
+            activeOpacity={0.8}
+            onPress={() => router.push('/preferences' as any)}
+          >
             <Text style={styles.profileInitials}>{initials}</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Saludo, Título y Mascota */}
