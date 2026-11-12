@@ -3,7 +3,6 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,7 +10,6 @@ import {
   View,
 } from 'react-native';
 
-import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
 import { Colors, Spacing } from '@/constants/theme';
 import { useAuth } from '@/contexts/auth-context';
@@ -22,6 +20,8 @@ import {
   type CreatedGoal,
   type GoalProgress,
 } from '@/services/api/goals';
+import { HomeNextStepCard } from '@/components/features/HomeNextStepCard';
+import { HomeGoalCard } from '@/components/features/HomeGoalCard';
 
 interface HomeGoal {
   goal: CreatedGoal;
@@ -112,8 +112,8 @@ export default function HomeScreen() {
     <Screen style={styles.screen}>
       <ScrollView
         contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}>
-        
+        showsVerticalScrollIndicator={false}
+      >
         {/* Encabezado con Logout */}
         <View style={styles.header}>
           <View>
@@ -145,85 +145,69 @@ export default function HomeScreen() {
         {/* Próximo paso dinámico */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Tu próximo paso</Text>
-
-          <Card style={styles.nextStepCard}>
-            <View style={styles.nextStepBadge}>
-              <Text style={styles.nextStepBadgeText}>
-                CONTINUAR
-              </Text>
-            </View>
-
-            <Text style={styles.nextStepTitle}>
-              {nextStepTitle}
-            </Text>
-
-            <Text style={styles.nextStepDescription}>
-              {nextActivity?.description ||
-                (nextActivity
-                  ? 'Actividad pendiente de tu plan.'
-                  : isLoadingGoals
-                    ? 'Consultando el siguiente paso de tu plan.'
-                    : firstGoal?.detail
-                      ? 'Aún no hay actividades pendientes en este objetivo.'
-                      : firstGoal
-                        ? 'No se pudo consultar el siguiente paso.'
-                        : 'Crea un objetivo para comenzar.')}
-            </Text>
-
-            <View style={styles.activityInfo}>
-              <Text style={styles.infoText}>
-                ⏱ {nextActivity?.estimated_minutes
-                  ? `${nextActivity.estimated_minutes} min`
-                  : 'Duración no indicada'}
-              </Text>
-              <Text style={styles.infoText}>•</Text>
-              <Text style={styles.infoText}>{nextStepStage ?? 'Etapa no disponible'}</Text>
-            </View>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.primaryButton,
-                pressed && styles.pressed,
-              ]}
-              onPress={() => {
-                if (firstGoal && nextActivity) {
-                  router.push({
-                    pathname: '/activity-detail' as any,
-                    params: {
-                      activityId: String(nextActivity.activity_id),
-                      title: nextActivity.title,
-                      duration: String(nextActivity.estimated_minutes || 45),
-                      stageTitle: nextStepStage || 'ETAPA 1',
-                      description: nextActivity.description || '',
-                    },
-                  });
-                } else if (firstGoal) {
-                  router.push({
-                    pathname: '/goal-plan',
-                    params: {
-                      goalId: String(firstGoal.goal.goal_id),
-                      title: firstGoal.goal.title,
-                    },
-                  });
-                } else {
-                  router.push('/create-goal');
-                }
-              }}>
-              <Text style={styles.primaryButtonText}>
-                {firstGoal && nextActivity ? 'Continuar' : firstGoal ? 'Ver plan' : 'Crear un objetivo'}
-              </Text>
-            </Pressable>
-          </Card>
+          <HomeNextStepCard
+            nextStepTitle={nextStepTitle}
+            nextStepDescription={
+              nextActivity?.description ||
+              (nextActivity
+                ? 'Actividad pendiente de tu plan.'
+                : isLoadingGoals
+                  ? 'Consultando el siguiente paso de tu plan.'
+                  : firstGoal?.detail
+                    ? 'Aún no hay actividades pendientes en este objetivo.'
+                    : firstGoal
+                      ? 'No se pudo consultar el siguiente paso.'
+                      : 'Crea un objetivo para comenzar.')
+            }
+            estimatedMinutes={nextActivity?.estimated_minutes}
+            nextStepStage={nextStepStage}
+            buttonText={firstGoal && nextActivity ? 'Continuar' : firstGoal ? 'Ver plan' : 'Crear un objetivo'}
+            onPress={() => {
+              if (firstGoal && nextActivity) {
+                router.push({
+                  pathname: '/activity-detail' as any,
+                  params: {
+                    activityId: String(nextActivity.activity_id),
+                    title: nextActivity.title,
+                    duration: String(nextActivity.estimated_minutes || 45),
+                    stageTitle: nextStepStage || 'ETAPA 1',
+                    description: nextActivity.description || '',
+                  },
+                });
+              } else if (firstGoal) {
+                router.push({
+                  pathname: '/goal-plan',
+                  params: {
+                    goalId: String(firstGoal.goal.goal_id),
+                    title: firstGoal.goal.title,
+                  },
+                });
+              } else {
+                router.push('/create-goal');
+              }
+            }}
+          />
         </View>
 
         {/* Mis objetivos */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Mis objetivos</Text>
+            <View style={styles.sectionHeaderLeft}>
+              <Text style={styles.sectionTitle}>Mis objetivos</Text>
+              {isLoadingGoals ? (
+                <ActivityIndicator size="small" color={Colors.light.primary} />
+              ) : null}
+            </View>
 
-            {isLoadingGoals ? (
-              <ActivityIndicator size="small" color={Colors.light.primary} />
-            ) : null}
+            {/* Botón devuelto para crear un nuevo objetivo */}
+            <TouchableOpacity
+              style={styles.addGoalBtn}
+              onPress={() => router.push('/create-goal')}
+              activeOpacity={0.8}
+            >
+              <Feather name="plus" size={16} color="#FFFFFF" />
+              <Text style={styles.addGoalText}>Nuevo objetivo</Text>
+            </TouchableOpacity>
           </View>
 
           {loadError ? <Text style={styles.errorText}>{loadError}</Text> : null}
@@ -232,8 +216,11 @@ export default function HomeScreen() {
           ) : null}
 
           {goalRows.map((row) => (
-            <Pressable
+            <HomeGoalCard
               key={row.goal.goal_id}
+              goal={row.goal}
+              detail={row.detail}
+              progress={row.progress}
               onPress={() =>
                 router.push({
                   pathname: '/goal-plan',
@@ -243,45 +230,9 @@ export default function HomeScreen() {
                   },
                 })
               }
-              style={({ pressed }) => pressed && styles.pressedCard}>
-              <Card style={styles.goalCard}>
-                <View style={styles.goalHeader}>
-                  <View style={styles.goalIcon}>
-                    <Text style={styles.goalIconText}>🎯</Text>
-                  </View>
-
-                  <View style={styles.goalInfo}>
-                    <Text style={styles.goalTitle}>
-                      {row.goal.title}
-                    </Text>
-
-                    <Text style={styles.goalStages}>
-                      {row.detail?.stages
-                        ? `${row.detail.stages.length} etapas`
-                        : 'Etapas no disponibles'}
-                    </Text>
-                  </View>
-
-                  <Text style={styles.progressText}>
-                    {row.progress ? `${row.progress.progress_percentage}%` : '—'}
-                  </Text>
-                </View>
-
-                <View style={styles.progressBackground}>
-                  <View
-                    style={[
-                      styles.progressBar,
-                      {
-                        width: `${Math.min(100, Math.max(0, row.progress?.progress_percentage ?? 0))}%`,
-                      },
-                    ]}
-                  />
-                </View>
-              </Card>
-            </Pressable>
+            />
           ))}
         </View>
-
       </ScrollView>
     </Screen>
   );
@@ -353,136 +304,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.one,
   },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '800',
     color: Colors.light.text,
   },
-  nextStepCard: {
-    backgroundColor: Colors.light.cardBackground,
-    borderRadius: 24,
-    padding: Spacing.four,
-    borderWidth: 1.2,
-    borderColor: Colors.light.border,
-    shadowColor: '#174A62',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  nextStepBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#D8ECF8',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginBottom: Spacing.two,
-  },
-  nextStepBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.light.primary,
-    letterSpacing: 0.8,
-  },
-  nextStepTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.light.text,
-    marginBottom: Spacing.one,
-  },
-  nextStepDescription: {
-    fontSize: 14,
-    color: Colors.light.textSecondary,
-    lineHeight: 20,
-    marginBottom: Spacing.three,
-  },
-  activityInfo: {
+  addGoalBtn: {
+    backgroundColor: Colors.light.primary,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
-    marginBottom: Spacing.three,
-  },
-  infoText: {
-    fontSize: 13,
-    color: Colors.light.textMuted,
-    fontWeight: '500',
-  },
-  primaryButton: {
-    backgroundColor: Colors.light.primary,
-    borderRadius: 16,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  goalCard: {
-    backgroundColor: Colors.light.cardBackground,
-    borderRadius: 20,
-    padding: Spacing.three,
-    marginBottom: Spacing.two,
-    borderWidth: 1.2,
-    borderColor: Colors.light.border,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
     shadowColor: '#174A62',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
     elevation: 2,
   },
-  goalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.two,
-  },
-  goalIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: '#FAF6F0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: Spacing.two,
-  },
-  goalIconText: {
-    fontSize: 20,
-  },
-  goalInfo: {
-    flex: 1,
-  },
-  goalTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.light.text,
-    marginBottom: 2,
-  },
-  goalStages: {
+  addGoalText: {
+    color: '#FFFFFF',
     fontSize: 12,
-    color: Colors.light.textSecondary,
-  },
-  progressText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Colors.light.primary,
-  },
-  progressBackground: {
-    height: 6,
-    backgroundColor: '#E2E8F0',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: Colors.light.primary,
-    borderRadius: 3,
-  },
-  pressed: {
-    opacity: 0.85,
-  },
-  pressedCard: {
-    transform: [{ scale: 0.99 }],
+    fontWeight: '700',
   },
   errorText: {
     fontSize: 12,
