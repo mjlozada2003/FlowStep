@@ -34,7 +34,7 @@ export default function TabLayout() {
           title: 'Inicio',
           tabBarIcon: ({ focused, size }) => (
             <Feather
-              name="grid"
+              name="home"
               size={size}
               color={focused ? '#174A62' : '#94A3B8'}
             />
