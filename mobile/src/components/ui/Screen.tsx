@@ -6,6 +6,7 @@ import { Colors, Spacing } from '@/constants/theme';
 type ScreenProps = {
   children: ReactNode;
   style?: ViewStyle;
+  contentContainerStyle?: ViewStyle; // Opcional por si una pantalla requiere padding especial
 };
 
 export function Screen({ children, style }: ScreenProps) {
@@ -20,6 +21,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
-    paddingHorizontal: Spacing.four,
+    paddingHorizontal: 16,
   },
 });

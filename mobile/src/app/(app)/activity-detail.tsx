@@ -217,7 +217,7 @@ export default function ActivityDetailScreen() {
 
 const styles = StyleSheet.create({
   screenBg: { backgroundColor: '#FAF6F0' },
-  container: { paddingHorizontal: 16, paddingVertical: 20, paddingBottom: 40, gap: 14 },
+  container: { paddingVertical: 20, paddingBottom: 40, gap: 14 },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   backButton: { width: 38, height: 38, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   topBarTitle: { fontSize: 11, fontWeight: '800', color: '#627D98', letterSpacing: 0.8, flex: 1, textAlign: 'center', marginHorizontal: 8 },

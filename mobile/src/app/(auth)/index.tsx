@@ -49,7 +49,6 @@ const styles = StyleSheet.create({
     maxWidth: 500,
     alignSelf: 'center',
     alignItems: 'center',
-    paddingHorizontal: Spacing.four,
   },
 
   logo: {
