@@ -7,14 +7,13 @@ import {
   TabListProps,
 } from 'expo-router/ui';
 import { SymbolView } from 'expo-symbols';
-import { forwardRef } from 'react';
+import { forwardRef, type ReactNode } from 'react';
 import {
   Pressable,
   useColorScheme,
   View,
   StyleSheet,
 } from 'react-native';
-import type { View as ViewType } from 'react-native';
 
 import { ExternalLink } from './external-link';
 import { ThemedText } from './themed-text';
@@ -22,7 +21,10 @@ import { ThemedView } from './themed-view';
 
 import { Colors, MaxContentWidth, Spacing } from '@/constants/theme';
 
-type TabButtonProps = Omit<TabTriggerSlotProps, 'ref'>;
+type TabButtonProps = Omit<TabTriggerSlotProps, 'ref'> & {
+  children?: ReactNode;
+  isFocused?: boolean;
+};
 
 export default function AppTabs() {
   return (
@@ -42,7 +44,7 @@ export default function AppTabs() {
   );
 }
 
-export const TabButton = forwardRef<ViewType, TabButtonProps>(
+export const TabButton = forwardRef<any, TabButtonProps>(
   function TabButton({ children, isFocused, ...props }, ref) {
     return (
       <Pressable
@@ -69,7 +71,7 @@ export function CustomTabList(props: TabListProps) {
     <View {...props} style={styles.tabListContainer}>
       <ThemedView type="cardBackground" style={styles.innerContainer}>
         <ThemedText type="smallBold" style={styles.brandText}>
-          Expo Starter
+          FlowStep
         </ThemedText>
 
         {props.children}

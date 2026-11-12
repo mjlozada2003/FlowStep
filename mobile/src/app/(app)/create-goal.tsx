@@ -5,25 +5,27 @@ import DateTimePicker, {
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
+import { BackButton } from '@/components/ui/BackButton';
 import { useAuth } from '@/contexts/auth-context';
 import {
   getAvailability,
   getWeeklyAvailabilityMinutes,
 } from '@/services/api/availability';
+import { GoalFormCard } from '@/components/features/GoalFormCard';
+import { GoalSettingsRow } from '@/components/features/GoalSettingsRow';
+import { FlowMascotAvatar } from '@/components/features/FlowMascotAvatar';
 
 type Priority = 'baja' | 'media' | 'alta';
 
@@ -68,6 +70,7 @@ export default function CreateGoalScreen() {
       };
     }, [token]),
   );
+
   const isAvailabilityLoading = isLoadingAvailability && Boolean(token);
   const availabilityErrorMessage =
     availabilityError ??
@@ -135,15 +138,15 @@ export default function CreateGoalScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.container}>
+            {/* Cabecera superior con BackButton unificado y el indicador de paso */}
             <View style={styles.topRow}>
-              <BrandHeader showTagline={false} />
+              <BackButton />
               <Text style={styles.stepIndicator}>PASO 1 DE 1</Text>
+              <BrandHeader showTagline={false} />
             </View>
 
             <View style={styles.avatarContainer}>
-              <View style={styles.avatarCircle}>
-                <Feather name="smile" size={24} color="#174A62" />
-              </View>
+              <FlowMascotAvatar />
             </View>
 
             <View style={styles.titleSection}>
@@ -155,86 +158,32 @@ export default function CreateGoalScreen() {
               </Text>
             </View>
 
-            {/* Tarjeta de Objetivo */}
-            <View style={[styles.card, errorMessage ? styles.cardError : null]}>
-              <Text style={styles.cardBadge}>MI OBJETIVO</Text>
-              <TextInput
-                placeholder="Crear una aplicación web"
-                value={title}
-                onChangeText={(text) => {
-                  setTitle(text);
-                  if (errorMessage) setErrorMessage('');
-                }}
-                onFocus={() => setIsInputFocused(true)}
-                onBlur={() => setIsInputFocused(false)}
-                multiline
-                maxLength={120}
-                style={[
-                  styles.goalInput,
-                  isInputFocused && styles.goalInputFocused,
-                ]}
-                placeholderTextColor="#94A3B8"
-              />
-              <Text style={styles.inputHint}>Escríbelo con tus propias palabras</Text>
-            </View>
+            {/* Componente 1: Tarjeta de Objetivo */}
+            <GoalFormCard
+              title={title}
+              onChangeTitle={(text) => {
+                setTitle(text);
+                if (errorMessage) setErrorMessage('');
+              }}
+              isFocused={isInputFocused}
+              onFocus={() => setIsInputFocused(true)}
+              onBlur={() => setIsInputFocused(false)}
+              hasError={Boolean(errorMessage)}
+            />
 
             {errorMessage ? (
               <Text style={styles.errorText}>{errorMessage}</Text>
             ) : null}
 
-            {/* Bloque dividido: Prioridad y Tiempo Disponible */}
-            <View style={styles.rowCardsContainer}>
-              {/* Prioridad del objetivo */}
-              <View style={[styles.card, styles.halfCard]}>
-                <Text style={styles.cardBadge}>PRIORIDAD DEL OBJETIVO</Text>
-                <View style={styles.priorityChipsRow}>
-                  {(['baja', 'media', 'alta'] as Priority[]).map((p) => (
-                    <TouchableOpacity
-                      key={p}
-                      style={[
-                        styles.miniChip,
-                        priority === p && styles.miniChipSelected,
-                      ]}
-                      onPress={() => setPriority(p)}
-                      activeOpacity={0.8}
-                    >
-                      <Text
-                        style={[
-                          styles.miniChipText,
-                          priority === p && styles.miniChipTextSelected,
-                        ]}
-                      >
-                        {p.charAt(0).toUpperCase() + p.slice(1)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* Horas semanales persistidas */}
-              <View style={[styles.card, styles.halfCard]}>
-                <Text style={styles.cardBadge}>TIEMPO DISPONIBLE</Text>
-                <View style={styles.counterRow}>
-                  <View style={styles.counterTextContainer}>
-                    {isAvailabilityLoading ? (
-                      <ActivityIndicator size="small" color="#174A62" />
-                    ) : (
-                      <Text style={styles.counterValue}>
-                        {availabilityErrorMessage
-                          ? 'No disponible'
-                          : weeklyHours === null
-                            ? 'Sin configurar'
-                            : `${Number(weeklyHours.toFixed(2))} horas`}
-                      </Text>
-                    )}
-                    <Text style={styles.counterSub}>por semana</Text>
-                  </View>
-                </View>
-                {availabilityErrorMessage ? (
-                  <Text style={styles.availabilityError}>{availabilityErrorMessage}</Text>
-                ) : null}
-              </View>
-            </View>
+            {/* Componente 2: Configuración (Prioridad y Horas) */}
+            <GoalSettingsRow
+              priority={priority}
+              onSelectPriority={setPriority}
+              weeklyHours={weeklyHours}
+              onChangeHours={(newHours) => setWeeklyHours(newHours)}
+              isLoadingAvailability={isAvailabilityLoading}
+              availabilityErrorMessage={availabilityErrorMessage}
+            />
 
             {/* Fecha Límite */}
             <View style={styles.fieldSection}>
@@ -295,7 +244,7 @@ export default function CreateGoalScreen() {
             </View>
 
             <View style={styles.infoBanner}>
-              <Feather name="plus" size={16} color="#174A62" style={styles.bannerIcon} />
+              <Feather name="compass" size={16} color="#174A62" style={styles.bannerIcon} />
               <View style={styles.bannerTextContainer}>
                 <Text style={styles.bannerTitle}>
                   Un objetivo claro es el primer paso.
@@ -331,7 +280,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 20,
     paddingVertical: 24,
   },
   container: {
@@ -355,14 +303,6 @@ const styles = StyleSheet.create({
   avatarContainer: {
     alignItems: 'center',
     marginVertical: 2,
-  },
-  avatarCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#D8ECF8',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   titleSection: {
     alignItems: 'center',
@@ -391,124 +331,12 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     paddingHorizontal: 8,
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 16,
-    boxShadow: '0px 8px 16px rgba(23, 74, 98, 0.08)',
-    elevation: 4,
-  },
-  cardError: {
-    borderColor: '#D97A7A',
-    borderWidth: 1.5,
-  },
   errorText: {
     fontSize: 12,
     color: '#D97A7A',
     fontWeight: '600',
     marginTop: -8,
     marginLeft: 4,
-  },
-  cardBadge: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#174A62',
-    letterSpacing: 1,
-    marginBottom: 6,
-  },
-  goalInput: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0F2C40',
-    minHeight: 48,
-    textAlignVertical: 'top',
-    ...(Platform.OS === 'web'
-      ? ({
-          outlineStyle: 'none',
-          outlineWidth: 0,
-          outlineColor: 'transparent',
-        } as any)
-      : {}),
-  },
-  goalInputFocused: {
-    color: '#174A62',
-  },
-  inputHint: {
-    fontSize: 11,
-    color: '#94A3B8',
-    marginTop: 6,
-  },
-  rowCardsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  halfCard: {
-    flex: 1,
-    padding: 12,
-    justifyContent: 'space-between',
-  },
-  priorityChipsRow: {
-    flexDirection: 'row',
-    gap: 4,
-    marginTop: 4,
-  },
-  miniChip: {
-    flex: 1,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  miniChipSelected: {
-    backgroundColor: '#D8ECF8',
-    borderColor: '#174A62',
-  },
-  miniChipText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#627D98',
-  },
-  miniChipTextSelected: {
-    color: '#174A62',
-    fontWeight: '800',
-  },
-  counterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 4,
-  },
-  counterBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#EBF5FB',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#D8ECF8',
-  },
-  counterTextContainer: {
-    alignItems: 'center',
-  },
-  counterValue: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#0F2C40',
-  },
-  counterSub: {
-    fontSize: 9,
-    color: '#627D98',
-  },
-  availabilityError: {
-    fontSize: 10,
-    lineHeight: 14,
-    color: '#C53030',
-    textAlign: 'center',
-    marginTop: 4,
   },
   fieldSection: {
     gap: 6,
@@ -603,7 +431,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 2,
-    boxShadow: '0px 4px 8px rgba(23, 74, 98, 0.25)',
+    shadowColor: '#174A62',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
     elevation: 3,
   },
   submitButtonText: {

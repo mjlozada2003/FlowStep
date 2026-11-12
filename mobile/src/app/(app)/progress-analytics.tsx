@@ -11,9 +11,15 @@ import {
 } from 'react-native';
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
+import { BackButton } from '@/components/ui/BackButton';
 import { useAuth } from '@/contexts/auth-context';
 import { getUserGoals } from '@/services/api/goals';
 import { trackingApi, type GoalChartData, type GoalPaceData } from '@/services/api/tracking';
+
+import { GoalStageProgressSection } from '@/components/features/GoalStageProgressSection';
+import { GoalEvolutionCard } from '@/components/features/GoalEvolutionCard';
+import { GoalDistributionCard } from '@/components/features/GoalDistributionCard';
+import { FlowMascotAvatar } from '@/components/features/FlowMascotAvatar';
 
 const mockChartData: GoalChartData = {
   goal_id: 1,
@@ -154,11 +160,9 @@ export default function ProgressAnalyticsScreen() {
   return (
     <Screen style={styles.screenBg}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        {/* Cabecera superior */}
+        {/* Cabecera superior con BackButton unificado */}
         <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton} activeOpacity={0.7}>
-            <Feather name="chevron-left" size={24} color="#0F2C40" />
-          </TouchableOpacity>
+          <BackButton />
           <Text style={styles.topBarTitle}>SEGUIMIENTO</Text>
           <BrandHeader />
         </View>
@@ -174,7 +178,7 @@ export default function ProgressAnalyticsScreen() {
           <ActivityIndicator size="large" color="#174A62" style={{ marginVertical: 30 }} />
         ) : (
           <>
-            {/* Tarjeta 1: Resumen del Objetivo (HU-21) */}
+            {/* Tarjeta 1: Resumen del Objetivo */}
             <View style={styles.card}>
               <View style={styles.cardHeaderRow}>
                 <View style={styles.iconCircle}>
@@ -193,7 +197,6 @@ export default function ProgressAnalyticsScreen() {
                 <Text style={styles.percentageSub}>del objetivo completado</Text>
               </View>
 
-              {/* Barra de progreso */}
               <View style={styles.progressBarBg}>
                 <View style={[styles.progressBarFill, { width: `${displayPercent}%` }]} />
               </View>
@@ -221,24 +224,15 @@ export default function ProgressAnalyticsScreen() {
               </View>
             </View>
 
-            {/* Mensaje motivacional */}
+            {/* Mensaje motivacional con la carita Flow */}
             <View
               style={[
                 styles.motivationalCard,
                 isBehind && { backgroundColor: '#FEF3C7' },
               ]}
             >
-              <View
-                style={[
-                  styles.avatarMiniCircle,
-                  isBehind && { backgroundColor: '#D97706' },
-                ]}
-              >
-                <Feather
-                  name={isBehind ? 'alert-circle' : 'smile'}
-                  size={18}
-                  color="#FFFFFF"
-                />
+              <View style={styles.avatarMiniContainer}>
+                <FlowMascotAvatar />
               </View>
               <View style={{ flex: 1 }}>
                 <Text
@@ -260,7 +254,7 @@ export default function ProgressAnalyticsScreen() {
               </View>
             </View>
 
-            {/* Tarjeta 2: Ritmo de Avance (HU-22 & HU-24) */}
+            {/* Tarjeta 2: Ritmo de Avance */}
             <View style={styles.card}>
               <View style={styles.cardHeaderRowSpace}>
                 <View>
@@ -287,11 +281,7 @@ export default function ProgressAnalyticsScreen() {
                         : styles.badgeNoScheduleText
                     }
                   >
-                    {isOnTrack
-                      ? 'EN RITMO'
-                      : isBehind
-                      ? 'RETRASADO'
-                      : 'SIN CRONOGRAMA'}
+                    {isOnTrack ? 'EN RITMO' : isBehind ? 'RETRASADO' : 'SIN CRONOGRAMA'}
                   </Text>
                 </View>
               </View>
@@ -341,56 +331,27 @@ export default function ProgressAnalyticsScreen() {
               </View>
             </View>
 
-            {/* Tarjeta 3: Progreso por Etapa (HU-24) */}
-            <View style={styles.card}>
-              <View style={styles.cardHeaderRowSpace}>
-                <Text style={styles.sectionTitle}>Progreso por etapa</Text>
-                <TouchableOpacity
-                  onPress={() =>
-                    router.push({
-                      pathname: '/activity-history',
-                      params: { goalId: activeGoalId ? String(activeGoalId) : '' },
-                    })
-                  }
-                >
-                  <Text style={styles.linkText}>Ver historial</Text>
-                </TouchableOpacity>
-              </View>
+            {/* Tarjeta 3: Evolución (Gráfica de Línea) */}
+            <GoalEvolutionCard weeklyProgress={chartData.weekly_progress} />
 
-              {chartData.stage_progress && chartData.stage_progress.length > 0 ? (
-                chartData.stage_progress.map((stage, idx) => {
-                  const stagePercent = Math.min(
-                    100,
-                    Math.max(0, Math.round(parseFloat(stage.progress_percentage || '0')))
-                  );
-                  return (
-                    <View key={stage.stage_id ?? idx} style={styles.stageProgressItem}>
-                      <View style={styles.stageProgressHeader}>
-                        <View style={styles.stageMiniBadge}>
-                          <Text style={styles.stageMiniText}>
-                            {String(stage.sort_order ?? idx + 1).padStart(2, '0')}
-                          </Text>
-                        </View>
-                        <Text style={styles.stageNameText} numberOfLines={1}>
-                          {stage.stage_name}
-                        </Text>
-                        <Text style={styles.stageCountText}>
-                          {stage.completed_activities} de {stage.total_activities}
-                        </Text>
-                        <Text style={styles.stagePercentText}>{stagePercent}%</Text>
-                      </View>
-                      <View style={styles.progressBarBg}>
-                        <View
-                          style={[styles.progressBarFill, { width: `${stagePercent}%` }]}
-                        />
-                      </View>
-                    </View>
-                  );
+            {/* Tarjeta 4: Distribución (Gráfica de Pastel / Donut) */}
+            <GoalDistributionCard
+              completed={chartData.summary.completed_activities}
+              pending={chartData.status_distribution?.pending ?? (chartData.summary.total_activities - chartData.summary.completed_activities)}
+              skipped={chartData.status_distribution?.skipped ?? 0}
+              total={chartData.summary.total_activities}
+            />
+
+            {/* Componente reutilizado de Progreso por Etapa */}
+            <GoalStageProgressSection
+              stages={chartData.stage_progress}
+              onPressHistory={() =>
+                router.push({
+                  pathname: '/activity-history',
+                  params: { goalId: activeGoalId ? String(activeGoalId) : '' },
                 })
-              ) : (
-                <Text style={styles.emptyStagesText}>No hay etapas registradas para este objetivo.</Text>
-              )}
-            </View>
+              }
+            />
 
             {/* Botón Inferior Principal */}
             <TouchableOpacity
@@ -416,9 +377,11 @@ export default function ProgressAnalyticsScreen() {
 const styles = StyleSheet.create({
   screenBg: {
     backgroundColor: '#FDFBF7',
+    flex: 1,
   },
   container: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     paddingBottom: 40,
   },
   topBar: {
@@ -426,16 +389,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 16,
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E4E7EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
   },
   topBarTitle: {
     fontSize: 11,
@@ -570,13 +523,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  avatarMiniCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#174A62',
-    alignItems: 'center',
-    justifyContent: 'center',
+  avatarMiniContainer: {
     marginRight: 12,
   },
   motivationalTitle: {
@@ -615,12 +562,12 @@ const styles = StyleSheet.create({
     color: '#991B1B',
   },
   badgeNoSchedule: {
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
+      backgroundColor: '#F3F4F6',
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: '#D1D5DB',
   },
   badgeNoScheduleText: {
     fontSize: 10,
@@ -654,53 +601,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#334E68',
     lineHeight: 16,
-  },
-  linkText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#174A62',
-  },
-  stageProgressItem: {
-    marginBottom: 12,
-  },
-  stageProgressHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  stageMiniBadge: {
-    backgroundColor: '#E2EEF1',
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginRight: 8,
-  },
-  stageMiniText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#174A62',
-  },
-  stageNameText: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#0F2C40',
-    flex: 1,
-  },
-  stageCountText: {
-    fontSize: 11,
-    color: '#627D98',
-    marginRight: 8,
-  },
-  stagePercentText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#174A62',
-  },
-  emptyStagesText: {
-    fontSize: 12,
-    color: '#627D98',
-    fontStyle: 'italic',
-    paddingVertical: 8,
   },
   bottomNavButton: {
     backgroundColor: '#174A62',

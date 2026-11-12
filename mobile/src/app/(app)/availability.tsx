@@ -12,6 +12,7 @@ import {
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
+import { BackButton } from '@/components/ui/BackButton';
 import { useAuth } from '@/contexts/auth-context';
 import {
   getAvailability,
@@ -20,6 +21,9 @@ import {
   type AvailabilitySlot,
   type DayOfWeek,
 } from '@/services/api/availability';
+import { AvailabilityDaysCard } from '@/components/features/AvailabilityDaysCard';
+import { AvailabilityTimeCard } from '@/components/features/AvailabilityTimeCard';
+import { FlowMascotAvatar } from '@/components/features/FlowMascotAvatar';
 
 const DAYS = [
   { key: 'L', label: 'Lun' },
@@ -73,6 +77,7 @@ export default function AvailabilityScreen() {
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(true);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+
   const applyAvailability = useCallback((slots: AvailabilitySlot[]) => {
     setSavedSlots(slots);
     setIsAvailabilityDirty(false);
@@ -190,12 +195,14 @@ export default function AvailabilityScreen() {
           end_time: `${String(endHour).padStart(2, '0')}:00`,
         })),
   ) / 60;
+
   const savedSummary = savedSlots
     .map(
       (slot) =>
         `${DAY_LABELS[slot.day_of_week]} ${slot.start_time.slice(0, 5)}–${slot.end_time.slice(0, 5)}`,
     )
     .join(' · ');
+
   const isAvailabilityLoading = isLoadingAvailability && Boolean(token);
   const displayAvailabilityError =
     availabilityError ??
@@ -208,15 +215,9 @@ export default function AvailabilityScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.container}>
-          {/* Header Superior */}
+          {/* Header Superior con BackButton unificado */}
           <View style={styles.topRow}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => router.back()}
-              activeOpacity={0.7}
-            >
-              <Feather name="chevron-left" size={24} color="#0F2C40" />
-            </TouchableOpacity>
+            <BackButton />
 
             <Text style={styles.headerTitleTag}>DISPONIBILIDAD</Text>
 
@@ -232,144 +233,44 @@ export default function AvailabilityScreen() {
             </Text>
           </View>
 
-          {/* Card 1: Días Disponibles */}
-          <View style={styles.card}>
-            <View style={styles.cardHeaderRow}>
-              <Text style={styles.cardLabel}>DÍAS DISPONIBLES</Text>
-              <View style={styles.badgeCount}>
-                <Text style={styles.badgeCountText}>{selectedDays.length} días</Text>
-              </View>
-            </View>
+          {/* Componente 1: Días Disponibles */}
+          <AvailabilityDaysCard
+            selectedDays={selectedDays}
+            onToggleDay={toggleDay}
+          />
 
-            <Text style={styles.cardTitle}>Selecciona tus días</Text>
+          {/* Componente 2: Franja Horaria y Sesión */}
+          <AvailabilityTimeCard
+            startHour={startHour}
+            endHour={endHour}
+            onIncrementStart={() => {
+              setIsAvailabilityDirty(true);
+              setFormError(null);
+              setStartHour(Math.min(23, startHour + 1));
+            }}
+            onDecrementStart={() => {
+              setIsAvailabilityDirty(true);
+              setFormError(null);
+              setStartHour(Math.max(0, startHour - 1));
+            }}
+            onIncrementEnd={() => {
+              setIsAvailabilityDirty(true);
+              setFormError(null);
+              setEndHour(Math.min(23, endHour + 1));
+            }}
+            onDecrementEnd={() => {
+              setIsAvailabilityDirty(true);
+              setFormError(null);
+              setEndHour(Math.max(0, endHour - 1));
+            }}
+            sessionTime={sessionTime}
+            onSelectSessionTime={setSessionTime}
+          />
 
-            <View style={styles.daysRow}>
-              {DAYS.map((day) => {
-                const isSelected = selectedDays.includes(day.key);
-                return (
-                  <TouchableOpacity
-                    key={day.key}
-                    style={[
-                      styles.dayCircle,
-                      isSelected && styles.dayCircleSelected,
-                    ]}
-                    onPress={() => toggleDay(day.key)}
-                    activeOpacity={0.8}
-                  >
-                    <Text
-                      style={[
-                        styles.dayText,
-                        isSelected && styles.dayTextSelected,
-                      ]}
-                    >
-                      {day.key}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* Card 2: Franja Horaria con Botones + / - */}
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>HORARIO HABITUAL</Text>
-            <Text style={styles.cardTitle}>Franja de trabajo</Text>
-
-            <View style={styles.timeControlRow}>
-              {/* Hora Inicio */}
-              <View style={styles.timeBox}>
-                <Text style={styles.timeBoxLabel}>DESDE</Text>
-                <View style={styles.stepperRow}>
-                  <TouchableOpacity
-                    style={styles.stepBtn}
-                    onPress={() => {
-                      setIsAvailabilityDirty(true);
-                      setFormError(null);
-                      setStartHour(Math.max(0, startHour - 1));
-                    }}
-                  >
-                    <Feather name="minus" size={14} color="#174A62" />
-                  </TouchableOpacity>
-                  <Text style={styles.timeValue}>{String(startHour).padStart(2, '0')}:00</Text>
-                  <TouchableOpacity
-                    style={styles.stepBtn}
-                    onPress={() => {
-                      setIsAvailabilityDirty(true);
-                      setFormError(null);
-                      setStartHour(Math.min(23, startHour + 1));
-                    }}
-                  >
-                    <Feather name="plus" size={14} color="#174A62" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <Text style={styles.timeDash}>—</Text>
-
-              {/* Hora Fin */}
-              <View style={styles.timeBox}>
-                <Text style={styles.timeBoxLabel}>HASTA</Text>
-                <View style={styles.stepperRow}>
-                  <TouchableOpacity
-                    style={styles.stepBtn}
-                    onPress={() => {
-                      setIsAvailabilityDirty(true);
-                      setFormError(null);
-                      setEndHour(Math.max(0, endHour - 1));
-                    }}
-                  >
-                    <Feather name="minus" size={14} color="#174A62" />
-                  </TouchableOpacity>
-                  <Text style={styles.timeValue}>{String(endHour).padStart(2, '0')}:00</Text>
-                  <TouchableOpacity
-                    style={styles.stepBtn}
-                    onPress={() => {
-                      setIsAvailabilityDirty(true);
-                      setFormError(null);
-                      setEndHour(Math.min(23, endHour + 1));
-                    }}
-                  >
-                    <Feather name="plus" size={14} color="#174A62" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.divider} />
-
-            {/* Tiempo por sesión */}
-            <Text style={styles.sessionLabel}>Tiempo por sesión</Text>
-            <View style={styles.sessionTimesRow}>
-              {SESSION_TIMES.map((time) => {
-                const isSelected = sessionTime === time;
-                return (
-                  <TouchableOpacity
-                    key={time}
-                    style={[
-                      styles.sessionBtn,
-                      isSelected && styles.sessionBtnSelected,
-                    ]}
-                    onPress={() => setSessionTime(time)}
-                    activeOpacity={0.8}
-                  >
-                    <Text
-                      style={[
-                        styles.sessionBtnText,
-                        isSelected && styles.sessionBtnTextSelected,
-                      ]}
-                    >
-                      {time}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* Banner Resumen */}
+          {/* Banner Resumen con la Carita Flow */}
           <View style={styles.summaryBanner}>
-            <View style={styles.avatarCircle}>
-              <Feather name="smile" size={20} color="#174A62" />
+            <View style={styles.avatarContainer}>
+              <FlowMascotAvatar />
             </View>
             <View style={styles.summaryTextContainer}>
               <Text style={styles.summaryTitle}>Tu disponibilidad semanal</Text>
@@ -428,7 +329,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 20,
     paddingVertical: 24,
   },
   container: {
@@ -436,22 +336,13 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     alignSelf: 'center',
     gap: 16,
+    paddingHorizontal: 16,
   },
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.05)',
-    elevation: 2,
   },
   headerTitleTag: {
     fontSize: 10,
@@ -481,155 +372,6 @@ const styles = StyleSheet.create({
     color: '#627D98',
     lineHeight: 18,
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    padding: 18,
-    boxShadow: '0px 8px 16px rgba(23, 74, 98, 0.08)',
-    elevation: 3,
-    gap: 10,
-  },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cardLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#174A62',
-    letterSpacing: 1.2,
-  },
-  badgeCount: {
-    backgroundColor: '#EBF5FB',
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 10,
-  },
-  badgeCountText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#174A62',
-  },
-  cardTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#0F2C40',
-    marginTop: -2,
-    marginBottom: 4,
-  },
-  daysRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  dayCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.2,
-    borderColor: '#E2E8F0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dayCircleSelected: {
-    backgroundColor: '#174A62',
-    borderColor: '#174A62',
-  },
-  dayText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#627D98',
-  },
-  dayTextSelected: {
-    color: '#FFFFFF',
-  },
-  timeControlRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 4,
-  },
-  timeBox: {
-    flex: 1,
-    backgroundColor: '#FAF6F0',
-    borderRadius: 14,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderWidth: 1.2,
-    borderColor: '#E2E8F0',
-    alignItems: 'center',
-    gap: 4,
-  },
-  timeBoxLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#627D98',
-    letterSpacing: 1,
-  },
-  stepperRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  stepBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: '#EBF5FB',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#D8ECF8',
-  },
-  timeValue: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#0F2C40',
-  },
-  timeDash: {
-    fontSize: 16,
-    color: '#94A3B8',
-    fontWeight: '600',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#F1F5F9',
-    marginVertical: 4,
-  },
-  sessionLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0F2C40',
-  },
-  sessionTimesRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  sessionBtn: {
-    flex: 1,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#FAF6F0',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sessionBtnSelected: {
-    backgroundColor: '#D8ECF8',
-    borderColor: '#174A62',
-  },
-  sessionBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#627D98',
-  },
-  sessionBtnTextSelected: {
-    color: '#174A62',
-    fontWeight: '800',
-  },
   summaryBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -638,11 +380,7 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 12,
   },
-  avatarCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#D8ECF8',
+  avatarContainer: {
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -667,7 +405,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 4,
-    boxShadow: '0px 4px 8px rgba(23, 74, 98, 0.25)',
+    shadowColor: '#174A62',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
     elevation: 3,
   },
   submitButtonText: {

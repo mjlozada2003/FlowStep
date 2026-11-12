@@ -3,7 +3,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 
 import { Screen } from '@/components/ui/Screen';
+import { BackButton } from '@/components/ui/BackButton';
 import { useAuth } from '@/contexts/auth-context';
 import {
   getGoalById,
@@ -21,6 +22,9 @@ import {
   type GoalProgress,
 } from '@/services/api/goals';
 import { getAvailability, getWeeklyAvailabilityMinutes } from '@/services/api/availability';
+import { GoalOverviewCard } from '@/components/features/GoalOverviewCard';
+import { GoalStageTimelineCard } from '@/components/features/GoalStageTimelineCard';
+import { FlowMascotAvatar } from '@/components/features/FlowMascotAvatar';
 
 export default function GoalPlanScreen() {
   const params = useLocalSearchParams<{
@@ -44,62 +48,65 @@ export default function GoalPlanScreen() {
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [weeklyHours, setWeeklyHours] = useState<number | null>(null);
 
+  // Estado para el menú flotante del Sprint 4 (Pausar, Cambiar fecha, Archivar)
+  const [menuVisible, setMenuVisible] = useState(false);
+
   useFocusEffect(
     useCallback(() => {
-    let active = true;
-    if (!goalId || !token) return undefined;
+      let active = true;
+      if (!goalId || !token) return undefined;
 
-    getGoalById(goalId, token)
-      .then((serverGoal) => {
-        if (!active) return;
-        setLoadError(null);
-        setGoal(serverGoal);
-        setPriority(serverGoal.priority ?? '');
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        setLoadError(
-          error instanceof Error ? error.message : 'No se pudo cargar el objetivo.',
-        );
-      })
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
+      getGoalById(goalId, token)
+        .then((serverGoal) => {
+          if (!active) return;
+          setLoadError(null);
+          setGoal(serverGoal);
+          setPriority(serverGoal.priority ?? '');
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          setLoadError(
+            error instanceof Error ? error.message : 'No se pudo cargar el objetivo.',
+          );
+        })
+        .finally(() => {
+          if (active) setIsLoading(false);
+        });
 
-    getAvailability(token)
-      .then((slots) => {
-        if (active) {
-          setAvailabilityError(null);
-          setWeeklyHours(getWeeklyAvailabilityMinutes(slots) / 60);
-        }
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        setWeeklyHours(null);
-        setAvailabilityError(
-          error instanceof Error ? error.message : 'No se pudo cargar tu disponibilidad.',
-        );
-      });
+      getAvailability(token)
+        .then((slots) => {
+          if (active) {
+            setAvailabilityError(null);
+            setWeeklyHours(getWeeklyAvailabilityMinutes(slots) / 60);
+          }
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          setWeeklyHours(null);
+          setAvailabilityError(
+            error instanceof Error ? error.message : 'No se pudo cargar tu disponibilidad.',
+          );
+        });
 
-    getGoalProgress(goalId, token)
-      .then((value) => {
-        if (active) {
-          setProgressError(null);
-          setProgress(value);
-        }
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        setProgressError(
-          error instanceof Error
-            ? `No se pudo consultar el progreso: ${error.message}`
-            : 'No se pudo consultar el progreso del objetivo.',
-        );
-      });
+      getGoalProgress(goalId, token)
+        .then((value) => {
+          if (active) {
+            setProgressError(null);
+            setProgress(value);
+          }
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          setProgressError(
+            error instanceof Error
+              ? `No se pudo consultar el progreso: ${error.message}`
+              : 'No se pudo consultar el progreso del objetivo.',
+          );
+        });
 
-    return () => {
-      active = false;
-    };
+      return () => {
+        active = false;
+      };
     }, [goalId, token]),
   );
 
@@ -139,9 +146,6 @@ export default function GoalPlanScreen() {
     (!goalId || !token
       ? 'No se pudo identificar el objetivo. Abre un objetivo guardado desde el inicio.'
       : null);
-  const goalDate = goal?.due_date
-    ? `Fecha límite: ${goal.due_date}`
-    : 'Sin fecha límite';
   const stages = goal?.stages ?? [];
   const activityCount =
     progress?.total_activities ??
@@ -167,34 +171,87 @@ export default function GoalPlanScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.container}>
-          {/* Header Superior */}
+          {/* Header Superior con BackButton y Menú de Opciones (Sprint 4) */}
           <View style={styles.topRow}>
-            <View>
-              <Text style={styles.badge}>TU PLAN PERSONALIZADO</Text>
-              <Text style={styles.mainTitle}>Tu plan personalizado</Text>
+            <View style={styles.headerLeftContainer}>
+              <BackButton />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.badge}>TU PLAN PERSONALIZADO</Text>
+                <Text style={styles.mainTitle} numberOfLines={1}>Tu Plan Personalizado</Text>
+              </View>
             </View>
 
-            <View style={styles.avatarWrapper}>
-              <View style={styles.avatarCircle}>
-                <Feather name="smile" size={20} color="#174A62" />
+            <View style={styles.headerRightActions}>
+              <TouchableOpacity
+                style={styles.optionsButton}
+                onPress={() => setMenuVisible(true)}
+                activeOpacity={0.8}
+                accessibilityLabel="Opciones del objetivo"
+              >
+                <Feather name="more-horizontal" size={20} color="#174A62" />
+              </TouchableOpacity>
+              <View style={styles.avatarWrapper}>
+                <FlowMascotAvatar />
               </View>
-              <Text style={styles.avatarLabel}>¡Vamos!</Text>
             </View>
           </View>
+
+          {/* Menú Modal de Opciones del Sprint 4 (Pausar, Cambiar fecha, Archivar) */}
+          <Modal
+            visible={menuVisible}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => setMenuVisible(false)}
+          >
+            <TouchableOpacity 
+              style={styles.modalOverlay} 
+              activeOpacity={1} 
+              onPress={() => setMenuVisible(false)}
+            >
+              <View style={styles.menuDropdown}>
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={() => {
+                    setMenuVisible(false);
+                    // Lógica mock o navegación para pausar (HU-32)
+                  }}
+                >
+                  <Feather name="pause-circle" size={16} color="#174A62" />
+                  <Text style={styles.menuItemText}>Pausar objetivo</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={() => {
+                    setMenuVisible(false);
+                    // Lógica mock o navegación para cambiar fecha límite (HU-34)
+                  }}
+                >
+                  <Feather name="calendar" size={16} color="#174A62" />
+                  <Text style={styles.menuItemText}>Cambiar fecha límite</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.menuItem, styles.menuItemDanger]} 
+                  onPress={() => {
+                    setMenuVisible(false);
+                    // Lógica mock o navegación para archivar (HU-46)
+                    router.push('/archived-goals' as any);
+                  }}
+                >
+                  <Feather name="archive" size={16} color="#C53030" />
+                  <Text style={[styles.menuItemText, styles.menuItemTextDanger]}>Archivar objetivo</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Modal>
 
           {/* Tarjeta Principal del Objetivo */}
-          <View style={styles.goalCard}>
-            <View style={styles.goalIconCircle}>
-              <Feather name="target" size={22} color="#174A62" />
-            </View>
-            <View style={styles.goalTextContainer}>
-              <Text style={styles.goalCardBadge}>TU OBJETIVO</Text>
-              <Text style={styles.goalCardTitle}>
-                {goal?.title ?? (isGoalLoading ? 'Cargando objetivo…' : 'Objetivo no disponible')}
-              </Text>
-              <Text style={styles.goalCardDate}>{goalDate}</Text>
-            </View>
-          </View>
+          <GoalOverviewCard
+            title={goal?.title}
+            dueDate={goal?.due_date}
+            isLoading={isGoalLoading}
+          />
 
           {/* 3 Mini Tarjetas de Métricas (Interactivas) */}
           <View style={styles.metricsRow}>
@@ -257,7 +314,7 @@ export default function GoalPlanScreen() {
             </Text>
           </View>
 
-          {/* Tarjeta de Acceso a la Agenda Adaptada (HU-36) */}
+          {/* Tarjeta de Acceso a la Agenda Adaptada */}
           <TouchableOpacity
             style={styles.scheduleAccessCard}
             activeOpacity={0.85}
@@ -282,32 +339,25 @@ export default function GoalPlanScreen() {
             <Feather name="arrow-right" size={18} color="#174A62" />
           </TouchableOpacity>
 
-          {/* Tarjeta de Acceso a Seguimiento y Métricas (HU-21, HU-22, HU-24) */}
+          {/* Tarjeta de Acceso al Calendario General (Sprint 4 - HU-50) */}
           <TouchableOpacity
             style={styles.scheduleAccessCard}
             activeOpacity={0.85}
-            onPress={() =>
-              router.push({
-                pathname: '/progress-analytics',
-                params: {
-                  goalId: goalId ? String(goalId) : '',
-                },
-              })
-            }
+            onPress={() => router.push('/calendar' as any)}
           >
             <View style={styles.scheduleCardLeft}>
               <View style={[styles.calendarIconBox, { backgroundColor: '#E2EEF1' }]}>
-                <Feather name="trending-up" size={18} color="#174A62" />
+                <Feather name="calendar" size={18} color="#174A62" />
               </View>
               <View>
-                <Text style={styles.scheduleCardTag}>SEGUIMIENTO Y RITMO</Text>
-                <Text style={styles.scheduleCardTitle}>Ver progreso y estadísticas</Text>
+                <Text style={styles.scheduleCardTag}>PLANIFICACIÓN ACTUALIZADA</Text>
+                <Text style={styles.scheduleCardTitle}>Consultar en calendario</Text>
               </View>
             </View>
             <Feather name="arrow-right" size={18} color="#174A62" />
           </TouchableOpacity>
 
-          {/* Tarjeta de Acceso a Seguimiento y Métricas (HU-21, HU-22, HU-24) */}
+          {/* Tarjeta de Acceso a Seguimiento y Métricas */}
           <TouchableOpacity
             style={styles.scheduleAccessCard}
             activeOpacity={0.85}
@@ -348,61 +398,26 @@ export default function GoalPlanScreen() {
           ) : null}
           <View style={styles.timelineContainer}>
             <View style={styles.timelineLine} />
-            {stages.map((stage, index) => {
-              const isFirst = index === 0;
-              const stageActivityCount = stage.activities?.length ?? 0;
-              return (
-                <Pressable
-                  key={stage.stage_id}
-                  style={[styles.stageCard, styles.stageCardPending]}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/stage-detail',
-                      params: {
-                        stageId: String(stage.stage_id),
-                        goalId: goalId ? String(goalId) : '',
-                        title: stage.name,
-                      },
-                    })
-                  }
-                >
-                  <View style={styles.stageHeader}>
-                    <View style={styles.numberCircle}>
-                      <Text style={styles.numberText}>
-                        {String(index + 1).padStart(2, '0')}
-                      </Text>
-                    </View>
-
-                    <View style={styles.stageInfo}>
-                      <Text style={styles.stageBadge}>
-                        {isFirst ? 'PRIMERA ETAPA' : `ETAPA ${index + 1}`}
-                      </Text>
-                      <Text style={styles.stageTitle}>
-                        Etapa {index + 1} — {stage.name}
-                      </Text>
-                      <Text style={styles.stageSubtitle}>
-                        {stageActivityCount} actividades
-                      </Text>
-                    </View>
-
-                    <Feather name="chevron-right" size={18} color="#94A3B8" />
-                  </View>
-                </Pressable>
-              );
-            })}
+            {stages.map((stage, index) => (
+              <GoalStageTimelineCard
+                key={stage.stage_id}
+                stage={stage}
+                index={index}
+                onPress={() =>
+                  router.push({
+                    pathname: '/stage-detail',
+                    params: {
+                      stageId: String(stage.stage_id),
+                      goalId: goalId ? String(goalId) : '',
+                      title: stage.name,
+                    },
+                  })
+                }
+              />
+            ))}
           </View>
         </View>
       </ScrollView>
-
-      {/* Botón flotante para Volver al Inicio */}
-      <TouchableOpacity
-        style={styles.floatingMapBtn}
-        activeOpacity={0.85}
-        onPress={() => router.push('/home')}
-      >
-        <Feather name="grid" size={18} color="#FFFFFF" />
-        <Text style={styles.floatingMapText}>Inicio</Text>
-      </TouchableOpacity>
     </Screen>
   );
 }
@@ -413,9 +428,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 20,
     paddingVertical: 24,
-    paddingBottom: 90,
+    paddingBottom: 40,
   },
   container: {
     width: '100%',
@@ -426,7 +440,34 @@ const styles = StyleSheet.create({
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerLeftContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
+  },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  optionsButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#174A62',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    elevation: 1,
   },
   badge: {
     fontSize: 10,
@@ -436,7 +477,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   mainTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '800',
     color: '#0F2C40',
     letterSpacing: -0.5,
@@ -444,57 +485,44 @@ const styles = StyleSheet.create({
   avatarWrapper: {
     alignItems: 'center',
   },
-  avatarCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#D8ECF8',
-    justifyContent: 'center',
-    alignItems: 'center',
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: 80,
+    paddingRight: 20,
   },
-  avatarLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#174A62',
-    marginTop: 2,
+  menuDropdown: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingVertical: 8,
+    width: 200,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
-  goalCard: {
-    backgroundColor: '#174A62',
-    borderRadius: 22,
-    padding: 18,
+  menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    boxShadow: '0px 8px 16px rgba(23, 74, 98, 0.15)',
-    elevation: 4,
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  goalIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
+  menuItemDanger: {
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
   },
-  goalTextContainer: {
-    flex: 1,
+  menuItemText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F2C40',
   },
-  goalCardBadge: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#90C2DE',
-    letterSpacing: 1,
-    marginBottom: 2,
-  },
-  goalCardTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: 2,
-  },
-  goalCardDate: {
-    fontSize: 11,
-    color: '#D8ECF8',
+  menuItemTextDanger: {
+    color: '#C53030',
   },
   metricsRow: {
     flexDirection: 'row',
@@ -587,73 +615,6 @@ const styles = StyleSheet.create({
     bottom: 20,
     width: 2,
     backgroundColor: '#CBD5E1',
-  },
-  stageCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1.2,
-    borderColor: '#E2E8F0',
-    boxShadow: '0px 4px 12px rgba(23, 74, 98, 0.04)',
-    elevation: 2,
-  },
-  stageCardPending: {},
-  stageHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  numberCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#D8ECF8',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  numberText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#174A62',
-  },
-  stageInfo: {
-    flex: 1,
-  },
-  stageBadge: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#627D98',
-    letterSpacing: 0.8,
-    marginBottom: 2,
-  },
-  stageTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#0F2C40',
-    marginBottom: 2,
-  },
-  stageSubtitle: {
-    fontSize: 11,
-    color: '#94A3B8',
-  },
-  floatingMapBtn: {
-    position: 'absolute',
-    bottom: 24,
-    right: 20,
-    backgroundColor: '#174A62',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 24,
-    boxShadow: '0px 8px 16px rgba(23, 74, 98, 0.3)',
-    elevation: 5,
-  },
-  floatingMapText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
   },
   errorText: {
     color: '#C53030',
