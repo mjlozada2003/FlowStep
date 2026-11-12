@@ -2,7 +2,6 @@ import { BadRequestException } from '@nestjs/common';
 import {
   isValidCalendarDate,
   getAppDateString,
-  APP_DEFAULT_TIMEZONE,
 } from './date.utils';
 
 describe('DateUtils', () => {
