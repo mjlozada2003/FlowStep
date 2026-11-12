@@ -31,7 +31,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="home"
         options={{
-          title: 'Inicio',
+          title: 'Objetivos',
           tabBarIcon: ({ focused, size }) => (
             <Feather
               name="home"
@@ -43,9 +43,9 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="schedule"
+        name="calendar"
         options={{
-          title: 'Agenda',
+          title: 'Calendario',
           tabBarIcon: ({ focused, size }) => (
             <Feather
               name="calendar"
@@ -57,12 +57,12 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="progress-analytics"
+        name="preferences"
         options={{
-          title: 'Progreso',
+          title: 'Perfil',
           tabBarIcon: ({ focused, size }) => (
             <Feather
-              name="trending-up"
+              name="user"
               size={size}
               color={focused ? '#174A62' : '#94A3B8'}
             />
