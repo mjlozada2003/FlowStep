@@ -161,22 +161,6 @@ export default function GoalSuccessScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
-
-      <TouchableOpacity
-        style={styles.floatingMapBtn}
-        activeOpacity={0.85}
-        onPress={() => {
-          if (goalId) {
-            router.push({
-              pathname: '/goal-plan',
-              params: { goalId: String(goalId) },
-            });
-          }
-        }}
-      >
-        <Feather name="grid" size={18} color="#FFFFFF" />
-        <Text style={styles.floatingMapText}>Mapa</Text>
-      </TouchableOpacity>
     </Screen>
   );
 }
@@ -190,7 +174,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingVertical: 24,
     justifyContent: 'center',
-    paddingBottom: 90,
+    paddingBottom: 40,
   },
   container: {
     width: '100%',
@@ -233,27 +217,6 @@ const styles = StyleSheet.create({
   },
   buttonArrow: {
     marginLeft: 8,
-  },
-  floatingMapBtn: {
-    position: 'absolute',
-    bottom: 24,
-    right: 20,
-    backgroundColor: '#174A62',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 24,
-    shadowColor: '#174A62',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    elevation: 5,
-  },
-  floatingMapText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
   },
   submitButtonDisabled: {
     opacity: 0.55,

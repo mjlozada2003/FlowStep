@@ -338,16 +338,6 @@ export default function GoalPlanScreen() {
           </View>
         </View>
       </ScrollView>
-
-      {/* Botón flotante para Volver al Inicio */}
-      <TouchableOpacity
-        style={styles.floatingMapBtn}
-        activeOpacity={0.85}
-        onPress={() => router.push('/home')}
-      >
-        <Feather name="grid" size={18} color="#FFFFFF" />
-        <Text style={styles.floatingMapText}>Inicio</Text>
-      </TouchableOpacity>
     </Screen>
   );
 }
@@ -359,7 +349,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingVertical: 24,
-    paddingBottom: 90,
+    paddingBottom: 40,
   },
   container: {
     width: '100%',
@@ -500,27 +490,6 @@ const styles = StyleSheet.create({
     bottom: 20,
     width: 2,
     backgroundColor: '#CBD5E1',
-  },
-  floatingMapBtn: {
-    position: 'absolute',
-    bottom: 24,
-    right: 20,
-    backgroundColor: '#174A62',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 24,
-    shadowColor: '#174A62',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    elevation: 5,
-  },
-  floatingMapText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
   },
   errorText: {
     color: '#C53030',
