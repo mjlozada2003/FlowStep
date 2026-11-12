@@ -1,7 +1,14 @@
 import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
+import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
+  // Altura dinámica que se adapta al espacio seguro de Android/iOS para evitar solapes
+  const tabBarHeight = 60 + (Platform.OS === 'android' ? Math.max(insets.bottom, 8) : insets.bottom);
+
   return (
     <Tabs
       screenOptions={{
@@ -9,8 +16,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
           borderTopColor: '#E2E8F0',
-          height: 60,
-          paddingBottom: 8,
+          height: tabBarHeight,
+          paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, 8) : insets.bottom + 4,
           paddingTop: 8,
         },
         tabBarActiveTintColor: '#174A62',
