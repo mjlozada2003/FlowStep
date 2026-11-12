@@ -2,33 +2,26 @@ import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import {
-  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+
 import { BrandHeader } from '@/components/ui/BrandHeader';
-import { AppModal } from '@/components/ui/Modal';
 import { Screen } from '@/components/ui/Screen';
 import { useAuth } from '@/contexts/auth-context';
 import { trackingApi } from '@/services/api/tracking';
+import { ActivityMissModal } from '@/components/features/ActivityMissModal';
+import { ActivityTimeCard } from '@/components/features/ActivityTimeCard';
+import { ActivityDifficultyCard } from '@/components/features/ActivityDifficultyCard';
 
 interface MissReason {
   reason_id: number;
   name: string;
   description?: string;
 }
-
-const DIFFICULTY_TAGS = [
-  'Falta de conocimientos',
-  'Falta de tiempo',
-  'Difícil de comprender',
-  'Problemas externos',
-  'Otra',
-];
 
 const mockMissReasons: MissReason[] = [
   { reason_id: 1, name: 'Falta de tiempo' },
@@ -41,6 +34,8 @@ const mockMissReasons: MissReason[] = [
 export default function ActivityDetailScreen() {
   const params = useLocalSearchParams<{
     activityId?: string;
+    stageId?: string;
+    goalId?: string;
     title?: string;
     duration?: string;
     stageTitle?: string;
@@ -49,6 +44,9 @@ export default function ActivityDetailScreen() {
   const { token } = useAuth();
 
   const activityId = params.activityId && /^\d+$/.test(params.activityId) ? Number(params.activityId) : 1;
+  const stageId = params.stageId && /^\d+$/.test(params.stageId) ? Number(params.stageId) : null;
+  const goalId = params.goalId && /^\d+$/.test(params.goalId) ? Number(params.goalId) : null;
+  
   const activityTitle = params.title || 'Introducción a React';
   const stageInfo = params.stageTitle || 'ETAPA 1 · APRENDIZAJE';
   const activityDesc = params.description || 'Comprende los fundamentos y prepara tu entorno de trabajo.';
@@ -67,21 +65,34 @@ export default function ActivityDetailScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const handleSaveAction = async (msg: string) => {
+  const handleSaveAction = async (msg: string, isCompletion: boolean = false) => {
     try {
       setIsSubmitting(true);
       if (token && activityId) {
-        await trackingApi.logWorkSession(
-          activityId,
-          {
-            minutes_spent: (Number(hoursSpent) || 0) * 60 + (Number(minutesSpent) || 0),
-            difficulty_notes: `[${selectedDifficultyTag}] ${difficultyNotes}`,
-          },
-          token
-        ).catch(() => {});
+        if (isCompletion) {
+          router.push({
+            pathname: '/goal-success',
+            params: {
+              activityId: String(activityId),
+              stageId: stageId ? String(stageId) : '',
+              goalId: goalId ? String(goalId) : '',
+              stageTitle: stageInfo,
+            },
+          });
+          return;
+        } else {
+          await trackingApi.logWorkSession(
+            activityId,
+            {
+              minutes_spent: (Number(hoursSpent) || 0) * 60 + (Number(minutesSpent) || 0),
+              difficulty_notes: `[${selectedDifficultyTag}] ${difficultyNotes}`,
+            },
+            token
+          ).catch(() => {});
+        }
       }
       setSuccessMessage(msg);
-      setTimeout(() => router.back(), 1000);
+      setTimeout(() => router.back(), 800);
     } finally {
       setIsSubmitting(false);
     }
@@ -111,7 +122,7 @@ export default function ActivityDetailScreen() {
       }
       setMissModalVisible(false);
       setSuccessMessage('Se registró el reporte correctamente.');
-      setTimeout(() => router.back(), 1000);
+      setTimeout(() => router.back(), 800);
     } finally {
       setIsSubmitting(false);
     }
@@ -119,23 +130,23 @@ export default function ActivityDetailScreen() {
 
   return (
     <Screen style={styles.screenBg}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.topBar}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton} activeOpacity={0.7}>
             <Feather name="chevron-left" size={24} color="#0F2C40" />
           </TouchableOpacity>
-          <Text style={styles.topBarTitle}>DETALLE DE ACTIVIDAD</Text>
+          <Text style={styles.topBarTitle} numberOfLines={1}>DETALLE DE ACTIVIDAD</Text>
           <BrandHeader />
         </View>
 
-        {successMessage && <Text style={styles.successText}>{successMessage}</Text>}
+        {successMessage ? <Text style={styles.successText}>{successMessage}</Text> : null}
 
         <View style={styles.mainActivityCard}>
           <View style={styles.activityBadgeRow}>
             <View style={styles.badgeContainer}>
               <Text style={styles.badgeText}>D1</Text>
             </View>
-            <Text style={styles.stageInfoText}>{stageInfo}</Text>
+            <Text style={styles.stageInfoText} numberOfLines={1}>{stageInfo}</Text>
           </View>
           <Text style={styles.activityMainTitle}>{activityTitle}</Text>
           <Text style={styles.activityDescText}>{activityDesc}</Text>
@@ -144,113 +155,35 @@ export default function ActivityDetailScreen() {
         <View style={styles.metaInfoRow}>
           <View style={styles.metaItem}>
             <Feather name="calendar" size={14} color="#627D98" />
-            <Text style={styles.metaText}>Lun 16 · 18:00</Text>
+            <Text style={styles.metaText}>Sesión programada</Text>
           </View>
-          <Text style={styles.metaText}>20 min estimadas</Text>
+          <Text style={styles.metaText}>{defaultDuration} min estimados</Text>
         </View>
 
-        {/* Registro de Tiempo */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <View style={styles.iconCircle}>
-              <Feather name="clock" size={16} color="#174A62" />
-            </View>
-            <View>
-              <Text style={styles.sectionCategory}>REGISTRO DE TIEMPO</Text>
-              <Text style={styles.sectionTitle}>¿Cuánto tiempo dedicaste?</Text>
-            </View>
-          </View>
+        {/* Tarjeta de Registro de Tiempo */}
+        <ActivityTimeCard
+          hoursSpent={hoursSpent}
+          onChangeHours={setHoursSpent}
+          minutesSpent={minutesSpent}
+          onChangeMinutes={setMinutesSpent}
+          onSave={() => handleSaveAction('¡Tiempo guardado con éxito!')}
+          isSubmitting={isSubmitting}
+        />
 
-          <View style={styles.timeInputsRow}>
-            <View style={styles.timeBoxContainer}>
-              <TextInput
-                style={styles.timeInput}
-                value={hoursSpent}
-                onChangeText={setHoursSpent}
-                keyboardType="numeric"
-                maxLength={2}
-              />
-              <Text style={styles.timeUnitLabel}>horas</Text>
-            </View>
-            <Text style={styles.timeSeparator}>:</Text>
-            <View style={styles.timeBoxContainer}>
-              <TextInput
-                style={styles.timeInput}
-                value={minutesSpent}
-                onChangeText={setMinutesSpent}
-                keyboardType="numeric"
-                maxLength={3}
-              />
-              <Text style={styles.timeUnitLabel}>minutos</Text>
-            </View>
-          </View>
+        {/* Tarjeta de Registro de Dificultad */}
+        <ActivityDifficultyCard
+          selectedTag={selectedDifficultyTag}
+          onSelectTag={setSelectedDifficultyTag}
+          notes={difficultyNotes}
+          onChangeNotes={setDifficultyNotes}
+          onSave={() => handleSaveAction('¡Dificultad guardada con éxito!')}
+          isSubmitting={isSubmitting}
+        />
 
-          <TouchableOpacity
-            style={styles.actionButtonLight}
-            onPress={() => handleSaveAction('¡Tiempo guardado con éxito!')}
-            disabled={isSubmitting}
-            activeOpacity={0.8}
-          >
-            {isSubmitting ? (
-              <ActivityIndicator color="#174A62" />
-            ) : (
-              <Text style={styles.actionButtonLightText}>Guardar tiempo</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {/* Registro de Dificultad */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <View style={styles.iconCircle}>
-              <Feather name="alert-circle" size={16} color="#174A62" />
-            </View>
-            <View>
-              <Text style={styles.sectionCategory}>EXPERIENCIA</Text>
-              <Text style={styles.sectionTitle}>¿Tuviste alguna dificultad?</Text>
-            </View>
-          </View>
-
-          <View style={styles.pillsContainer}>
-            {DIFFICULTY_TAGS.map((tag) => {
-              const isSelected = selectedDifficultyTag === tag;
-              return (
-                <TouchableOpacity
-                  key={tag}
-                  style={[styles.pillButton, isSelected && styles.pillButtonSelected]}
-                  onPress={() => setSelectedDifficultyTag(tag)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
-                    {tag}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <Text style={styles.subLabel}>CUÉNTANOS UN POCO MÁS</Text>
-          <TextInput
-            style={styles.textArea}
-            value={difficultyNotes}
-            onChangeText={setDifficultyNotes}
-            placeholder="Me costó entender..."
-            multiline
-          />
-
-          <TouchableOpacity
-            style={styles.actionButtonLight}
-            onPress={() => handleSaveAction('¡Dificultad guardada con éxito!')}
-            disabled={isSubmitting}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.actionButtonLightText}>Guardar dificultad</Text>
-          </TouchableOpacity>
-        </View>
-
+        {/* Botón principal de éxito con animación */}
         <TouchableOpacity
           style={styles.primaryActionButton}
-          onPress={() => handleSaveAction('¡Actividad marcada como completada!')}
+          onPress={() => handleSaveAction('', true)}
           activeOpacity={0.85}
         >
           <Feather name="check" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
@@ -266,95 +199,41 @@ export default function ActivityDetailScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Modal Motivo */}
-      <AppModal visible={missModalVisible} onClose={() => setMissModalVisible(false)} title="Registrar Resultado">
-        <View style={{ width: '100%' }}>
-          <Text style={styles.modalTitleQuestion}>¿Por qué no pudiste completarla?</Text>
-          <View style={styles.pillsContainer}>
-            {missReasons.map((reason) => {
-              const isSelected = selectedReasonId === reason.reason_id;
-              return (
-                <TouchableOpacity
-                  key={reason.reason_id}
-                  style={[styles.pillButton, isSelected && styles.pillButtonSelected]}
-                  onPress={() => setSelectedReasonId(reason.reason_id)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
-                    {reason.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <Text style={[styles.subLabel, { marginTop: 16 }]}>DETALLES OPCIONALES</Text>
-          <TextInput
-            style={styles.textArea}
-            value={missDetails}
-            onChangeText={setMissDetails}
-            placeholder="Explica brevemente..."
-            multiline
-          />
-
-          <TouchableOpacity
-            style={[styles.primaryActionButton, { marginTop: 20 }, !selectedReasonId && styles.buttonDisabled]}
-            onPress={handleSubmitMiss}
-            disabled={!selectedReasonId || isSubmitting}
-            activeOpacity={0.85}
-          >
-            {isSubmitting ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.primaryActionText}>Guardar motivo</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </AppModal>
+      {/* Modal Extraído */}
+      <ActivityMissModal
+        visible={missModalVisible}
+        onClose={() => setMissModalVisible(false)}
+        reasons={missReasons}
+        selectedReasonId={selectedReasonId}
+        onSelectReason={setSelectedReasonId}
+        details={missDetails}
+        onChangeDetails={setMissDetails}
+        onSubmit={handleSubmitMiss}
+        isSubmitting={isSubmitting}
+      />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screenBg: { backgroundColor: '#FDFBF7' },
-  container: { padding: 16, paddingBottom: 40 },
-  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
-  backButton: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, borderColor: '#E4E7EB', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
-  topBarTitle: { fontSize: 11, fontWeight: '700', color: '#627D98', letterSpacing: 0.5 },
-  mainActivityCard: { backgroundColor: '#174A62', borderRadius: 16, padding: 20, marginBottom: 8 },
+  screenBg: { backgroundColor: '#FAF6F0' },
+  container: { paddingHorizontal: 16, paddingVertical: 20, paddingBottom: 40, gap: 14 },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  backButton: { width: 38, height: 38, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
+  topBarTitle: { fontSize: 11, fontWeight: '800', color: '#627D98', letterSpacing: 0.8, flex: 1, textAlign: 'center', marginHorizontal: 8 },
+  mainActivityCard: { backgroundColor: '#174A62', borderRadius: 20, padding: 18, shadowColor: '#174A62', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.1, elevation: 4 },
   activityBadgeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  badgeContainer: { backgroundColor: '#E2EEF1', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginRight: 8 },
-  badgeText: { fontSize: 11, fontWeight: 'bold', color: '#174A62' },
-  stageInfoText: { fontSize: 11, fontWeight: '700', color: '#829AB1', letterSpacing: 0.5 },
-  activityMainTitle: { fontSize: 20, fontWeight: 'bold', color: '#FFFFFF', marginBottom: 6 },
-  activityDescText: { fontSize: 13, color: '#C4D1DB', lineHeight: 18 },
-  metaInfoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4, marginBottom: 16 },
-  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { fontSize: 12, color: '#627D98' },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#E4E7EB' },
-  cardHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-  iconCircle: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#E2EEF1', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
-  sectionCategory: { fontSize: 10, fontWeight: '700', color: '#174A62', letterSpacing: 0.5 },
-  sectionTitle: { fontSize: 15, fontWeight: 'bold', color: '#0F2C40' },
-  timeInputsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  timeBoxContainer: { alignItems: 'center', flex: 1, maxWidth: 100 },
-  timeInput: { width: '100%', height: 56, borderWidth: 1, borderColor: '#D9E2EC', borderRadius: 12, textAlign: 'center', fontSize: 22, fontWeight: 'bold', color: '#0F2C40', backgroundColor: '#F8FAFC', marginBottom: 4 },
-  timeUnitLabel: { fontSize: 11, color: '#627D98' },
-  timeSeparator: { fontSize: 24, fontWeight: 'bold', color: '#627D98', marginHorizontal: 12 },
-  pillsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 },
-  pillButton: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: '#D9E2EC', backgroundColor: '#F8FAFC' },
-  pillButtonSelected: { borderColor: '#174A62', backgroundColor: '#E2EEF1' },
-  pillText: { fontSize: 12, color: '#334E68' },
-  pillTextSelected: { color: '#174A62', fontWeight: '600' },
-  subLabel: { fontSize: 10, fontWeight: '700', color: '#627D98', marginBottom: 6, letterSpacing: 0.5 },
-  textArea: { borderWidth: 1, borderColor: '#D9E2EC', borderRadius: 10, padding: 10, height: 75, fontSize: 13, color: '#0F2C40', backgroundColor: '#F8FAFC', textAlignVertical: 'top', marginBottom: 12 },
-  actionButtonLight: { backgroundColor: '#E2EEF1', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
-  actionButtonLightText: { color: '#174A62', fontSize: 14, fontWeight: '600' },
-  primaryActionButton: { backgroundColor: '#174A62', borderRadius: 12, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  primaryActionText: { color: '#FFFFFF', fontSize: 15, fontWeight: 'bold' },
-  outlineActionButton: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#D9E2EC', borderRadius: 12, paddingVertical: 15, alignItems: 'center', marginBottom: 20 },
-  outlineActionText: { color: '#627D98', fontSize: 14, fontWeight: '600' },
-  buttonDisabled: { opacity: 0.5 },
-  successText: { color: '#16A34A', marginBottom: 12, fontSize: 13, fontWeight: '500', textAlign: 'center' },
-  modalTitleQuestion: { fontSize: 16, fontWeight: 'bold', color: '#0F2C40', marginBottom: 14 },
+  badgeContainer: { backgroundColor: '#D8ECF8', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginRight: 8 },
+  badgeText: { fontSize: 11, fontWeight: '800', color: '#174A62' },
+  stageInfoText: { fontSize: 11, fontWeight: '700', color: '#94B8CD', letterSpacing: 0.5, flex: 1 },
+  activityMainTitle: { fontSize: 20, fontWeight: '800', color: '#FFFFFF', marginBottom: 6 },
+  activityDescText: { fontSize: 13, color: '#D8ECF8', lineHeight: 18 },
+  metaInfoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4, marginVertical: -2 },
+  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  metaText: { fontSize: 12, color: '#627D98', fontWeight: '600' },
+  primaryActionButton: { backgroundColor: '#174A62', borderRadius: 16, height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', shadowColor: '#174A62', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, elevation: 3 },
+  primaryActionText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  outlineActionButton: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 16, height: 50, alignItems: 'center', justifyContent: 'center' },
+  outlineActionText: { color: '#627D98', fontSize: 14, fontWeight: '700' },
+  successText: { color: '#2F855A', marginBottom: 8, fontSize: 13, fontWeight: '700', textAlign: 'center' },
 });
