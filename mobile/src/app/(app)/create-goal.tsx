@@ -25,6 +25,7 @@ import {
 } from '@/services/api/availability';
 import { GoalFormCard } from '@/components/features/GoalFormCard';
 import { GoalSettingsRow } from '@/components/features/GoalSettingsRow';
+import { FlowMascotAvatar } from '@/components/features/FlowMascotAvatar';
 
 type Priority = 'baja' | 'media' | 'alta';
 
@@ -145,9 +146,7 @@ export default function CreateGoalScreen() {
             </View>
 
             <View style={styles.avatarContainer}>
-              <View style={styles.avatarCircle}>
-                <Feather name="smile" size={24} color="#174A62" />
-              </View>
+              <FlowMascotAvatar />
             </View>
 
             <View style={styles.titleSection}>
@@ -304,14 +303,6 @@ const styles = StyleSheet.create({
   avatarContainer: {
     alignItems: 'center',
     marginVertical: 2,
-  },
-  avatarCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#D8ECF8',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   titleSection: {
     alignItems: 'center',

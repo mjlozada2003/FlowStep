@@ -19,6 +19,7 @@ import { trackingApi, type GoalChartData, type GoalPaceData } from '@/services/a
 import { GoalStageProgressSection } from '@/components/features/GoalStageProgressSection';
 import { GoalEvolutionCard } from '@/components/features/GoalEvolutionCard';
 import { GoalDistributionCard } from '@/components/features/GoalDistributionCard';
+import { FlowMascotAvatar } from '@/components/features/FlowMascotAvatar';
 
 const mockChartData: GoalChartData = {
   goal_id: 1,
@@ -223,24 +224,15 @@ export default function ProgressAnalyticsScreen() {
               </View>
             </View>
 
-            {/* Mensaje motivacional */}
+            {/* Mensaje motivacional con la carita Flow */}
             <View
               style={[
                 styles.motivationalCard,
                 isBehind && { backgroundColor: '#FEF3C7' },
               ]}
             >
-              <View
-                style={[
-                  styles.avatarMiniCircle,
-                  isBehind && { backgroundColor: '#D97706' },
-                ]}
-              >
-                <Feather
-                  name={isBehind ? 'alert-circle' : 'smile'}
-                  size={18}
-                  color="#FFFFFF"
-                />
+              <View style={styles.avatarMiniContainer}>
+                <FlowMascotAvatar />
               </View>
               <View style={{ flex: 1 }}>
                 <Text
@@ -388,7 +380,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   container: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     paddingBottom: 40,
   },
   topBar: {
@@ -530,13 +523,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  avatarMiniCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#174A62',
-    alignItems: 'center',
-    justifyContent: 'center',
+  avatarMiniContainer: {
     marginRight: 12,
   },
   motivationalTitle: {
@@ -575,12 +562,12 @@ const styles = StyleSheet.create({
     color: '#991B1B',
   },
   badgeNoSchedule: {
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
+      backgroundColor: '#F3F4F6',
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: '#D1D5DB',
   },
   badgeNoScheduleText: {
     fontSize: 10,

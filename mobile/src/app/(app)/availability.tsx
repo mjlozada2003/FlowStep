@@ -23,6 +23,7 @@ import {
 } from '@/services/api/availability';
 import { AvailabilityDaysCard } from '@/components/features/AvailabilityDaysCard';
 import { AvailabilityTimeCard } from '@/components/features/AvailabilityTimeCard';
+import { FlowMascotAvatar } from '@/components/features/FlowMascotAvatar';
 
 const DAYS = [
   { key: 'L', label: 'Lun' },
@@ -266,10 +267,10 @@ export default function AvailabilityScreen() {
             onSelectSessionTime={setSessionTime}
           />
 
-          {/* Banner Resumen */}
+          {/* Banner Resumen con la Carita Flow */}
           <View style={styles.summaryBanner}>
-            <View style={styles.avatarCircle}>
-              <Feather name="smile" size={20} color="#174A62" />
+            <View style={styles.avatarContainer}>
+              <FlowMascotAvatar />
             </View>
             <View style={styles.summaryTextContainer}>
               <Text style={styles.summaryTitle}>Tu disponibilidad semanal</Text>
@@ -328,7 +329,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 20,
     paddingVertical: 24,
   },
   container: {
@@ -336,6 +336,7 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     alignSelf: 'center',
     gap: 16,
+    paddingHorizontal: 16,
   },
   topRow: {
     flexDirection: 'row',
@@ -379,11 +380,7 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 12,
   },
-  avatarCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#D8ECF8',
+  avatarContainer: {
     justifyContent: 'center',
     alignItems: 'center',
   },

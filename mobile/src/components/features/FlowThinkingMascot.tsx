@@ -1,4 +1,3 @@
-import { Feather } from '@expo/vector-icons';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 
@@ -7,7 +6,6 @@ export function FlowThinkingMascot() {
   const waveAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Animación de pulso para la mascota
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
@@ -25,7 +23,6 @@ export function FlowThinkingMascot() {
       ])
     ).start();
 
-    // Animación de onda expansiva de fondo
     Animated.loop(
       Animated.timing(waveAnim, {
         toValue: 1,
@@ -48,7 +45,6 @@ export function FlowThinkingMascot() {
 
   return (
     <View style={styles.wrapper}>
-      {/* Onda expansiva de fondo */}
       <Animated.View
         style={[
           styles.radarWave,
@@ -59,7 +55,6 @@ export function FlowThinkingMascot() {
         ]}
       />
 
-      {/* Círculo principal con pulso */}
       <Animated.View
         style={[
           styles.avatarCircle,
@@ -67,8 +62,16 @@ export function FlowThinkingMascot() {
             transform: [{ scale: pulseAnim }],
           },
         ]}
-      >
-        <Feather name="cpu" size={34} color="#174A62" />
+        >
+            
+        {/* Ojos */}
+        <View style={styles.eyesRow}>
+          <View style={styles.eye} />
+          <View style={styles.eye} />
+        </View>
+
+        {/* Sonrisa */}
+        <View style={styles.smile} />
       </Animated.View>
     </View>
   );
@@ -91,7 +94,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#D8ECF8',
+    backgroundColor: '#174A62',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#174A62',
@@ -100,5 +103,39 @@ const styles = StyleSheet.create({
     elevation: 4,
     borderWidth: 2,
     borderColor: '#FFFFFF',
+    position: 'relative',
+  },
+  handle: {
+    position: 'absolute',
+    top: 6,
+    width: 22,
+    height: 8,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    backgroundColor: '#174A62',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  eyesRow: {
+    flexDirection: 'row',
+    gap: 14,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  eye: {
+    width: 6,
+    height: 10,
+    borderRadius: 3,
+    backgroundColor: '#FFFFFF',
+  },
+  smile: {
+    width: 16,
+    height: 6,
+    borderBottomLeftRadius: 6,
+    borderBottomRightRadius: 6,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    borderTopWidth: 0,
+    marginTop: 2,
   },
 });

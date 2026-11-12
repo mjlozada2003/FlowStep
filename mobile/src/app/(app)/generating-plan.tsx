@@ -282,6 +282,7 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     alignSelf: 'center',
     gap: 20,
+    paddingHorizontal: 16,
   },
   topRow: {
     flexDirection: 'row',
@@ -317,7 +318,6 @@ const styles = StyleSheet.create({
     color: '#627D98',
     textAlign: 'center',
     lineHeight: 19,
-    paddingHorizontal: 12,
   },
   card: {
     backgroundColor: '#FFFFFF',

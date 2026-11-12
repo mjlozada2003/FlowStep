@@ -23,6 +23,7 @@ import {
 import { getAvailability, getWeeklyAvailabilityMinutes } from '@/services/api/availability';
 import { GoalOverviewCard } from '@/components/features/GoalOverviewCard';
 import { GoalStageTimelineCard } from '@/components/features/GoalStageTimelineCard';
+import { FlowMascotAvatar } from '@/components/features/FlowMascotAvatar';
 
 export default function GoalPlanScreen() {
   const params = useLocalSearchParams<{
@@ -177,9 +178,7 @@ export default function GoalPlanScreen() {
             </View>
 
             <View style={styles.avatarWrapper}>
-              <View style={styles.avatarCircle}>
-                <Feather name="smile" size={20} color="#174A62" />
-              </View>
+              <FlowMascotAvatar />
               <Text style={styles.avatarLabel}>¡Vamos!</Text>
             </View>
           </View>
@@ -356,7 +355,6 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     alignSelf: 'center',
     gap: 14,
-    paddingHorizontal: 16,
   },
   topRow: {
     flexDirection: 'row',
@@ -383,14 +381,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   avatarWrapper: {
-    alignItems: 'center',
-  },
-  avatarCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#D8ECF8',
-    justifyContent: 'center',
     alignItems: 'center',
   },
   avatarLabel: {
