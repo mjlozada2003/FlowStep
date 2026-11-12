@@ -4,7 +4,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 interface StageItem {
   stage_id: number;
   name: string;
-  activities?: any[];
+  activities?: any[] | null;
 }
 
 interface GoalStageTimelineCardProps {
