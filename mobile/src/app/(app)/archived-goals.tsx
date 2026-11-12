@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,38 +13,76 @@ import {
 import { Screen } from '@/components/ui/Screen';
 import { BackButton } from '@/components/ui/BackButton';
 import { BrandHeader } from '@/components/ui/BrandHeader';
+import { useAuth } from '@/contexts/auth-context';
+import { getGoalHistory, type GoalHistoryItem } from '@/services/api/goals';
+
+function formatDisplayDate(dateStr?: string): string {
+  if (!dateStr) return 'RECIENTE';
+  try {
+    const d = new Date(dateStr);
+    const months = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
+    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  } catch {
+    return dateStr;
+  }
+}
 
 export default function ArchivedGoalsScreen() {
-  // Estado para la pestaña seleccionada: 'archived' o 'completed'
+  const { token } = useAuth();
   const [activeTab, setActiveTab] = useState<'archived' | 'completed'>('archived');
+  const [history, setHistory] = useState<GoalHistoryItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Mock data basado exactamente en el prototipo
-  const goalsData = {
-    archived: [
-      {
-        id: 1,
-        statusLabel: 'ARCHIVADO · 2 MAY 2025',
-        title: 'Aprender fotografía',
-        progress: 35,
-        activitiesText: '5 de 14 actividades',
-        timeText: '6 h registradas',
-        actionText: 'Consultar progreso',
-      },
-    ],
-    completed: [
-      {
-        id: 2,
-        statusLabel: 'COMPLETADO · 13 MAR 2025',
-        title: 'Crear mi portafolio',
-        progress: 100,
-        activitiesText: '10 de 10 actividades',
-        timeText: '13 h registradas',
-        actionText: 'Consultar planificación',
-      },
-    ],
-  };
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
 
-  const currentGoals = activeTab === 'archived' ? goalsData.archived : goalsData.completed;
+      getGoalHistory(token)
+        .then((data) => {
+          if (active) {
+            setHistory(data);
+          }
+        })
+        .catch(() => {
+          // Mantener lista vacía si falla la red
+        })
+        .finally(() => {
+          if (active) setIsLoading(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [token]),
+  );
+
+  const archivedGoals = history.filter((g) => g.status === 'archived');
+  const completedGoals = history.filter((g) => g.status === 'completed');
+
+  const rawGoals = activeTab === 'archived' ? archivedGoals : completedGoals;
+
+  const currentGoals = rawGoals.map((item) => {
+    const isCompleted = activeTab === 'completed';
+    const statusLabel = `${isCompleted ? 'COMPLETADO' : 'ARCHIVADO'} · ${formatDisplayDate(item.status_changed_at || item.end_date)}`;
+    const progress = Math.round(item.progress_percentage || 0);
+    const completedActivities = item.completed_activities || 0;
+    const totalActivities = item.total_activities || 0;
+    const hours = Math.round((item.total_minutes_invested || 0) / 60);
+
+    return {
+      id: item.goal_id,
+      statusLabel,
+      title: item.title,
+      progress,
+      activitiesText: `${completedActivities} de ${totalActivities} actividades`,
+      timeText: `${hours} h registradas`,
+      actionText: isCompleted ? 'Consultar planificación' : 'Consultar progreso',
+    };
+  });
 
   return (
     <Screen style={styles.screen}>
@@ -137,9 +176,11 @@ export default function ArchivedGoalsScreen() {
             );
           })}
 
-          {currentGoals.length === 0 && (
+          {isLoading && currentGoals.length === 0 ? (
+            <ActivityIndicator size="small" color="#174A62" style={{ marginVertical: 20 }} />
+          ) : currentGoals.length === 0 ? (
             <Text style={styles.emptyText}>No hay objetivos en esta sección.</Text>
-          )}
+          ) : null}
         </View>
       </ScrollView>
     </Screen>
