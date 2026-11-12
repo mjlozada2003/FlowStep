@@ -90,9 +90,22 @@ export default function HomeScreen() {
   const initial = displayName ? displayName.charAt(0).toUpperCase() : '?';
 
   const firstGoal = goalRows[0] ?? null;
-  const nextActivity = firstGoal?.detail?.stages
-    ?.flatMap((stage) => stage.activities ?? [])
-    .find((activity) => activity.status !== 'completed');
+  
+  let nextActivity: any = null;
+  let nextStepStage: string | null = null;
+  let nextStageId: number | null = null;
+
+  if (firstGoal?.detail?.stages) {
+    for (const stage of firstGoal.detail.stages) {
+      const found = (stage.activities ?? []).find((act) => act.status !== 'completed');
+      if (found) {
+        nextActivity = found;
+        nextStepStage = stage.name;
+        nextStageId = stage.stage_id;
+        break;
+      }
+    }
+  }
 
   const nextStepTitle = isLoadingGoals
     ? 'Cargando tus objetivos…'
@@ -102,11 +115,6 @@ export default function HomeScreen() {
           ? 'Sin actividades pendientes'
           : 'Actividades no disponibles'
         : 'Sin objetivos guardados');
-
-  const nextStepStage =
-    firstGoal?.detail?.stages?.find((stage) =>
-      stage.activities?.some((activity) => activity.activity_id === nextActivity?.activity_id),
-    )?.name ?? null;
 
   return (
     <Screen style={styles.screen}>
@@ -145,48 +153,52 @@ export default function HomeScreen() {
         {/* Próximo paso dinámico */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Tu próximo paso</Text>
-          <HomeNextStepCard
-            nextStepTitle={nextStepTitle}
-            nextStepDescription={
-              nextActivity?.description ||
-              (nextActivity
-                ? 'Actividad pendiente de tu plan.'
-                : isLoadingGoals
-                  ? 'Consultando el siguiente paso de tu plan.'
-                  : firstGoal?.detail
-                    ? 'Aún no hay actividades pendientes en este objetivo.'
-                    : firstGoal
-                      ? 'No se pudo consultar el siguiente paso.'
-                      : 'Crea un objetivo para comenzar.')
-            }
-            estimatedMinutes={nextActivity?.estimated_minutes}
-            nextStepStage={nextStepStage}
-            buttonText={firstGoal && nextActivity ? 'Continuar' : firstGoal ? 'Ver plan' : 'Crear un objetivo'}
-            onPress={() => {
-              if (firstGoal && nextActivity) {
-                router.push({
-                  pathname: '/activity-detail' as any,
-                  params: {
-                    activityId: String(nextActivity.activity_id),
-                    title: nextActivity.title,
-                    duration: String(nextActivity.estimated_minutes || 45),
-                    stageTitle: nextStepStage || 'ETAPA 1',
-                    description: nextActivity.description || '',
-                  },
-                });
-              } else if (firstGoal) {
-                router.push({
-                  pathname: '/goal-plan',
-                  params: {
-                    goalId: String(firstGoal.goal.goal_id),
-                    title: firstGoal.goal.title,
-                  },
-                });
-              } else {
-                router.push('/create-goal');
+          <View style={styles.cardContainer}>
+            <HomeNextStepCard
+              nextStepTitle={nextStepTitle}
+              nextStepDescription={
+                nextActivity?.description ||
+                (nextActivity
+                  ? 'Actividad pendiente de tu plan.'
+                  : isLoadingGoals
+                    ? 'Consultando el siguiente paso de tu plan.'
+                    : firstGoal?.detail
+                      ? 'Aún no hay actividades pendientes en este objetivo.'
+                      : firstGoal
+                        ? 'No se pudo consultar el siguiente paso.'
+                        : 'Crea un objetivo para comenzar.')
               }
-            }}
-          />
+              estimatedMinutes={nextActivity?.estimated_minutes}
+              nextStepStage={nextStepStage}
+              buttonText={firstGoal && nextActivity ? 'Continuar' : firstGoal ? 'Ver plan' : 'Crear un objetivo'}
+              onPress={() => {
+                if (firstGoal && nextActivity) {
+                  router.push({
+                    pathname: '/activity-detail' as any,
+                    params: {
+                      activityId: String(nextActivity.activity_id),
+                      stageId: nextStageId ? String(nextStageId) : '',
+                      goalId: String(firstGoal.goal.goal_id),
+                      title: nextActivity.title,
+                      duration: String(nextActivity.estimated_minutes || 45),
+                      stageTitle: nextStepStage ? `ETAPA · ${nextStepStage}` : 'ETAPA 1',
+                      description: nextActivity.description || '',
+                    },
+                  });
+                } else if (firstGoal) {
+                  router.push({
+                    pathname: '/goal-plan',
+                    params: {
+                      goalId: String(firstGoal.goal.goal_id),
+                      title: firstGoal.goal.title,
+                    },
+                  });
+                } else {
+                  router.push('/create-goal');
+                }
+              }}
+            />
+          </View>
         </View>
 
         {/* Mis objetivos */}
@@ -199,7 +211,6 @@ export default function HomeScreen() {
               ) : null}
             </View>
 
-            {/* Botón devuelto para crear un nuevo objetivo */}
             <TouchableOpacity
               style={styles.addGoalBtn}
               onPress={() => router.push('/create-goal')}
@@ -296,6 +307,10 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: Spacing.two,
+  },
+  cardContainer: {
+    width: '100%',
+    overflow: 'hidden',
   },
   sectionHeader: {
     flexDirection: 'row',

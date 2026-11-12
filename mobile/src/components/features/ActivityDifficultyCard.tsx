@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 const DIFFICULTY_TAGS = [
   'Falta de conocimientos',
@@ -14,8 +14,6 @@ interface ActivityDifficultyCardProps {
   onSelectTag: (tag: string) => void;
   notes: string;
   onChangeNotes: (val: string) => void;
-  onSave: () => void;
-  isSubmitting: boolean;
 }
 
 export function ActivityDifficultyCard({
@@ -23,8 +21,6 @@ export function ActivityDifficultyCard({
   onSelectTag,
   notes,
   onChangeNotes,
-  onSave,
-  isSubmitting,
 }: ActivityDifficultyCardProps) {
   return (
     <View style={styles.card}>
@@ -65,19 +61,6 @@ export function ActivityDifficultyCard({
         multiline
         placeholderTextColor="#94A3B8"
       />
-
-      <TouchableOpacity
-        style={styles.actionButtonLight}
-        onPress={onSave}
-        disabled={isSubmitting}
-        activeOpacity={0.8}
-      >
-        {isSubmitting ? (
-          <ActivityIndicator color="#174A62" />
-        ) : (
-          <Text style={styles.actionButtonLightText}>Guardar dificultad</Text>
-        )}
-      </TouchableOpacity>
     </View>
   );
 }
@@ -95,7 +78,5 @@ const styles = StyleSheet.create({
   pillText: { fontSize: 12, color: '#486581', fontWeight: '600' },
   pillTextSelected: { color: '#174A62', fontWeight: '800' },
   subLabel: { fontSize: 10, fontWeight: '800', color: '#627D98', marginBottom: 6, letterSpacing: 0.8 },
-  textArea: { borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 12, padding: 12, height: 80, fontSize: 13, color: '#0F2C40', backgroundColor: '#F8FAFC', textAlignVertical: 'top', marginBottom: 12 },
-  actionButtonLight: { backgroundColor: '#EBF5FB', borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#D8ECF8' },
-  actionButtonLightText: { color: '#174A62', fontSize: 14, fontWeight: '700' },
+  textArea: { borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 12, padding: 12, height: 80, fontSize: 13, color: '#0F2C40', backgroundColor: '#F8FAFC', textAlignVertical: 'top' },
 });

@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,6 +15,7 @@ import { Screen } from '@/components/ui/Screen';
 import { BackButton } from '@/components/ui/BackButton';
 import { useAuth } from '@/contexts/auth-context';
 import { trackingApi } from '@/services/api/tracking';
+import { completeActivity } from '@/services/api/stages';
 import { ActivityMissModal } from '@/components/features/ActivityMissModal';
 import { ActivityTimeCard } from '@/components/features/ActivityTimeCard';
 import { ActivityDifficultyCard } from '@/components/features/ActivityDifficultyCard';
@@ -64,36 +66,42 @@ export default function ActivityDetailScreen() {
   const [missDetails, setMissDetails] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleSaveAction = async (msg: string, isCompletion: boolean = false) => {
+  const handleCompleteActivity = async () => {
+    if (!token || !activityId || isSubmitting) return;
+
     try {
       setIsSubmitting(true);
-      if (token && activityId) {
-        if (isCompletion) {
-          router.push({
-            pathname: '/goal-success',
-            params: {
-              activityId: String(activityId),
-              stageId: stageId ? String(stageId) : '',
-              goalId: goalId ? String(goalId) : '',
-              stageTitle: stageInfo,
-            },
-          });
-          return;
-        } else {
-          await trackingApi.logWorkSession(
-            activityId,
-            {
-              minutes_spent: (Number(hoursSpent) || 0) * 60 + (Number(minutesSpent) || 0),
-              difficulty_notes: `[${selectedDifficultyTag}] ${difficultyNotes}`,
-            },
-            token
-          ).catch(() => {});
-        }
-      }
-      setSuccessMessage(msg);
-      setTimeout(() => router.back(), 800);
+      setErrorMessage(null);
+
+      // 1. Guardamos la sesión de trabajo y dificultad
+      await trackingApi.logWorkSession(
+        activityId,
+        {
+          minutes_spent: (Number(hoursSpent) || 0) * 60 + (Number(minutesSpent) || 0),
+          difficulty_notes: `[${selectedDifficultyTag}] ${difficultyNotes}`,
+        },
+        token
+      ).catch(() => {});
+
+      // 2. Marcamos la actividad como completada
+      await completeActivity(activityId, token);
+
+      // 3. Navegamos a la pantalla de éxito
+      router.push({
+        pathname: '/goal-success',
+        params: {
+          activityId: String(activityId),
+          stageId: stageId ? String(stageId) : '',
+          goalId: goalId ? String(goalId) : '',
+          stageTitle: stageInfo,
+        },
+      });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'No se pudo completar la actividad.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -111,7 +119,7 @@ export default function ActivityDetailScreen() {
   };
 
   const handleSubmitMiss = async () => {
-    if (!selectedReasonId) return;
+    if (!selectedReasonId || isSubmitting) return;
     try {
       setIsSubmitting(true);
       if (token && activityId) {
@@ -122,8 +130,7 @@ export default function ActivityDetailScreen() {
         ).catch(() => {});
       }
       setMissModalVisible(false);
-      setSuccessMessage('Se registró el reporte correctamente.');
-      setTimeout(() => router.back(), 800);
+      setTimeout(() => router.back(), 300);
     } finally {
       setIsSubmitting(false);
     }
@@ -138,7 +145,7 @@ export default function ActivityDetailScreen() {
           <BrandHeader />
         </View>
 
-        {successMessage ? <Text style={styles.successText}>{successMessage}</Text> : null}
+        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
         <View style={styles.mainActivityCard}>
           <View style={styles.activityBadgeRow}>
@@ -159,34 +166,34 @@ export default function ActivityDetailScreen() {
           <Text style={styles.metaText}>{defaultDuration} min estimados</Text>
         </View>
 
-        {/* Tarjeta de Registro de Tiempo */}
         <ActivityTimeCard
           hoursSpent={hoursSpent}
           onChangeHours={setHoursSpent}
           minutesSpent={minutesSpent}
           onChangeMinutes={setMinutesSpent}
-          onSave={() => handleSaveAction('¡Tiempo guardado con éxito!')}
-          isSubmitting={isSubmitting}
         />
 
-        {/* Tarjeta de Registro de Dificultad */}
         <ActivityDifficultyCard
           selectedTag={selectedDifficultyTag}
           onSelectTag={setSelectedDifficultyTag}
           notes={difficultyNotes}
           onChangeNotes={setDifficultyNotes}
-          onSave={() => handleSaveAction('¡Dificultad guardada con éxito!')}
-          isSubmitting={isSubmitting}
         />
 
-        {/* Botón principal de éxito con animación */}
         <TouchableOpacity
-          style={styles.primaryActionButton}
-          onPress={() => handleSaveAction('', true)}
+          style={[styles.primaryActionButton, isSubmitting && styles.btnDisabled]}
+          onPress={handleCompleteActivity}
+          disabled={isSubmitting}
           activeOpacity={0.85}
         >
-          <Feather name="check" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-          <Text style={styles.primaryActionText}>Marcar como completada</Text>
+          {isSubmitting ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <>
+              <Feather name="check" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.primaryActionText}>Marcar como completada</Text>
+            </>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -198,7 +205,6 @@ export default function ActivityDetailScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Modal Extraído */}
       <ActivityMissModal
         visible={missModalVisible}
         onClose={() => setMissModalVisible(false)}
@@ -231,7 +237,8 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 12, color: '#627D98', fontWeight: '600' },
   primaryActionButton: { backgroundColor: '#174A62', borderRadius: 16, height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', shadowColor: '#174A62', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, elevation: 3 },
   primaryActionText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  btnDisabled: { opacity: 0.7 },
   outlineActionButton: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 16, height: 50, alignItems: 'center', justifyContent: 'center' },
   outlineActionText: { color: '#627D98', fontSize: 14, fontWeight: '700' },
-  successText: { color: '#2F855A', marginBottom: 8, fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  errorText: { color: '#C53030', marginBottom: 8, fontSize: 13, fontWeight: '700', textAlign: 'center' },
 });

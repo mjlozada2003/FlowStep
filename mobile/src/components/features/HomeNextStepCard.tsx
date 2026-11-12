@@ -25,16 +25,22 @@ export function HomeNextStepCard({
         <Text style={styles.nextStepBadgeText}>CONTINUAR</Text>
       </View>
 
-      <Text style={styles.nextStepTitle}>{nextStepTitle}</Text>
+      <Text style={styles.nextStepTitle} numberOfLines={2}>
+        {nextStepTitle}
+      </Text>
 
-      <Text style={styles.nextStepDescription}>{nextStepDescription}</Text>
+      <Text style={styles.nextStepDescription} numberOfLines={2}>
+        {nextStepDescription}
+      </Text>
 
       <View style={styles.activityInfo}>
-        <Text style={styles.infoText}>
+        <Text style={styles.infoText} numberOfLines={1}>
           ⏱ {estimatedMinutes ? `${estimatedMinutes} min` : 'Duración no indicada'}
         </Text>
         <Text style={styles.infoText}>•</Text>
-        <Text style={styles.infoText}>{nextStepStage ?? 'Etapa no disponible'}</Text>
+        <Text style={[styles.infoText, styles.stageText]} numberOfLines={1} ellipsizeMode="tail">
+          {nextStepStage ?? 'Etapa no disponible'}
+        </Text>
       </View>
 
       <Pressable
@@ -96,6 +102,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.light.textMuted,
     fontWeight: '500',
+  },
+  stageText: {
+    flexShrink: 1, // Esto obliga a que si el nombre de la etapa es muy largo, se ajuste y use puntos suspensivos sin salirse
   },
   primaryButton: {
     backgroundColor: Colors.light.primary,

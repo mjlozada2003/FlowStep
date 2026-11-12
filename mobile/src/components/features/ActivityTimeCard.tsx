@@ -1,13 +1,11 @@
 import { Feather } from '@expo/vector-icons';
-import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 interface ActivityTimeCardProps {
   hoursSpent: string;
   onChangeHours: (val: string) => void;
   minutesSpent: string;
   onChangeMinutes: (val: string) => void;
-  onSave: () => void;
-  isSubmitting: boolean;
 }
 
 export function ActivityTimeCard({
@@ -15,8 +13,6 @@ export function ActivityTimeCard({
   onChangeHours,
   minutesSpent,
   onChangeMinutes,
-  onSave,
-  isSubmitting,
 }: ActivityTimeCardProps) {
   return (
     <View style={styles.card}>
@@ -53,19 +49,6 @@ export function ActivityTimeCard({
           <Text style={styles.timeUnitLabel}>minutos</Text>
         </View>
       </View>
-
-      <TouchableOpacity
-        style={styles.actionButtonLight}
-        onPress={onSave}
-        disabled={isSubmitting}
-        activeOpacity={0.8}
-      >
-        {isSubmitting ? (
-          <ActivityIndicator color="#174A62" />
-        ) : (
-          <Text style={styles.actionButtonLightText}>Guardar tiempo</Text>
-        )}
-      </TouchableOpacity>
     </View>
   );
 }
@@ -77,11 +60,9 @@ const styles = StyleSheet.create({
   headerTextFlex: { flex: 1 },
   sectionCategory: { fontSize: 9, fontWeight: '800', color: '#174A62', letterSpacing: 1 },
   sectionTitle: { fontSize: 15, fontWeight: '800', color: '#0F2C40' },
-  timeInputsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  timeInputsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   timeBoxContainer: { alignItems: 'center', flex: 1, maxWidth: 110 },
   timeInput: { width: '100%', height: 54, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 14, textAlign: 'center', fontSize: 22, fontWeight: '800', color: '#0F2C40', backgroundColor: '#F8FAFC', marginBottom: 4 },
   timeUnitLabel: { fontSize: 11, color: '#627D98', fontWeight: '600' },
   timeSeparator: { fontSize: 24, fontWeight: '800', color: '#627D98', marginHorizontal: 12 },
-  actionButtonLight: { backgroundColor: '#EBF5FB', borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#D8ECF8' },
-  actionButtonLightText: { color: '#174A62', fontSize: 14, fontWeight: '700' },
 });
