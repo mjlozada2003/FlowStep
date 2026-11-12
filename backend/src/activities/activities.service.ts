@@ -18,6 +18,7 @@ import { RescheduleActivityDto } from './dto/reschedule-activity.dto';
 import { CreateWorkSessionDto } from './dto/create-work-session.dto';
 import { RecordActivityMissDto } from './dto/record-activity-miss.dto';
 import { ActivityHistoryFilterDto } from './dto/activity-history-filter.dto';
+import { CalendarQueryDto } from './dto/calendar-query.dto';
 import { ActivityOrigin, ActivityStatus } from './enums/activity.enum';
 import { PriorityLevel } from '../goals/enums/goal.enum';
 import { ScheduleReason } from './enums/schedule-reason.enum';
@@ -237,15 +238,63 @@ export class ActivitiesService {
     });
   }
 
-  async remove(userId: number, activityId: number): Promise<{ message: string }> {
+  async remove(userId: number, activityId: number, reason?: string): Promise<{ message: string }> {
     const activity = await this.findOwnedActivity(userId, activityId);
 
     if (!activity) {
       throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
     }
 
-    await this.activitiesRepository.remove(activity);
+    // Borrado lógico con registro de motivo (trigger trg_activity_soft_delete propaga en cascada)
+    await this.activitiesRepository.query(
+      'UPDATE "ACTIVITY" SET deleted_at = CURRENT_TIMESTAMP, deletion_reason = $1 WHERE activity_id = $2',
+      [reason || 'Eliminada por el usuario', activityId],
+    );
     return { message: `Actividad con ID ${activityId} eliminada correctamente` };
+  }
+
+  // HU-50: Planificación en calendario (v_calendar_day_summary y v_calendar_activities)
+  async getCalendar(userId: number, query: CalendarQueryDto): Promise<any> {
+    const now = new Date();
+    const currentYear = query.year || now.getFullYear();
+    const currentMonth = query.month || (now.getMonth() + 1);
+
+    let startStr: string;
+    let endStr: string;
+
+    if (query.date) {
+      startStr = query.date;
+      endStr = query.date;
+    } else if (query.startDate && query.endDate) {
+      startStr = query.startDate;
+      endStr = query.endDate;
+    } else {
+      const firstDay = new Date(currentYear, currentMonth - 1, 1);
+      const lastDay = new Date(currentYear, currentMonth, 0);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      startStr = `${firstDay.getFullYear()}-${pad(firstDay.getMonth() + 1)}-${pad(firstDay.getDate())}`;
+      endStr = `${lastDay.getFullYear()}-${pad(lastDay.getMonth() + 1)}-${pad(lastDay.getDate())}`;
+    }
+
+    const [days, activities] = await Promise.all([
+      this.activitiesRepository.query(
+        'SELECT * FROM v_calendar_day_summary WHERE user_id = $1 AND scheduled_date BETWEEN $2 AND $3 ORDER BY scheduled_date ASC',
+        [userId, startStr, endStr],
+      ),
+      this.activitiesRepository.query(
+        'SELECT * FROM v_calendar_activities WHERE user_id = $1 AND scheduled_date BETWEEN $2 AND $3 ORDER BY scheduled_date ASC, start_time NULLS LAST',
+        [userId, startStr, endStr],
+      ),
+    ]);
+
+    return {
+      period_start: startStr,
+      period_end: endStr,
+      month: currentMonth,
+      year: currentYear,
+      days,
+      activities,
+    };
   }
 
   async reschedule(

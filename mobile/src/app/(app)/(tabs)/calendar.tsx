@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,38 +13,88 @@ import {
 import { Screen } from '@/components/ui/Screen';
 import { BackButton } from '@/components/ui/BackButton';
 import { Colors } from '@/constants/theme';
+import { useAuth } from '@/contexts/auth-context';
+import {
+  getCalendarData,
+  type CalendarActivityItem,
+  type CalendarDaySummary,
+} from '@/services/api/calendar';
 
 export default function CalendarScreen() {
-  // Día seleccionado actualmente (mock inicial: 16 de junio)
+  const { token } = useAuth();
   const [selectedDay, setSelectedDay] = useState(16);
+  const [currentYear] = useState(2025);
+  const [currentMonth] = useState(6); // Junio
+  const [daySummaries, setDaySummaries] = useState<CalendarDaySummary[]>([]);
+  const [allActivities, setAllActivities] = useState<CalendarActivityItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Mock de días del mes de junio de 2025 que tienen actividades
-  // types: 'completed' | 'pending' | 'none'
-  const calendarDays = Array.from({ length: 30 }, (_, index) => {
-    const day = index + 1;
-    let status: 'completed' | 'pending' | 'none' = 'none';
-    if ([10, 12].includes(day)) status = 'completed';
-    if ([16, 18, 21, 23].includes(day)) status = 'pending';
-    return { day, status };
-  });
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
 
-  // Actividades mock para el día seleccionado
-  const selectedDateActivities = selectedDay === 16 ? [
-    {
-      id: 1,
-      time: '18:00',
-      title: 'Introducción a React',
-      subtitle: 'Crear una aplicación web · 45 min',
-      status: 'pending',
-    },
-    {
-      id: 2,
-      time: '18:00',
-      title: 'Vocabulario cotidiano',
-      subtitle: 'Mejorar mi inglés · 30 min',
-      status: 'completed',
-    },
-  ] : [];
+      getCalendarData(token, { month: currentMonth, year: currentYear })
+        .then((res) => {
+          if (!active) return;
+          setDaySummaries(res.days || []);
+          setAllActivities(res.activities || []);
+        })
+        .catch(() => {
+          // Mantener estado previo
+        })
+        .finally(() => {
+          if (active) setIsLoading(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [token, currentMonth, currentYear]),
+  );
+
+  // Mapear los días del mes con el resumen de la base de datos
+  const daysMap = useMemo(() => {
+    const map = new Map<string, 'completed' | 'pending' | 'mixed' | 'none'>();
+    for (const d of daySummaries) {
+      const datePart = d.scheduled_date ? d.scheduled_date.slice(0, 10) : '';
+      map.set(datePart, d.day_status);
+    }
+    return map;
+  }, [daySummaries]);
+
+  const calendarDays = useMemo(() => {
+    return Array.from({ length: 30 }, (_, index) => {
+      const day = index + 1;
+      const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const status = daysMap.get(dateStr) || 'none';
+      return { day, dateStr, status };
+    });
+  }, [currentYear, currentMonth, daysMap]);
+
+  // Actividades para el día seleccionado
+  const selectedDateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
+
+  const selectedDateActivities = useMemo(() => {
+    const filtered = allActivities.filter(
+      (a) => a.scheduled_date && a.scheduled_date.slice(0, 10) === selectedDateStr,
+    );
+    return filtered.map((act) => ({
+      id: act.activity_id,
+      goalId: act.goal_id,
+      time: act.start_time ? act.start_time.slice(0, 5) : '18:00',
+      title: act.title,
+      subtitle: `${act.goal_title} · ${act.estimated_minutes || 30} min`,
+      status: act.status,
+    }));
+  }, [allActivities, selectedDateStr]);
+
+  const dayOfWeekNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  const selectedDateObj = new Date(currentYear, currentMonth - 1, selectedDay);
+  const selectedDayName = dayOfWeekNames[selectedDateObj.getDay()];
 
   return (
     <Screen style={styles.screen}>
@@ -124,8 +175,8 @@ export default function CalendarScreen() {
 
         {/* Sección de Detalle del Día */}
         <View style={styles.dayDetailSection}>
-          <Text style={styles.selectedDateTitle}>Lunes, {selectedDay} de junio</Text>
-          <Text style={styles.activitiesCountText}>{selectedDateActivities.length} actividades</Text>
+          <Text style={styles.selectedDateTitle}>{selectedDayName}, {selectedDay} de junio</Text>
+          <Text style={styles.activitiesCountText}>{selectedDateActivities.length} {selectedDateActivities.length === 1 ? 'actividad' : 'actividades'}</Text>
 
           <View style={styles.activitiesList}>
             {selectedDateActivities.map((act) => (
@@ -133,7 +184,12 @@ export default function CalendarScreen() {
                 key={act.id}
                 style={styles.activityCard}
                 activeOpacity={0.85}
-                onPress={() => router.push('/activity-detail' as any)}
+                onPress={() =>
+                  router.push({
+                    pathname: '/goal-plan',
+                    params: { goalId: String(act.goalId) },
+                  })
+                }
               >
                 <View style={[
                   styles.activityIndicatorBar,

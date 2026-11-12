@@ -18,6 +18,8 @@ import { RescheduleActivityDto } from './dto/reschedule-activity.dto';
 import { CreateWorkSessionDto } from './dto/create-work-session.dto';
 import { RecordActivityMissDto } from './dto/record-activity-miss.dto';
 import { ActivityHistoryFilterDto } from './dto/activity-history-filter.dto';
+import { DeleteActivityDto } from './dto/delete-activity.dto';
+import { CalendarQueryDto } from './dto/calendar-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('Actividades')
@@ -98,6 +100,22 @@ export class ActivitiesController {
     @Query() filterDto: ActivityHistoryFilterDto,
   ) {
     return this.activitiesService.getActivityTimeline(req.user.userId, filterDto);
+  }
+
+  @Get('calendar')
+  @ApiOperation({
+    summary: 'Consultar planificación en calendario (HU-50)',
+    description: 'Consulta v_calendar_day_summary y v_calendar_activities retornando los días con actividades del mes y el cronograma detallado por fecha para el calendario interactivo.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Datos de calendario recuperados exitosamente.',
+  })
+  getCalendar(
+    @Request() req: any,
+    @Query() query: CalendarQueryDto,
+  ) {
+    return this.activitiesService.getCalendar(req.user.userId, query);
   }
 
   @Get(':id')
@@ -192,8 +210,8 @@ export class ActivitiesController {
 
   @Delete(':id')
   @ApiOperation({
-    summary: 'Eliminar una actividad',
-    description: 'Elimina de forma permanente o suave la actividad especificada.',
+    summary: 'Eliminar una actividad con borrado lógico (HU-12)',
+    description: 'Elimina de forma suave (soft delete) la actividad especificada, propagando la baja a sus sub-actividades mediante trigger y registrando el motivo de eliminación.',
   })
   @ApiParam({ name: 'id', description: 'ID de la actividad', example: 1 })
   @ApiResponse({
@@ -204,8 +222,14 @@ export class ActivitiesController {
     status: 404,
     description: 'Actividad no encontrada.',
   })
-  remove(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
-    return this.activitiesService.remove(req.user.userId, id);
+  remove(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Query() queryDto?: DeleteActivityDto,
+    @Body() bodyDto?: DeleteActivityDto,
+  ) {
+    const reason = bodyDto?.reason || queryDto?.reason;
+    return this.activitiesService.remove(req.user.userId, id, reason);
   }
 
   @Post(':id/reschedule')
