@@ -178,9 +178,10 @@ export default function CreateGoalScreen() {
               priority={priority}
               onSelectPriority={setPriority}
               weeklyHours={weeklyHours}
+              onChangeHours={(newHours) => setWeeklyHours(newHours)}
               isLoadingAvailability={isAvailabilityLoading}
               availabilityErrorMessage={availabilityErrorMessage}
-            />
+              />
 
             {/* Fecha Límite */}
             <View style={styles.fieldSection}>

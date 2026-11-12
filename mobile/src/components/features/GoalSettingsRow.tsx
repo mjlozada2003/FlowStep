@@ -1,4 +1,5 @@
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 
 type Priority = 'baja' | 'media' | 'alta';
 
@@ -6,6 +7,7 @@ interface GoalSettingsRowProps {
   priority: Priority;
   onSelectPriority: (p: Priority) => void;
   weeklyHours: number | null;
+  onChangeHours: (newHours: number) => void; // <--- Añadimos esta función prop
   isLoadingAvailability: boolean;
   availabilityErrorMessage: string | null;
 }
@@ -14,9 +16,22 @@ export function GoalSettingsRow({
   priority,
   onSelectPriority,
   weeklyHours,
+  onChangeHours,
   isLoadingAvailability,
   availabilityErrorMessage,
 }: GoalSettingsRowProps) {
+  const currentHours = weeklyHours ?? 5; // Valor por defecto si es null
+
+  const handleDecrement = () => {
+    if (currentHours > 1) {
+      onChangeHours(currentHours - 1);
+    }
+  };
+
+  const handleIncrement = () => {
+    onChangeHours(currentHours + 1);
+  };
+
   return (
     <View style={styles.rowCardsContainer}>
       {/* Prioridad del objetivo */}
@@ -46,28 +61,41 @@ export function GoalSettingsRow({
         </View>
       </View>
 
-      {/* Horas semanales persistidas */}
+      {/* Horas semanales interactivas */}
       <View style={[styles.card, styles.halfCard]}>
         <Text style={styles.cardBadge}>TIEMPO DISPONIBLE</Text>
         <View style={styles.counterRow}>
-          <View style={styles.counterTextContainer}>
-            {isLoadingAvailability ? (
-              <ActivityIndicator size="small" color="#174A62" />
-            ) : (
-              <Text style={styles.counterValue}>
-                {availabilityErrorMessage
-                  ? 'No disponible'
-                  : weeklyHours === null
-                    ? 'Sin configurar'
-                    : `${Number(weeklyHours.toFixed(2))} horas`}
-              </Text>
-            )}
-            <Text style={styles.counterSub}>por semana</Text>
-          </View>
+          {isLoadingAvailability ? (
+            <ActivityIndicator size="small" color="#174A62" />
+          ) : availabilityErrorMessage ? (
+            <Text style={styles.availabilityError}>{availabilityErrorMessage}</Text>
+          ) : (
+            <View style={styles.stepperContainer}>
+              <TouchableOpacity
+                style={styles.stepButton}
+                onPress={handleDecrement}
+                activeOpacity={0.7}
+              >
+                <Feather name="minus" size={14} color="#174A62" />
+              </TouchableOpacity>
+
+              <View style={styles.counterTextContainer}>
+                <Text style={styles.counterValue}>
+                  {Number(currentHours.toFixed(1))}h
+                </Text>
+                <Text style={styles.counterSub}>por semana</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.stepButton}
+                onPress={handleIncrement}
+                activeOpacity={0.7}
+              >
+                <Feather name="plus" size={14} color="#174A62" />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
-        {availabilityErrorMessage ? (
-          <Text style={styles.availabilityError}>{availabilityErrorMessage}</Text>
-        ) : null}
       </View>
     </View>
   );
@@ -130,15 +158,30 @@ const styles = StyleSheet.create({
   counterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     marginTop: 4,
+  },
+  stepperContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  stepButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: '#EBF5FB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#D8ECF8',
   },
   counterTextContainer: {
     alignItems: 'center',
-    width: '100%',
   },
   counterValue: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '800',
     color: '#0F2C40',
   },
