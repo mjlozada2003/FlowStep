@@ -1,8 +1,12 @@
 import { Feather } from '@expo/vector-icons';
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,7 +28,6 @@ import {
   markActivityPending,
   rescheduleActivity,
   updateActivity,
-  type RescheduleActivityRequest,
 } from '@/services/api/stages';
 
 interface Activity {
@@ -33,6 +36,8 @@ interface Activity {
   duration: number | null;
   type: string;
   date: string;
+  rawDate?: string;
+  rawTime?: string;
   completed: boolean;
 }
 
@@ -45,7 +50,8 @@ async function loadStageActivities(stageId: number, token: string) {
       try {
         schedules = await getActivitySchedules(activity.activity_id, token);
       } catch {
-        scheduleError = 'No se pudo cargar el historial de horarios de algunas actividades.';
+        scheduleError =
+          'No se pudo cargar el historial de horarios de algunas actividades.';
       }
 
       const sortedSchedules = [...schedules].sort(
@@ -62,6 +68,8 @@ async function loadStageActivities(stageId: number, token: string) {
         duration: activity.estimated_minutes,
         type: activity.type,
         date,
+        rawDate: schedule?.scheduled_date,
+        rawTime: schedule?.start_time ? schedule.start_time.slice(0, 5) : undefined,
         completed: activity.status === 'completed',
       };
     }),
@@ -69,29 +77,17 @@ async function loadStageActivities(stageId: number, token: string) {
   return { activities, scheduleError };
 }
 
-function parseRescheduleInput(value: string): RescheduleActivityRequest | null {
-  const match =
-    /^(\d{4}-\d{2}-\d{2})(?:\s+([01]\d|2[0-3]):([0-5]\d)(?:\s*[-–]\s*([01]\d|2[0-3]):([0-5]\d))?)?$/.exec(
-      value.trim(),
-    );
-  if (!match) return null;
-
-  const date = new Date(`${match[1]}T00:00:00`);
-  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== match[1]) {
-    return null;
+function parseInitialDate(rawDate?: string, rawTime?: string): Date {
+  const now = new Date();
+  if (rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+    const [year, month, day] = rawDate.split('-').map(Number);
+    now.setFullYear(year, month - 1, day);
   }
-
-  const request: RescheduleActivityRequest = { scheduled_date: match[1] };
-  if (match[2] && match[3]) request.start_time = `${match[2]}:${match[3]}`;
-  if (match[4] && match[5]) request.end_time = `${match[4]}:${match[5]}`;
-  if (
-    request.start_time &&
-    request.end_time &&
-    request.end_time <= request.start_time
-  ) {
-    return null;
+  if (rawTime && /^\d{2}:\d{2}/.test(rawTime)) {
+    const [hours, minutes] = rawTime.split(':').map(Number);
+    now.setHours(hours, minutes, 0, 0);
   }
-  return request;
+  return now;
 }
 
 export default function StageDetailScreen() {
@@ -113,16 +109,23 @@ export default function StageDetailScreen() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
 
-  // Form states
+  // Form states (Nueva actividad)
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
+
+  // Form states (Edición con DateTimePicker)
   const [editTitle, setEditTitle] = useState('');
-  const [editDate, setEditDate] = useState('');
+  const [editDateValue, setEditDateValue] = useState<Date>(new Date());
+  const [showEditPicker, setShowEditPicker] = useState(false);
+  const [editPickerMode, setEditPickerMode] = useState<'date' | 'time'>('date');
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [busyActivityId, setBusyActivityId] = useState<number | null>(null);
 
-  const stageId = params.stageId && /^\d+$/.test(params.stageId) ? Number(params.stageId) : null;
-  const goalId = params.goalId && /^\d+$/.test(params.goalId) ? Number(params.goalId) : null;
+  const stageId =
+    params.stageId && /^\d+$/.test(params.stageId) ? Number(params.stageId) : null;
+  const goalId =
+    params.goalId && /^\d+$/.test(params.goalId) ? Number(params.goalId) : null;
   const stageTitle = params.title || 'Etapa';
   const isStageLoading = isLoading && Boolean(stageId && token);
   const displayLoadingError =
@@ -133,29 +136,31 @@ export default function StageDetailScreen() {
 
   useFocusEffect(
     useCallback(() => {
-    let active = true;
-    if (!stageId || !token) return undefined;
+      let active = true;
+      if (!stageId || !token) return undefined;
 
-    loadStageActivities(stageId, token)
-      .then(({ activities: serverActivities, scheduleError }) => {
-        if (!active) return;
-        setActivities(serverActivities);
-        setIsLoadingError(scheduleError);
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        setActivities([]);
-        setIsLoadingError(
-          error instanceof Error ? error.message : 'No se pudieron cargar las actividades.',
-        );
-      })
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
+      loadStageActivities(stageId, token)
+        .then(({ activities: serverActivities, scheduleError }) => {
+          if (!active) return;
+          setActivities(serverActivities);
+          setIsLoadingError(scheduleError);
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          setActivities([]);
+          setIsLoadingError(
+            error instanceof Error
+              ? error.message
+              : 'No se pudieron cargar las actividades.',
+          );
+        })
+        .finally(() => {
+          if (active) setIsLoading(false);
+        });
 
-    return () => {
-      active = false;
-    };
+      return () => {
+        active = false;
+      };
     }, [stageId, token]),
   );
 
@@ -191,14 +196,16 @@ export default function StageDetailScreen() {
       }
     } catch (error) {
       setErrorMessage(
-        error instanceof Error ? error.message : 'No se pudo actualizar la actividad.',
+        error instanceof Error
+          ? error.message
+          : 'No se pudo actualizar la actividad.',
       );
       try {
         const refreshed = await loadStageActivities(stageId, token);
         setActivities(refreshed.activities);
         setIsLoadingError(refreshed.scheduleError);
       } catch {
-        // Keep the last server-confirmed list when reconciliation is unavailable.
+        // Mantener estado previo si falla la conciliación
       }
     } finally {
       setBusyActivityId(null);
@@ -234,6 +241,26 @@ export default function StageDetailScreen() {
     }
   };
 
+  const openEditModal = (activity: Activity) => {
+    setSelectedActivity(activity);
+    setEditTitle(activity.title);
+    setEditDateValue(parseInitialDate(activity.rawDate, activity.rawTime));
+    setShowEditPicker(false);
+    setEditModalVisible(true);
+  };
+
+  const handlePickerChange = (
+    _event: DateTimePickerEvent,
+    selectedDate?: Date,
+  ) => {
+    if (Platform.OS === 'android') {
+      setShowEditPicker(false);
+    }
+    if (selectedDate) {
+      setEditDateValue(selectedDate);
+    }
+  };
+
   const handleSaveEdit = async () => {
     if (
       !selectedActivity ||
@@ -241,15 +268,17 @@ export default function StageDetailScreen() {
       !token ||
       !stageId ||
       isSubmitting
-    ) return;
-
-    const reschedule = editDate.trim()
-      ? parseRescheduleInput(editDate)
-      : undefined;
-    if (editDate.trim() && !reschedule) {
-      setErrorMessage('Usa AAAA-MM-DD, opcionalmente seguido de la hora HH:mm.');
+    )
       return;
-    }
+
+    const year = editDateValue.getFullYear();
+    const month = String(editDateValue.getMonth() + 1).padStart(2, '0');
+    const day = String(editDateValue.getDate()).padStart(2, '0');
+    const scheduled_date = `${year}-${month}-${day}`;
+
+    const hours = String(editDateValue.getHours()).padStart(2, '0');
+    const minutes = String(editDateValue.getMinutes()).padStart(2, '0');
+    const start_time = `${hours}:${minutes}`;
 
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -260,9 +289,12 @@ export default function StageDetailScreen() {
           title: editTitle.trim(),
         });
       }
-      if (reschedule) {
-        await rescheduleActivity(selectedActivity.id, token, reschedule);
-      }
+
+      await rescheduleActivity(selectedActivity.id, token, {
+        scheduled_date,
+        start_time,
+      });
+
       const refreshed = await loadStageActivities(stageId, token);
       setActivities(refreshed.activities);
       setIsLoadingError(refreshed.scheduleError);
@@ -271,14 +303,16 @@ export default function StageDetailScreen() {
       setSuccessMessage('Cambios guardados y sincronizados.');
     } catch (error) {
       setErrorMessage(
-        error instanceof Error ? error.message : 'No se pudieron guardar los cambios.',
+        error instanceof Error
+          ? error.message
+          : 'No se pudieron guardar los cambios.',
       );
       try {
         const refreshed = await loadStageActivities(stageId, token);
         setActivities(refreshed.activities);
         setIsLoadingError(refreshed.scheduleError);
       } catch {
-        // Keep the last server-confirmed list when reconciliation is unavailable.
+        // Mantener estado previo
       }
     } finally {
       setIsSubmitting(false);
@@ -306,16 +340,17 @@ export default function StageDetailScreen() {
             >
               <Feather name="chevron-left" size={24} color="#0F2C40" />
             </TouchableOpacity>
-            <Text style={styles.headerStepTag}>ETAPA 1 DE 3</Text>
+            <Text style={styles.headerStepTag}>ETAPA ACTIVA</Text>
             <BrandHeader showTagline={false} />
           </View>
 
           {/* Hero Header */}
           <View style={styles.headerHero}>
-            <Text style={styles.stageBadge}>ETAPA ACTIVA</Text>
+            <Text style={styles.stageBadge}>DETALLE DE ETAPA</Text>
             <Text style={styles.stageTitle}>{stageTitle}</Text>
             <Text style={styles.stageSubtitle}>
-              Construye las bases que necesitas para empezar a avanzar con confianza.
+              Construye las bases que necesitas para empezar a avanzar con
+              confianza.
             </Text>
 
             <View style={styles.progressRow}>
@@ -330,7 +365,9 @@ export default function StageDetailScreen() {
                 ]}
               />
             </View>
-            {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+            {errorMessage ? (
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            ) : null}
           </View>
 
           {/* Banner Adaptado a Disponibilidad */}
@@ -346,17 +383,28 @@ export default function StageDetailScreen() {
           >
             <View style={styles.bannerLeft}>
               <Feather name="calendar" size={18} color="#174A62" />
-              <View>
-                <Text style={styles.bannerTitle}>Plan adaptado a tu disponibilidad</Text>
-                <Text style={styles.bannerSub}>Sesiones organizadas para evitar sobrecargas</Text>
+              <View style={styles.bannerTextFlex}>
+                <Text style={styles.bannerTitle}>
+                  Plan adaptado a tu disponibilidad
+                </Text>
+                <Text style={styles.bannerSub}>
+                  Sesiones organizadas para evitar sobrecargas
+                </Text>
               </View>
             </View>
             <Text style={styles.bannerAction}>Ver agenda</Text>
           </TouchableOpacity>
 
-          {/* Banner Historial de Actividades (HU-20) */}
+          {/* Banner Historial de Actividades */}
           <TouchableOpacity
-            style={[styles.adaptedBanner, { marginTop: -6, backgroundColor: '#FFFFFF', borderColor: '#E2EEF1' }]}
+            style={[
+              styles.adaptedBanner,
+              {
+                marginTop: -6,
+                backgroundColor: '#FFFFFF',
+                borderColor: '#E2EEF1',
+              },
+            ]}
             onPress={() =>
               router.push({
                 pathname: '/activity-history',
@@ -367,9 +415,11 @@ export default function StageDetailScreen() {
           >
             <View style={styles.bannerLeft}>
               <Feather name="clock" size={18} color="#174A62" />
-              <View>
+              <View style={styles.bannerTextFlex}>
                 <Text style={styles.bannerTitle}>Historial de actividades</Text>
-                <Text style={styles.bannerSub}>Revisa sesiones completadas e incidencias</Text>
+                <Text style={styles.bannerSub}>
+                  Revisa sesiones completadas e incidencias
+                </Text>
               </View>
             </View>
             <Text style={styles.bannerAction}>Ver historial</Text>
@@ -392,15 +442,17 @@ export default function StageDetailScreen() {
               {displayLoadingError ? (
                 <Text style={styles.errorText}>{displayLoadingError}</Text>
               ) : null}
-              {errorMessage ? (
-                <Text style={styles.errorText}>{errorMessage}</Text>
-              ) : null}
               {successMessage ? (
                 <Text style={styles.successText}>{successMessage}</Text>
               ) : null}
-              {!isStageLoading && activities.length === 0 && !displayLoadingError ? (
-                <Text style={styles.emptyText}>Esta etapa aún no tiene actividades.</Text>
+              {!isStageLoading &&
+              activities.length === 0 &&
+              !displayLoadingError ? (
+                <Text style={styles.emptyText}>
+                  Esta etapa aún no tiene actividades.
+                </Text>
               ) : null}
+
               {activities.map((activity, index) => (
                 <View
                   key={activity.id}
@@ -439,143 +491,162 @@ export default function StageDetailScreen() {
                       >
                         {activity.title}
                       </Text>
-                      <View style={styles.dateRowMeta}>
-                        <Feather name="calendar" size={12} color="#94A3B8" />
-                        <Text style={styles.activityMeta}>
-                          {activity.date || 'Sin fecha programada'}
+                      {activity.date ? (
+                        <Text style={styles.activityDateText}>
+                          <Feather name="calendar" size={11} color="#627D98" />{' '}
+                          {activity.date}
                         </Text>
-                      </View>
+                      ) : null}
                     </View>
                   </Pressable>
 
-                  {/* Único botón de Editar */}
                   <TouchableOpacity
-                    style={styles.singleEditBtn}
-                    disabled={isSubmitting || busyActivityId !== null}
-                    onPress={() => {
-                      setSelectedActivity(activity);
-                      setEditTitle(activity.title);
-                      setEditDate(activity.date.replace(' · ', ' '));
-                      setEditModalVisible(true);
-                    }}
+                    style={styles.editIconButton}
+                    onPress={() => openEditModal(activity)}
+                    activeOpacity={0.7}
                   >
-                    <Text style={styles.singleEditText}>Editar</Text>
+                    <Feather name="edit-2" size={16} color="#174A62" />
                   </TouchableOpacity>
                 </View>
               ))}
-
-              {/* Tarjeta de Añadir Actividad Propia */}
-              <TouchableOpacity
-                style={styles.dashedAddCard}
-                onPress={() => setAddModalVisible(true)}
-                activeOpacity={0.8}
-              >
-                <View style={styles.plusCircle}>
-                  <Feather name="plus" size={16} color="#174A62" />
-                </View>
-                <View>
-                  <Text style={styles.dashedAddTitle}>Añadir actividad propia</Text>
-                  <Text style={styles.dashedAddSub}>Personaliza esta etapa con una tarea</Text>
-                </View>
-              </TouchableOpacity>
             </View>
 
+            {/* Botón Agregar Actividad */}
             <TouchableOpacity
-              style={styles.returnButton}
-              onPress={() => {
-                if (goalId) {
-                  router.push({
-                    pathname: '/goal-plan',
-                    params: { goalId: String(goalId) },
-                  });
-                } else {
-                  router.back();
-                }
-              }}
+              style={styles.addActivityButton}
+              onPress={() => setAddModalVisible(true)}
               activeOpacity={0.85}
             >
-              <Text style={styles.returnButtonText}>Volver al plan</Text>
+              <Feather name="plus" size={18} color="#FFFFFF" />
+              <Text style={styles.addActivityText}>Nueva actividad</Text>
             </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
 
-      {/* Modal Reutilizable: Agregar Actividad (HU-13) */}
+      {/* Modal Agregar Actividad */}
       <AppModal
         visible={addModalVisible}
         onClose={() => setAddModalVisible(false)}
-        category="NUEVA ACTIVIDAD"
-        title="Añade una actividad"
-        primaryButtonText={isSubmitting ? 'Guardando...' : 'Guardar cambios'}
-        onPrimaryAction={handleAddActivity}
+        title="Nueva Actividad"
       >
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>NOMBRE</Text>
+        <View style={styles.modalBody}>
+          <Text style={styles.inputLabel}>Título</Text>
           <TextInput
-            style={styles.textInput}
-            placeholder="Ej. Repasar conceptos"
-            value={typeof newTitle === 'string' ? newTitle : ''}
-            onChangeText={(text) => setNewTitle(text)}
+            style={styles.modalInput}
+            placeholder="Ej. Configurar entorno de desarrollo"
+            value={newTitle}
+            onChangeText={setNewTitle}
             placeholderTextColor="#94A3B8"
           />
-        </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>DESCRIPCIÓN</Text>
+          <Text style={styles.inputLabel}>Descripción (opcional)</Text>
           <TextInput
-            style={[styles.textInput, styles.textArea]}
-            placeholder="¿Qué necesitas hacer?"
-            value={typeof newDesc === 'string' ? newDesc : ''}
-            onChangeText={(text) => setNewDesc(text)}
+            style={[styles.modalInput, styles.modalTextArea]}
+            placeholder="Detalles sobre qué lograr en esta sesión"
+            value={newDesc}
+            onChangeText={setNewDesc}
             multiline
             placeholderTextColor="#94A3B8"
           />
-        </View>
 
-        <View style={styles.infoMiniBox}>
-          <Feather name="calendar" size={14} color="#174A62" />
-          <Text style={styles.infoMiniText}>
-            Horario sincronizado con tu disponibilidad
-          </Text>
+          <TouchableOpacity
+            style={styles.modalPrimaryBtn}
+            onPress={handleAddActivity}
+            disabled={isSubmitting || !newTitle.trim()}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.modalPrimaryBtnText}>Guardar actividad</Text>
+            )}
+          </TouchableOpacity>
         </View>
       </AppModal>
 
-      {/* Modal Reutilizable: Editar Actividad Unificado (HU-11, HU-16) */}
+      {/* Modal Editar Actividad con Selectores Nativos de Fecha y Hora */}
       <AppModal
         visible={editModalVisible}
         onClose={() => setEditModalVisible(false)}
-        category="EDITAR ACTIVIDAD"
-        title={selectedActivity?.title || ''}
-        primaryButtonText={isSubmitting ? 'Guardando...' : 'Guardar cambios'}
-        onPrimaryAction={handleSaveEdit}
+        title="Editar Actividad"
       >
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>NOMBRE</Text>
+        <View style={styles.modalBody}>
+          <Text style={styles.inputLabel}>Título de la actividad</Text>
           <TextInput
-            style={styles.textInput}
-            value={typeof editTitle === 'string' ? editTitle : ''}
-            onChangeText={(text) => setEditTitle(text)}
+            style={styles.modalInput}
+            value={editTitle}
+            onChangeText={setEditTitle}
             placeholderTextColor="#94A3B8"
           />
-        </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>FECHA Y HORA</Text>
-          <TextInput
-            style={styles.textInput}
-            value={typeof editDate === 'string' ? editDate : ''}
-            onChangeText={(text) => setEditDate(text)}
-            placeholder="AAAA-MM-DD HH:mm"
-            placeholderTextColor="#94A3B8"
-          />
-          <View style={styles.infoMiniBox}>
-            <Feather name="calendar" size={14} color="#174A62" />
-            <Text style={styles.infoMiniText}>
-              Horario sincronizado con tu disponibilidad
-            </Text>
+          <Text style={styles.inputLabel}>Reprogramar Fecha y Hora</Text>
+          <View style={styles.pickerRow}>
+            <TouchableOpacity
+              style={styles.pickerButton}
+              onPress={() => {
+                setEditPickerMode('date');
+                setShowEditPicker(true);
+              }}
+            >
+              <Feather name="calendar" size={16} color="#174A62" />
+              <Text style={styles.pickerButtonText}>
+                {editDateValue.toLocaleDateString('es-ES', {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric',
+                })}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.pickerButton}
+              onPress={() => {
+                setEditPickerMode('time');
+                setShowEditPicker(true);
+              }}
+            >
+              <Feather name="clock" size={16} color="#174A62" />
+              <Text style={styles.pickerButtonText}>
+                {editDateValue.toLocaleTimeString('es-ES', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </Text>
+            </TouchableOpacity>
           </View>
+
+          {showEditPicker ? (
+            <View style={styles.pickerContainer}>
+              <DateTimePicker
+                value={editDateValue}
+                mode={editPickerMode}
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={handlePickerChange}
+                locale="es-ES"
+              />
+              {Platform.OS === 'ios' ? (
+                <TouchableOpacity
+                  style={styles.iosConfirmBtn}
+                  onPress={() => setShowEditPicker(false)}
+                >
+                  <Text style={styles.iosConfirmText}>Confirmar</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
+
+          <TouchableOpacity
+            style={styles.modalPrimaryBtn}
+            onPress={handleSaveEdit}
+            disabled={isSubmitting || !editTitle.trim()}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.modalPrimaryBtnText}>Guardar cambios</Text>
+            )}
+          </TouchableOpacity>
         </View>
-        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
       </AppModal>
     </Screen>
   );
@@ -583,131 +654,130 @@ export default function StageDetailScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: '#FAF6F0',
     flex: 1,
+    backgroundColor: '#FAF6F0',
   },
   scrollContent: {
-    paddingBottom: 40,
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
   },
   container: {
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 440,
     alignSelf: 'center',
     gap: 16,
   },
   topBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 16,
+    justifyContent: 'space-between',
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   headerStepTag: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     color: '#627D98',
-    letterSpacing: 1.2,
+    letterSpacing: 1,
   },
   headerHero: {
-    backgroundColor: '#D8ECF8',
-    marginHorizontal: 20,
-    borderRadius: 24,
-    padding: 20,
-    gap: 6,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 18,
+    boxShadow: '0px 6px 14px rgba(23, 74, 98, 0.06)',
+    elevation: 3,
   },
   stageBadge: {
     fontSize: 10,
     fontWeight: '800',
     color: '#174A62',
     letterSpacing: 1.2,
+    marginBottom: 4,
   },
   stageTitle: {
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: '800',
     color: '#0F2C40',
-    letterSpacing: -0.5,
+    marginBottom: 6,
   },
   stageSubtitle: {
     fontSize: 13,
-    color: '#475569',
+    color: '#627D98',
     lineHeight: 18,
-    marginBottom: 8,
+    marginBottom: 14,
   },
   progressRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 4,
+    marginBottom: 6,
   },
   progressLabel: {
-    fontSize: 11,
-    color: '#475569',
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#486581',
   },
   progressValue: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     color: '#174A62',
   },
   progressBarBackground: {
-    height: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    borderRadius: 3,
+    height: 8,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 4,
     overflow: 'hidden',
-    marginTop: 4,
   },
   progressBarFill: {
     height: '100%',
     backgroundColor: '#174A62',
-    borderRadius: 3,
+    borderRadius: 4,
   },
   adaptedBanner: {
-    marginHorizontal: 20,
-    backgroundColor: '#EBF5FB',
-    borderRadius: 16,
-    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    backgroundColor: '#EBF5FB',
+    borderRadius: 16,
+    padding: 14,
     borderWidth: 1,
     borderColor: '#D8ECF8',
+    gap: 10,
   },
   bannerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    flex: 1,
+  },
+  bannerTextFlex: {
+    flex: 1,
   },
   bannerTitle: {
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: '700',
     color: '#0F2C40',
   },
   bannerSub: {
-    fontSize: 10,
+    fontSize: 11,
     color: '#627D98',
-    marginTop: 1,
+    marginTop: 2,
   },
   bannerAction: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     color: '#174A62',
   },
   bodyContainer: {
-    paddingHorizontal: 20,
-    gap: 14,
+    gap: 12,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -715,51 +785,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
     color: '#0F2C40',
   },
   counterHeader: {
-    fontSize: 11,
+    fontSize: 12,
+    fontWeight: '700',
     color: '#627D98',
-    fontWeight: '600',
   },
   activitiesList: {
-    gap: 12,
+    gap: 10,
   },
   activityCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 16,
     padding: 14,
-    borderWidth: 1.2,
+    borderWidth: 1,
     borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
-    justifyContent: 'space-between',
-    gap: 10,
+    gap: 12,
   },
   activityCardCompleted: {
     backgroundColor: '#F8FAFC',
     borderColor: '#CBD5E1',
   },
   cardMainClickable: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
     gap: 12,
   },
   checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 7,
-    borderWidth: 1.5,
-    borderColor: '#94A3B8',
-    backgroundColor: '#FFFFFF',
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#CBD5E1',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -769,149 +832,141 @@ const styles = StyleSheet.create({
   },
   activityInfo: {
     flex: 1,
+    gap: 2,
   },
   activityBadge: {
     fontSize: 9,
     fontWeight: '800',
-    color: '#8FA3B8',
+    color: '#627D98',
     letterSpacing: 0.8,
-    marginBottom: 2,
   },
   activityTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: '#0F2C40',
-    marginBottom: 2,
   },
   activityTitleCompleted: {
     textDecorationLine: 'line-through',
-    color: '#627D98',
-  },
-  dateRowMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  activityMeta: {
-    fontSize: 11,
     color: '#94A3B8',
   },
-  singleEditBtn: {
-    backgroundColor: '#FAF6F0',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    alignItems: 'center',
-  },
-  singleEditText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#174A62',
-  },
-  dashedAddCard: {
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-    borderStyle: 'dashed',
-    borderRadius: 20,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    backgroundColor: 'rgba(23, 74, 98, 0.01)',
-  },
-  plusCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#D8ECF8',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dashedAddTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#0F2C40',
-  },
-  dashedAddSub: {
+  activityDateText: {
     fontSize: 11,
     color: '#627D98',
-    marginTop: 1,
-  },
-  returnButton: {
-    backgroundColor: '#174A62',
-    borderRadius: 18,
-    height: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  returnButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  inputGroup: {
-    gap: 6,
-  },
-  inputLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#627D98',
-    letterSpacing: 1,
-  },
-  textInput: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.2,
-    borderColor: '#E2E8F0',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    height: 46,
-    fontSize: 13,
-    color: '#0F2C40',
-  },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-    paddingTop: 10,
-  },
-  infoMiniBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EBF5FB',
-    borderRadius: 12,
-    padding: 10,
-    gap: 8,
     marginTop: 2,
   },
-  infoMiniText: {
-    fontSize: 11,
-    color: '#174A62',
-    fontWeight: '600',
+  editIconButton: {
+    padding: 8,
+    borderRadius: 10,
+    backgroundColor: '#F1F5F9',
+  },
+  addActivityButton: {
+    backgroundColor: '#174A62',
+    height: 48,
+    borderRadius: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  addActivityText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
   errorText: {
     fontSize: 12,
-    lineHeight: 17,
     color: '#C53030',
     fontWeight: '600',
+    marginTop: 4,
   },
   successText: {
     fontSize: 12,
-    lineHeight: 17,
-    color: '#137333',
+    color: '#2F855A',
     fontWeight: '600',
   },
   emptyText: {
     fontSize: 13,
-    lineHeight: 19,
     color: '#627D98',
     textAlign: 'center',
     paddingVertical: 16,
+  },
+  modalBody: {
+    gap: 12,
+    paddingTop: 8,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#174A62',
+  },
+  modalInput: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0F2C40',
+  },
+  modalTextArea: {
+    minHeight: 72,
+    textAlignVertical: 'top',
+  },
+  pickerRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  pickerButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#EBF5FB',
+    borderWidth: 1,
+    borderColor: '#D8ECF8',
+    borderRadius: 12,
+    height: 44,
+    paddingHorizontal: 10,
+  },
+  pickerButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F2C40',
+  },
+  pickerContainer: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  iosConfirmBtn: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#174A62',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  iosConfirmText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modalPrimaryBtn: {
+    backgroundColor: '#174A62',
+    height: 46,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  modalPrimaryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

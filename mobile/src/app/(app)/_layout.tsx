@@ -14,7 +14,6 @@ export default function AppLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="home" />
       <Stack.Screen name="schedule" />
-      <Stack.Screen name="explore" />
       <Stack.Screen name="create-goal" />
       <Stack.Screen name="generating-plan" />
       <Stack.Screen name="goal-plan" />
