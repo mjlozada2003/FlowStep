@@ -1,36 +1,70 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { Screen } from '@/components/ui/Screen';
 import { BackButton } from '@/components/ui/BackButton';
 import { FlowMascotAvatar } from '@/components/features/FlowMascotAvatar';
+import { useAuth } from '@/contexts/auth-context';
+import { getWeeklySummary, type WeeklySummaryData } from '@/services/api/goals';
+
+const fallbackWeeklyStats: WeeklySummaryData = {
+  period: 'Semana actual',
+  tagline: 'SEMANA EN CURSO',
+  title: 'Una semana constante',
+  description: 'Completaste el 80% de lo planificado.',
+  completionRate: 80,
+  completedCount: 4,
+  pendingCount: 1,
+  hoursSpent: '3 h 20',
+  daysActivity: [
+    { day: 'L', active: true, height: 40 },
+    { day: 'M', active: false, height: 15 },
+    { day: 'X', active: true, height: 50 },
+    { day: 'J', active: true, height: 35 },
+    { day: 'V', active: true, height: 65 },
+    { day: 'S', active: true, height: 40 },
+    { day: 'D', active: false, height: 15 },
+  ],
+  goalsBreakdown: [
+    { id: 1, title: 'Crear una aplicación web', detail: '2 completadas · 1 pendiente', progress: '+8%' },
+    { id: 2, title: 'Mejorar mi inglés', detail: '2 completadas · al día', progress: '+5%' },
+  ],
+  mascotTip: 'Tu constancia creció esta semana. Cada sesión cuenta.',
+};
 
 export default function WeeklySummaryScreen() {
-  const weeklyStats = {
-    period: 'Del 10 al 16 de junio',
-    tagline: 'SEMANA 3',
-    title: 'Una semana constante',
-    description: 'Completaste el 80% de lo planificado.',
-    completionRate: 80,
-    completedCount: 4,
-    pendingCount: 1,
-    hoursSpent: '3 h 20',
-    daysActivity: [
-      { day: 'L', active: true, height: 40 },
-      { day: 'M', active: false, height: 15 },
-      { day: 'X', active: true, height: 50 },
-      { day: 'J', active: true, height: 35 },
-      { day: 'V', active: true, height: 65 },
-      { day: 'S', active: true, height: 40 },
-      { day: 'D', active: false, height: 15 },
-    ],
-    goalsBreakdown: [
-      { id: 1, title: 'Crear una aplicación web', detail: '2 completadas · 1 pendiente', progress: '+8%' },
-      { id: 2, title: 'Mejorar mi inglés', detail: '2 completadas · al día', progress: '+5%' },
-    ],
-    mascotTip: 'Tu constancia creció esta semana. Cada sesión cuenta.',
-  };
+  const { token } = useAuth();
+  const [weeklyStats, setWeeklyStats] = useState<WeeklySummaryData>(fallbackWeeklyStats);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
+
+      getWeeklySummary(token)
+        .then((data) => {
+          if (active && data) {
+            setWeeklyStats(data);
+          }
+        })
+        .catch(() => {
+          // Mantener fallback si no hay datos
+        })
+        .finally(() => {
+          if (active) setIsLoading(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [token]),
+  );
 
   return (
     <Screen style={styles.screen}>
