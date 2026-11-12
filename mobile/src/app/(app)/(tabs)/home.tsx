@@ -218,7 +218,6 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   scrollContent: {
-    paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 40,
     gap: 16,
