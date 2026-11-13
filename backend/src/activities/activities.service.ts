@@ -278,11 +278,11 @@ export class ActivitiesService {
 
     const [days, activities] = await Promise.all([
       this.activitiesRepository.query(
-        'SELECT *, scheduled_date::text AS scheduled_date FROM v_calendar_day_summary WHERE user_id = $1 AND scheduled_date BETWEEN $2 AND $3 ORDER BY scheduled_date ASC',
+        'SELECT v.*, (v.scheduled_date)::text AS scheduled_date, (v.scheduled_date)::text AS scheduled_date_str FROM v_calendar_day_summary v WHERE v.user_id = $1 AND v.scheduled_date BETWEEN $2 AND $3 ORDER BY v.scheduled_date ASC',
         [userId, startStr, endStr],
       ),
       this.activitiesRepository.query(
-        'SELECT *, scheduled_date::text AS scheduled_date, activity_title AS title, activity_status AS status FROM v_calendar_activities WHERE user_id = $1 AND scheduled_date BETWEEN $2 AND $3 ORDER BY scheduled_date ASC, start_time NULLS LAST',
+        'SELECT v.*, (v.scheduled_date)::text AS scheduled_date, (v.scheduled_date)::text AS scheduled_date_str, v.activity_title AS title, v.activity_status AS status FROM v_calendar_activities v WHERE v.user_id = $1 AND v.scheduled_date BETWEEN $2 AND $3 ORDER BY v.scheduled_date ASC, v.start_time NULLS LAST',
         [userId, startStr, endStr],
       ),
     ]);

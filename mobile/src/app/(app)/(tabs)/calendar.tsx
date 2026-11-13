@@ -163,7 +163,7 @@ export default function CalendarScreen() {
   const validSelectedDay = Math.min(selectedDay, daysInMonth);
   const selectedDateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(validSelectedDay).padStart(2, '0')}`;
 
-  // Si hay actividades en el mes pero el día seleccionado no tiene ninguna, autoseleccionar el primer día con actividades
+  // Si hay actividades en el mes pero el día seleccionado no tiene ninguna, autoseleccionar el día más cercano con actividades
   useEffect(() => {
     if (allActivities.length > 0) {
       const monthPrefix = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
@@ -171,20 +171,28 @@ export default function CalendarScreen() {
         (a) => formatDateKey(a.scheduled_date) === selectedDateStr,
       );
       if (!hasCurrent) {
-        const match = allActivities.find((a) => {
+        const monthActivities = allActivities.filter((a) => {
           const key = formatDateKey(a.scheduled_date);
           return key.startsWith(monthPrefix);
         });
-        if (match) {
-          const key = formatDateKey(match.scheduled_date);
-          const dayNum = parseInt(key.slice(8, 10), 10);
-          if (!isNaN(dayNum) && dayNum >= 1 && dayNum <= daysInMonth) {
-            setSelectedDay(dayNum);
+        if (monthActivities.length > 0) {
+          const upcoming = monthActivities.find((a) => {
+            const key = formatDateKey(a.scheduled_date);
+            const dayNum = parseInt(key.slice(8, 10), 10);
+            return dayNum >= validSelectedDay;
+          });
+          const target = upcoming || monthActivities[monthActivities.length - 1];
+          if (target) {
+            const key = formatDateKey(target.scheduled_date);
+            const dayNum = parseInt(key.slice(8, 10), 10);
+            if (!isNaN(dayNum) && dayNum >= 1 && dayNum <= daysInMonth) {
+              setSelectedDay(dayNum);
+            }
           }
         }
       }
     }
-  }, [allActivities, currentMonth, currentYear, daysInMonth]);
+  }, [allActivities, currentMonth, currentYear, daysInMonth, selectedDateStr, validSelectedDay]);
 
   const selectedDateActivities = useMemo(() => {
     const filtered = allActivities.filter((a) => {
@@ -330,8 +338,8 @@ export default function CalendarScreen() {
               <Text style={styles.legendText}>Completada</Text>
             </View>
             <View style={styles.legendItem}>
-              <View style={[styles.dot, styles.dotMixed]} />
-              <Text style={styles.legendText}>Mixto</Text>
+              <View style={[styles.dot, styles.dotOverdue]} />
+              <Text style={styles.legendText}>Atrasada</Text>
             </View>
           </View>
         </View>
@@ -367,6 +375,8 @@ export default function CalendarScreen() {
                       styles.activityIndicatorBar,
                       act.status === 'completed'
                         ? styles.barCompleted
+                        : act.status === 'overdue' || (act as any).is_overdue
+                        ? styles.barOverdue
                         : styles.barPending,
                     ]}
                   />
@@ -382,9 +392,16 @@ export default function CalendarScreen() {
               ))}
 
               {selectedDateActivities.length === 0 && (
-                <Text style={styles.noActivitiesText}>
-                  No hay actividades programadas para este día.
-                </Text>
+                <View style={styles.noActivitiesBox}>
+                  <Text style={styles.noActivitiesText}>
+                    No hay actividades programadas para este día.
+                  </Text>
+                  {allActivities.length > 0 && (
+                    <Text style={styles.noActivitiesHint}>
+                      Toca un día con punto en el calendario para consultar sus actividades.
+                    </Text>
+                  )}
+                </View>
               )}
             </View>
           )}
@@ -515,9 +532,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   dot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     marginTop: 2,
   },
   dotPending: {
@@ -598,6 +615,9 @@ const styles = StyleSheet.create({
   barCompleted: {
     backgroundColor: '#319795',
   },
+  barOverdue: {
+    backgroundColor: '#E53E3E',
+  },
   activityContent: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -619,11 +639,21 @@ const styles = StyleSheet.create({
     color: '#627D98',
     marginTop: 2,
   },
+  noActivitiesBox: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    gap: 4,
+  },
   noActivitiesText: {
     textAlign: 'center',
     color: '#627D98',
-    fontSize: 12,
-    paddingVertical: 12,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  noActivitiesHint: {
+    textAlign: 'center',
+    color: '#829ab1',
+    fontSize: 11,
   },
   syncBanner: {
     backgroundColor: '#EBF5FB',

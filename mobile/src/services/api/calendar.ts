@@ -5,7 +5,7 @@ export interface CalendarDaySummary {
   total_activities: number;
   completed_activities: number;
   pending_activities: number;
-  day_status: 'completed' | 'pending' | 'mixed' | 'none';
+  day_status: 'completed' | 'pending' | 'mixed' | 'overdue' | 'none';
 }
 
 export interface CalendarActivityItem {
@@ -19,8 +19,9 @@ export interface CalendarActivityItem {
   start_time?: string | null;
   end_time?: string | null;
   estimated_minutes?: number | null;
-  status: 'pending' | 'completed' | 'in_progress' | 'cancelled';
+  status: 'pending' | 'completed' | 'in_progress' | 'cancelled' | 'overdue';
   priority?: string | null;
+  is_overdue?: boolean;
 }
 
 export interface CalendarDataResponse {
