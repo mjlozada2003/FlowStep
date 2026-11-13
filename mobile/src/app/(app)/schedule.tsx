@@ -3,6 +3,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   ScrollView,
   StyleSheet,
   Text,
@@ -47,6 +48,33 @@ export default function ScheduleScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isEmpty, setIsEmpty] = useState(false);
+
+  const handleBack = useCallback(() => {
+    if (params.fromSuccess === '1') {
+      if (activeGoalId) {
+        router.dismissTo({
+          pathname: '/goal-plan',
+          params: { goalId: String(activeGoalId) },
+        });
+      } else {
+        router.dismissAll();
+      }
+    } else {
+      router.back();
+    }
+  }, [params.fromSuccess, activeGoalId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (params.fromSuccess !== '1') return undefined;
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [params.fromSuccess, handleBack]),
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -208,22 +236,7 @@ export default function ScheduleScreen() {
       >
         <View style={styles.container}>
           <View style={styles.topRow}>
-            <BackButton
-              onPress={() => {
-                if (params.fromSuccess === '1') {
-                  if (activeGoalId) {
-                    router.replace({
-                      pathname: '/goal-plan',
-                      params: { goalId: String(activeGoalId) },
-                    });
-                  } else {
-                    router.replace('/(app)/(tabs)/home');
-                  }
-                } else {
-                  router.back();
-                }
-              }}
-            />
+            <BackButton onPress={handleBack} />
             <Text style={styles.weekIndicator}>SEMANA ACTUAL</Text>
             <BrandHeader showTagline={false} />
           </View>

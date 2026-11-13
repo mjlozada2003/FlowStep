@@ -3,6 +3,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   ScrollView,
   StyleSheet,
   Text,
@@ -94,16 +95,27 @@ export default function GoalSuccessScreen() {
       : null);
   const isConfirmed = Boolean(completedActivity && !displayLoadError);
 
-  const handleContinue = () => {
+  const handleContinue = useCallback(() => {
     if (goalId) {
-      router.replace({
+      router.dismissTo({
         pathname: '/goal-plan',
         params: { goalId: String(goalId) },
       });
     } else {
-      router.replace('/(app)/(tabs)/home');
+      router.dismissAll();
     }
-  };
+  }, [goalId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleContinue();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleContinue]),
+  );
 
   return (
     <Screen style={styles.screen}>
@@ -162,7 +174,7 @@ export default function GoalSuccessScreen() {
           <TouchableOpacity
             style={[styles.submitButton, styles.secondaryButton]}
             onPress={() =>
-              router.push({
+              router.replace({
                 pathname: '/progress-analytics',
                 params: {
                   goalId: goalId ? String(goalId) : '',
@@ -180,7 +192,7 @@ export default function GoalSuccessScreen() {
           <TouchableOpacity
             style={[styles.submitButton, styles.tertiaryButton]}
             onPress={() =>
-              router.push({
+              router.replace({
                 pathname: '/schedule',
                 params: {
                   goalId: goalId ? String(goalId) : '',

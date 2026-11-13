@@ -3,6 +3,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   ScrollView,
   StyleSheet,
   Text,
@@ -71,6 +72,33 @@ export default function ProgressAnalyticsScreen() {
       setActiveGoalId(Number(params.goalId));
     }
   }, [params.goalId]);
+
+  const handleBack = useCallback(() => {
+    if (params.fromSuccess === '1') {
+      if (activeGoalId) {
+        router.dismissTo({
+          pathname: '/goal-plan',
+          params: { goalId: String(activeGoalId) },
+        });
+      } else {
+        router.dismissAll();
+      }
+    } else {
+      router.back();
+    }
+  }, [params.fromSuccess, activeGoalId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (params.fromSuccess !== '1') return undefined;
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [params.fromSuccess, handleBack]),
+  );
 
   const loadData = useCallback(async () => {
     if (!token) {
@@ -165,22 +193,7 @@ export default function ProgressAnalyticsScreen() {
       >
         {/* Cabecera superior con BackButton unificado */}
         <View style={styles.topBar}>
-          <BackButton
-            onPress={() => {
-              if (params.fromSuccess === '1') {
-                if (activeGoalId) {
-                  router.replace({
-                    pathname: '/goal-plan',
-                    params: { goalId: String(activeGoalId) },
-                  });
-                } else {
-                  router.replace('/(app)/(tabs)/home');
-                }
-              } else {
-                router.back();
-              }
-            }}
-          />
+          <BackButton onPress={handleBack} />
           <Text style={styles.topBarTitle}>SEGUIMIENTO</Text>
           <BrandHeader />
         </View>
@@ -424,7 +437,7 @@ export default function ProgressAnalyticsScreen() {
             <GoalStageProgressSection
               stages={chartData.stage_progress}
               onPressHistory={() =>
-                router.push({
+                router.navigate({
                   pathname: '/activity-history',
                   params: { goalId: activeGoalId ? String(activeGoalId) : '' },
                 })
@@ -435,7 +448,7 @@ export default function ProgressAnalyticsScreen() {
             <TouchableOpacity
               style={styles.bottomNavButton}
               onPress={() =>
-                router.push({
+                router.navigate({
                   pathname: '/activity-history',
                   params: { goalId: activeGoalId ? String(activeGoalId) : '' },
                 })

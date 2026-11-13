@@ -175,7 +175,7 @@ export default function StageDetailScreen() {
       setActivities(refreshed.activities);
       setIsLoadingError(refreshed.scheduleError);
       if (nextCompleted) {
-        router.push({
+        router.replace({
           pathname: '/goal-success',
           params: {
             activityId: String(id),
@@ -383,13 +383,13 @@ export default function StageDetailScreen() {
           {/* Banners (Agenda e Historial) */}
           <StageBanners
             onPressSchedule={() =>
-              router.push({
+              router.navigate({
                 pathname: '/schedule',
                 params: { goalId: goalId ? String(goalId) : '' },
               })
             }
             onPressHistory={() =>
-              router.push({
+              router.navigate({
                 pathname: '/activity-history',
                 params: { goalId: goalId ? String(goalId) : '' },
               })

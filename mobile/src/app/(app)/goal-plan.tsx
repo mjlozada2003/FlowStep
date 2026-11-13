@@ -374,7 +374,7 @@ export default function GoalPlanScreen() {
               style={styles.miniMetricCard}
               activeOpacity={0.7}
               onPress={() =>
-                router.push({
+                router.navigate({
                   pathname: '/progress-analytics',
                   params: {
                     goalId: goalId ? String(goalId) : '',
@@ -413,7 +413,7 @@ export default function GoalPlanScreen() {
             style={styles.scheduleAccessCard}
             activeOpacity={0.85}
             onPress={() =>
-              router.push({
+              router.navigate({
                 pathname: '/schedule',
                 params: {
                   goalId: goalId ? String(goalId) : '',
@@ -437,7 +437,7 @@ export default function GoalPlanScreen() {
           <TouchableOpacity
             style={styles.scheduleAccessCard}
             activeOpacity={0.85}
-            onPress={() => router.push('/calendar' as any)}
+            onPress={() => router.navigate('/calendar' as any)}
           >
             <View style={styles.scheduleCardLeft}>
               <View style={[styles.calendarIconBox, { backgroundColor: '#E2EEF1' }]}>

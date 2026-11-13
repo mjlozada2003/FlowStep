@@ -228,7 +228,7 @@ export default function ActivityHistoryScreen() {
         <TouchableOpacity
           style={styles.bottomNavButton}
           onPress={() =>
-            router.push({
+            router.navigate({
               pathname: '/progress-analytics',
               params: { goalId: params.goalId ? String(params.goalId) : '' },
             })
