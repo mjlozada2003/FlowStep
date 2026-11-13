@@ -34,7 +34,7 @@ import { ScheduleFreeTimeCard } from '@/components/features/ScheduleFreeTimeCard
 const SPANISH_DAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 
 export default function ScheduleScreen() {
-  const params = useLocalSearchParams<{ goalId?: string }>();
+  const params = useLocalSearchParams<{ goalId?: string; fromSuccess?: string }>();
   const { token } = useAuth();
 
   const [scheduleItems, setScheduleItems] = useState<ScheduleItemData[]>([]);
@@ -208,7 +208,22 @@ export default function ScheduleScreen() {
       >
         <View style={styles.container}>
           <View style={styles.topRow}>
-            <BackButton />
+            <BackButton
+              onPress={() => {
+                if (params.fromSuccess === '1') {
+                  if (activeGoalId) {
+                    router.replace({
+                      pathname: '/goal-plan',
+                      params: { goalId: String(activeGoalId) },
+                    });
+                  } else {
+                    router.replace('/(app)/(tabs)/home');
+                  }
+                } else {
+                  router.back();
+                }
+              }}
+            />
             <Text style={styles.weekIndicator}>SEMANA ACTUAL</Text>
             <BrandHeader showTagline={false} />
           </View>

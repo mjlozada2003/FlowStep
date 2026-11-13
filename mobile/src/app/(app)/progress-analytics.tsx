@@ -56,7 +56,7 @@ const defaultEmptyPaceData: GoalPaceData = {
 
 export default function ProgressAnalyticsScreen() {
   const { token } = useAuth();
-  const params = useLocalSearchParams<{ goalId?: string }>();
+  const params = useLocalSearchParams<{ goalId?: string; fromSuccess?: string }>();
   const [activeGoalId, setActiveGoalId] = useState<number | null>(
     params.goalId && /^\d+$/.test(params.goalId) ? Number(params.goalId) : null,
   );
@@ -165,7 +165,22 @@ export default function ProgressAnalyticsScreen() {
       >
         {/* Cabecera superior con BackButton unificado */}
         <View style={styles.topBar}>
-          <BackButton />
+          <BackButton
+            onPress={() => {
+              if (params.fromSuccess === '1') {
+                if (activeGoalId) {
+                  router.replace({
+                    pathname: '/goal-plan',
+                    params: { goalId: String(activeGoalId) },
+                  });
+                } else {
+                  router.replace('/(app)/(tabs)/home');
+                }
+              } else {
+                router.back();
+              }
+            }}
+          />
           <Text style={styles.topBarTitle}>SEGUIMIENTO</Text>
           <BrandHeader />
         </View>
