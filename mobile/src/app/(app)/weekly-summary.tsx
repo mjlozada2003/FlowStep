@@ -1,36 +1,76 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { Screen } from '@/components/ui/Screen';
 import { BackButton } from '@/components/ui/BackButton';
 import { FlowMascotAvatar } from '@/components/features/FlowMascotAvatar';
+import { useAuth } from '@/contexts/auth-context';
+import { getWeeklySummary, type WeeklySummaryData } from '@/services/api/goals';
+
+const fallbackWeeklyStats: WeeklySummaryData = {
+  period: 'Semana actual',
+  tagline: 'SEMANA EN CURSO',
+  title: 'Una semana constante',
+  description: 'Completaste el 80% de lo planificado.',
+  completionRate: 80,
+  completedCount: 4,
+  pendingCount: 1,
+  hoursSpent: '3 h 20',
+  daysActivity: [
+    { day: 'L', active: true, height: 40 },
+    { day: 'M', active: false, height: 15 },
+    { day: 'X', active: true, height: 50 },
+    { day: 'J', active: true, height: 35 },
+    { day: 'V', active: true, height: 65 },
+    { day: 'S', active: true, height: 40 },
+    { day: 'D', active: false, height: 15 },
+  ],
+  goalsBreakdown: [
+    { id: 1, title: 'Crear una aplicación web', detail: '2 completadas · 1 pendiente', progress: '+8%' },
+    { id: 2, title: 'Mejorar mi inglés', detail: '2 completadas · al día', progress: '+5%' },
+  ],
+  mascotTip: 'Tu constancia creció esta semana. Cada sesión cuenta.',
+};
 
 export default function WeeklySummaryScreen() {
-  const weeklyStats = {
-    period: 'Del 10 al 16 de junio',
-    tagline: 'SEMANA 3',
-    title: 'Una semana constante',
-    description: 'Completaste el 80% de lo planificado.',
-    completionRate: 80,
-    completedCount: 4,
-    pendingCount: 1,
-    hoursSpent: '3 h 20',
-    daysActivity: [
-      { day: 'L', active: true, height: 40 },
-      { day: 'M', active: false, height: 15 },
-      { day: 'X', active: true, height: 50 },
-      { day: 'J', active: true, height: 35 },
-      { day: 'V', active: true, height: 65 },
-      { day: 'S', active: true, height: 40 },
-      { day: 'D', active: false, height: 15 },
-    ],
-    goalsBreakdown: [
-      { id: 1, title: 'Crear una aplicación web', detail: '2 completadas · 1 pendiente', progress: '+8%' },
-      { id: 2, title: 'Mejorar mi inglés', detail: '2 completadas · al día', progress: '+5%' },
-    ],
-    mascotTip: 'Tu constancia creció esta semana. Cada sesión cuenta.',
-  };
+  const { token } = useAuth();
+  const [weeklyStats, setWeeklyStats] = useState<WeeklySummaryData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      if (!token) {
+        setWeeklyStats(fallbackWeeklyStats);
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      getWeeklySummary(token)
+        .then((data) => {
+          if (active && data) {
+            setWeeklyStats(data);
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setWeeklyStats(fallbackWeeklyStats);
+          }
+        })
+        .finally(() => {
+          if (active) setIsLoading(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [token]),
+  );
+
+  const stats = weeklyStats || fallbackWeeklyStats;
 
   return (
     <Screen style={styles.screen}>
@@ -45,105 +85,111 @@ export default function WeeklySummaryScreen() {
           <View style={{ width: 36 }} />
         </View>
 
-        {/* Título y Período */}
-        <View style={styles.titleSection}>
-          <Text style={styles.sectionSubtitle}>TU SEMANA</Text>
-          <Text style={styles.mainTitle}>Resumen de progreso</Text>
-          <Text style={styles.periodText}>{weeklyStats.period}</Text>
-        </View>
+        {isLoading && !weeklyStats ? (
+          <ActivityIndicator size="large" color="#174A62" style={{ marginVertical: 40 }} />
+        ) : (
+          <>
+            {/* Título y Período */}
+            <View style={styles.titleSection}>
+              <Text style={styles.sectionSubtitle}>TU SEMANA</Text>
+              <Text style={styles.mainTitle}>Resumen de progreso</Text>
+              <Text style={styles.periodText}>{stats.period}</Text>
+            </View>
 
-        {/* Tarjeta Destacada de Cumplimiento (Azul Oscuro) */}
-        <View style={styles.highlightCard}>
-          <View style={styles.highlightTextContent}>
-            <Text style={styles.highlightTag}>{weeklyStats.tagline}</Text>
-            <Text style={styles.highlightTitle}>{weeklyStats.title}</Text>
-            <Text style={styles.highlightDesc}>{weeklyStats.description}</Text>
-          </View>
-          <View style={styles.circularProgressContainer}>
-            <Text style={styles.circularPercent}>{weeklyStats.completionRate}%</Text>
-            <Text style={styles.circularSub}>del plan</Text>
-          </View>
-        </View>
-
-        {/* 3 Mini Tarjetas de Métricas de la Semana */}
-        <View style={styles.metricsRow}>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>{weeklyStats.completedCount}</Text>
-            <Text style={styles.metricLabel}>completadas</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>{weeklyStats.pendingCount}</Text>
-            <Text style={styles.metricLabel}>pendiente</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>{weeklyStats.hoursSpent}</Text>
-            <Text style={styles.metricLabel}>dedicadas</Text>
-          </View>
-        </View>
-
-        {/* Gráfico de Evolución Semanal */}
-        <View style={styles.cardContainer}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>Evolución semanal</Text>
-            <Text style={styles.badgeTrend}>+2 vs. anterior</Text>
-          </View>
-          <Text style={styles.cardSubtitle}>Actividades completadas</Text>
-
-          <View style={styles.chartContainer}>
-            {weeklyStats.daysActivity.map((item, index) => (
-              <View key={index} style={styles.chartBarColumn}>
-                <View style={styles.chartBarTrack}>
-                  <View 
-                    style={[
-                      styles.chartBarFill, 
-                      { height: `${item.height}%`, opacity: item.active ? 1 : 0.3 }
-                    ]} 
-                  />
-                </View>
-                <Text style={styles.chartDayLabel}>{item.day}</Text>
+            {/* Tarjeta Destacada de Cumplimiento (Azul Oscuro) */}
+            <View style={styles.highlightCard}>
+              <View style={styles.highlightTextContent}>
+                <Text style={styles.highlightTag}>{stats.tagline}</Text>
+                <Text style={styles.highlightTitle}>{stats.title}</Text>
+                <Text style={styles.highlightDesc}>{stats.description}</Text>
               </View>
-            ))}
-          </View>
-        </View>
-
-        {/* Desglose Por Objetivo */}
-        <View style={styles.cardContainer}>
-          <Text style={styles.cardTitle}>Por objetivo</Text>
-          <View style={styles.goalsList}>
-            {weeklyStats.goalsBreakdown.map((goal) => (
-              <View key={goal.id} style={styles.goalBreakdownItem}>
-                <View style={styles.goalIndexBox}>
-                  <Text style={styles.goalIndexText}>{goal.id}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.goalItemTitle}>{goal.title}</Text>
-                  <Text style={styles.goalItemDetail}>{goal.detail}</Text>
-                </View>
-                <Text style={styles.goalItemProgress}>{goal.progress}</Text>
+              <View style={styles.circularProgressContainer}>
+                <Text style={styles.circularPercent}>{stats.completionRate}%</Text>
+                <Text style={styles.circularSub}>del plan</Text>
               </View>
-            ))}
-          </View>
-        </View>
+            </View>
 
-        {/* Mensaje de la Mascota Flow */}
-        <View style={styles.mascotBanner}>
-          <FlowMascotAvatar />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.mascotBannerText}>
-              Flow dice: <Text style={styles.mascotQuote}>"{weeklyStats.mascotTip}"</Text>
-            </Text>
-          </View>
-        </View>
+            {/* 3 Mini Tarjetas de Métricas de la Semana */}
+            <View style={styles.metricsRow}>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricValue}>{stats.completedCount}</Text>
+                <Text style={styles.metricLabel}>completadas</Text>
+              </View>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricValue}>{stats.pendingCount}</Text>
+                <Text style={styles.metricLabel}>pendiente</Text>
+              </View>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricValue}>{stats.hoursSpent}</Text>
+                <Text style={styles.metricLabel}>dedicadas</Text>
+              </View>
+            </View>
 
-        {/* Botón de Estadísticas Completas */}
-        <TouchableOpacity
-          style={styles.fullStatsButton}
-          activeOpacity={0.85}
-          onPress={() => router.push('/progress-analytics' as any)}
-        >
-          <Text style={styles.fullStatsButtonText}>Ver estadísticas completas</Text>
-          <Feather name="arrow-right" size={16} color="#FFFFFF" />
-        </TouchableOpacity>
+            {/* Gráfico de Evolución Semanal */}
+            <View style={styles.cardContainer}>
+              <View style={styles.cardHeaderRow}>
+                <Text style={styles.cardTitle}>Evolución semanal</Text>
+                <Text style={styles.badgeTrend}>+2 vs. anterior</Text>
+              </View>
+              <Text style={styles.cardSubtitle}>Actividades completadas</Text>
+
+              <View style={styles.chartContainer}>
+                {stats.daysActivity.map((item, index) => (
+                  <View key={index} style={styles.chartBarColumn}>
+                    <View style={styles.chartBarTrack}>
+                      <View 
+                        style={[
+                          styles.chartBarFill, 
+                          { height: `${item.height}%`, opacity: item.active ? 1 : 0.3 }
+                        ]} 
+                      />
+                    </View>
+                    <Text style={styles.chartDayLabel}>{item.day}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {/* Desglose Por Objetivo */}
+            <View style={styles.cardContainer}>
+              <Text style={styles.cardTitle}>Por objetivo</Text>
+              <View style={styles.goalsList}>
+                {stats.goalsBreakdown.map((goal) => (
+                  <View key={goal.id} style={styles.goalBreakdownItem}>
+                    <View style={styles.goalIndexBox}>
+                      <Text style={styles.goalIndexText}>{goal.id}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.goalItemTitle}>{goal.title}</Text>
+                      <Text style={styles.goalItemDetail}>{goal.detail}</Text>
+                    </View>
+                    <Text style={styles.goalItemProgress}>{goal.progress}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {/* Mensaje de la Mascota Flow */}
+            <View style={styles.mascotBanner}>
+              <FlowMascotAvatar />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.mascotBannerText}>
+                  Flow dice: <Text style={styles.mascotQuote}>"{stats.mascotTip}"</Text>
+                </Text>
+              </View>
+            </View>
+
+            {/* Botón de Estadísticas Completas */}
+            <TouchableOpacity
+              style={styles.fullStatsButton}
+              activeOpacity={0.85}
+              onPress={() => router.push('/progress-analytics' as any)}
+            >
+              <Text style={styles.fullStatsButtonText}>Ver estadísticas completas</Text>
+              <Feather name="arrow-right" size={16} color="#FFFFFF" />
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </Screen>
   );

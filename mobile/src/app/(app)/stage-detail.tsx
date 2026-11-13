@@ -23,6 +23,7 @@ import { useAuth } from '@/contexts/auth-context';
 import {
   completeActivity,
   createStageActivity,
+  deleteActivity,
   getActivitySchedules,
   getStageActivities,
   markActivityPending,
@@ -174,7 +175,7 @@ export default function StageDetailScreen() {
       setActivities(refreshed.activities);
       setIsLoadingError(refreshed.scheduleError);
       if (nextCompleted) {
-        router.push({
+        router.replace({
           pathname: '/goal-success',
           params: {
             activityId: String(id),
@@ -311,6 +312,29 @@ export default function StageDetailScreen() {
     }
   };
 
+  const handleDeleteActivity = async () => {
+    if (!selectedActivity || !token || !stageId || isSubmitting) return;
+
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsSubmitting(true);
+    try {
+      await deleteActivity(selectedActivity.id, token, 'No relevante para mi objetivo');
+      const refreshed = await loadStageActivities(stageId, token);
+      setActivities(refreshed.activities);
+      setIsLoadingError(refreshed.scheduleError);
+      setEditModalVisible(false);
+      setSelectedActivity(null);
+      setSuccessMessage('Actividad eliminada correctamente.');
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'No se pudo eliminar la actividad.',
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const completedCount = activities.filter((a) => a.completed).length;
   const totalCount = activities.length;
   const progressPercent =
@@ -359,13 +383,13 @@ export default function StageDetailScreen() {
           {/* Banners (Agenda e Historial) */}
           <StageBanners
             onPressSchedule={() =>
-              router.push({
+              router.navigate({
                 pathname: '/schedule',
                 params: { goalId: goalId ? String(goalId) : '' },
               })
             }
             onPressHistory={() =>
-              router.push({
+              router.navigate({
                 pathname: '/activity-history',
                 params: { goalId: goalId ? String(goalId) : '' },
               })
@@ -546,6 +570,15 @@ export default function StageDetailScreen() {
             ) : (
               <Text style={styles.modalPrimaryBtnText}>Guardar cambios</Text>
             )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.modalDangerBtn, { marginTop: 10 }]}
+            onPress={handleDeleteActivity}
+            disabled={isSubmitting}
+          >
+            <Feather name="trash-2" size={16} color="#DC2626" />
+            <Text style={styles.modalDangerBtnText}>Eliminar actividad</Text>
           </TouchableOpacity>
         </View>
       </AppModal>
@@ -763,6 +796,22 @@ const styles = StyleSheet.create({
   modalPrimaryBtnText: {
     color: '#FFFFFF',
     fontSize: 14,
+    fontWeight: '700',
+  },
+  modalDangerBtn: {
+    backgroundColor: '#FEE2E2',
+    height: 44,
+    borderRadius: 14,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  modalDangerBtnText: {
+    color: '#DC2626',
+    fontSize: 13,
     fontWeight: '700',
   },
 });

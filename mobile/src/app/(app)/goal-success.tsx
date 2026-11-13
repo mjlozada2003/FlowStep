@@ -3,6 +3,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +12,7 @@ import {
 } from 'react-native';
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
+import { BackButton } from '@/components/ui/BackButton';
 import { Screen } from '@/components/ui/Screen';
 import { useAuth } from '@/contexts/auth-context';
 import { getStageActivities, type StageActivity } from '@/services/api/stages';
@@ -93,6 +95,28 @@ export default function GoalSuccessScreen() {
       : null);
   const isConfirmed = Boolean(completedActivity && !displayLoadError);
 
+  const handleContinue = useCallback(() => {
+    if (goalId) {
+      router.dismissTo({
+        pathname: '/goal-plan',
+        params: { goalId: String(goalId) },
+      });
+    } else {
+      router.dismissAll();
+    }
+  }, [goalId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleContinue();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleContinue]),
+  );
+
   return (
     <Screen style={styles.screen}>
       <ScrollView
@@ -101,7 +125,9 @@ export default function GoalSuccessScreen() {
       >
         <View style={styles.container}>
           <View style={styles.topRow}>
+            <BackButton onPress={handleContinue} />
             <BrandHeader showTagline={false} />
+            <View style={styles.headerSpacer} />
           </View>
 
           <SuccessAnimationBox />
@@ -131,33 +157,53 @@ export default function GoalSuccessScreen() {
 
           <GoalSuccessMascotCard />
 
+          {/* Acción Principal: Continuar con mi plan / Volver a mis objetivos */}
           <TouchableOpacity
             style={[styles.submitButton, !isConfirmed && styles.submitButtonDisabled]}
             disabled={!isConfirmed}
-            onPress={() =>
-              router.push({
-                pathname: '/progress-analytics',
-                params: { goalId: goalId ? String(goalId) : '' },
-              })
-            }
+            onPress={handleContinue}
             activeOpacity={0.85}
           >
-            <Text style={styles.submitButtonText}>Ver mi progreso</Text>
+            <Text style={styles.submitButtonText}>
+              {goalId ? 'Continuar con mi plan' : 'Volver al inicio'}
+            </Text>
             <Feather name="arrow-right" size={20} color="#FFFFFF" style={styles.buttonArrow} />
           </TouchableOpacity>
 
+          {/* Acción Secundaria: Ver mi progreso */}
           <TouchableOpacity
             style={[styles.submitButton, styles.secondaryButton]}
             onPress={() =>
-              router.push({
-                pathname: '/schedule',
-                params: { goalId: goalId ? String(goalId) : '' },
+              router.replace({
+                pathname: '/progress-analytics',
+                params: {
+                  goalId: goalId ? String(goalId) : '',
+                  fromSuccess: '1',
+                },
               })
             }
             activeOpacity={0.85}
           >
-            <Text style={[styles.submitButtonText, styles.secondaryButtonText]}>Ver agenda adaptada</Text>
-            <Feather name="calendar" size={18} color="#174A62" style={styles.buttonArrow} />
+            <Text style={[styles.submitButtonText, styles.secondaryButtonText]}>Ver mi progreso</Text>
+            <Feather name="bar-chart-2" size={18} color="#174A62" style={styles.buttonArrow} />
+          </TouchableOpacity>
+
+          {/* Acción Terciaria: Ver agenda adaptada */}
+          <TouchableOpacity
+            style={[styles.submitButton, styles.tertiaryButton]}
+            onPress={() =>
+              router.replace({
+                pathname: '/schedule',
+                params: {
+                  goalId: goalId ? String(goalId) : '',
+                  fromSuccess: '1',
+                },
+              })
+            }
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.submitButtonText, styles.tertiaryButtonText]}>Ver agenda adaptada</Text>
+            <Feather name="calendar" size={16} color="#627D98" style={styles.buttonArrow} />
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -184,8 +230,13 @@ const styles = StyleSheet.create({
   },
   topRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 4,
+    paddingHorizontal: 4,
+  },
+  headerSpacer: {
+    width: 38,
   },
   submitButton: {
     backgroundColor: '#174A62',
@@ -214,6 +265,18 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     color: '#174A62',
+  },
+  tertiaryButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginTop: 8,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  tertiaryButtonText: {
+    color: '#627D98',
+    fontWeight: '600',
   },
   buttonArrow: {
     marginLeft: 8,

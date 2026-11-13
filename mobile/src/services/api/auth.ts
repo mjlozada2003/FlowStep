@@ -62,6 +62,21 @@ export async function loginUser(
   };
 }
 
+// HU-55: Cerrar sesión revocando la sesión activa en backend
+export async function logoutUser(token?: string | null): Promise<{ message: string }> {
+  if (!token) {
+    return { message: 'Sesión local cerrada' };
+  }
+  try {
+    return await apiRequest<{ message: string }>('/auth/logout', {
+      method: 'POST',
+      token,
+    });
+  } catch {
+    return { message: 'Sesión local cerrada' };
+  }
+}
+
 export function getAuthErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {
     return error.message;

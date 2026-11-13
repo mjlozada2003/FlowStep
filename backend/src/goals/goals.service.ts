@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Goal } from './entities/goal.entity';
@@ -8,9 +8,10 @@ import { ActivitySchedule } from '../activities/entities/activity-schedule.entit
 import { AvailabilityService } from '../availability/availability.service';
 import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
+import { GoalQueryDto } from './dto/goal-query.dto';
 import { AiService, UserAvailabilitySlot } from '../ai/ai.service';
 import { ActivityOrigin, ActivityStatus, ActivityType } from '../activities/enums/activity.enum';
-import { PriorityLevel } from './enums/goal.enum';
+import { GoalStatus, PriorityLevel } from './enums/goal.enum';
 import { ScheduleReason } from '../activities/enums/schedule-reason.enum';
 
 const DAY_MAP: Record<string, number> = {
@@ -478,5 +479,208 @@ export class GoalsService {
 
     Object.assign(goal, updateGoalDto);
     return this.goalsRepository.save(goal);
+  }
+
+  // HU-44, HU-45, HU-48: Visión general de objetivos con ritmo y ordenamiento por prioridad
+  async getOverview(userId: number, query?: GoalQueryDto): Promise<any[]> {
+    let sql = 'SELECT * FROM v_goal_overview WHERE user_id = $1';
+    const params: any[] = [userId];
+
+    if (query?.status && query.status !== 'all') {
+      sql += ' AND status = $2';
+      params.push(query.status);
+    }
+
+    if (query?.sortBy === 'due_date') {
+      sql += ' ORDER BY due_date ASC NULLS LAST';
+    } else if (query?.sortBy === 'created_at') {
+      sql += ' ORDER BY created_at DESC';
+    } else {
+      sql += ' ORDER BY sort_position ASC';
+    }
+
+    return this.goalsRepository.query(sql, params);
+  }
+
+  // HU-48: Resumen general de metas y progreso global del usuario
+  async getUserSummary(userId: number): Promise<any> {
+    const rows = await this.goalsRepository.query(
+      'SELECT * FROM v_user_goal_summary WHERE user_id = $1',
+      [userId],
+    );
+    return rows[0] || null;
+  }
+
+  // HU-47: Historial de objetivos anteriores (archivados y completados)
+  async getGoalHistory(userId: number, status?: string): Promise<any[]> {
+    let sql = 'SELECT * FROM v_goal_history WHERE user_id = $1';
+    const params: any[] = [userId];
+
+    if (status && status !== 'all') {
+      sql += ' AND status = $2';
+      params.push(status);
+    }
+
+    sql += ' ORDER BY closed_at DESC NULLS LAST';
+    return this.goalsRepository.query(sql, params);
+  }
+
+  // HU-25: Alertas activas de retraso
+  async getDelayAlerts(userId: number): Promise<any[]> {
+    return this.goalsRepository.query(
+      'SELECT *, most_overdue_activity_id AS activity_id, most_overdue_activity_title AS activity_title, max_days_late AS days_delayed FROM v_goal_delay_alert WHERE user_id = $1 ORDER BY priority_rank, max_days_late DESC',
+      [userId],
+    );
+  }
+
+  // HU-23: Resumen periódico / semanal de progreso (agrega barras L-D y desglose por meta)
+  async getWeeklySummary(userId: number, startDate?: string, endDate?: string): Promise<any> {
+    let sql: string;
+    let params: any[];
+
+    if (startDate && endDate) {
+      sql = 'SELECT fn_progress_summary($1, $2::date, $3::date) AS summary';
+      params = [userId, startDate, endDate];
+    } else {
+      sql = "SELECT fn_progress_summary($1, date_trunc('week', CURRENT_DATE)::date, (date_trunc('week', CURRENT_DATE)::date + 6)::date) AS summary";
+      params = [userId];
+    }
+
+    const rows = await this.goalsRepository.query(sql, params);
+    const data = rows[0]?.summary || {};
+    const completed = Number(data.completed_activities ?? data.completed_planned_activities ?? 0);
+    const pending = Number(data.pending_activities ?? 0);
+    const rate = Math.round(Number(data.completion_rate ?? data.completion_rate_pct ?? 0));
+    const minutes = Number(data.minutes_spent ?? data.dedicated_minutes ?? 0);
+    const hours = Math.floor(minutes / 60);
+    const remMin = minutes % 60;
+    const hoursSpent = hours > 0 ? `${hours} h ${remMin > 0 ? remMin : ''}`.trim() : `${remMin} min`;
+    const start = data.period_start || data.period?.start_date || '';
+    const end = data.period_end || data.period?.end_date || '';
+
+    const dayLetters = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D'];
+    const dailyRaw = Array.isArray(data.daily) ? data.daily : (data.daily_activity || []);
+    const daysActivity = dailyRaw.map((d: any) => {
+      const dayInitial = d.day_initial || dayLetters[d.iso_day_of_week] || '?';
+      const c = Number(d.completed_activities ?? d.count ?? 0);
+      const m = Number(d.minutes_spent ?? 0);
+      return {
+        day: dayInitial,
+        active: c > 0 || m > 0,
+        height: Math.min(100, Math.max(15, c > 0 ? c * 40 : (m > 0 ? Math.round((m / 60) * 40) : 15))),
+      };
+    });
+
+    const goalsRaw = Array.isArray(data.goals) ? data.goals : (data.goals_breakdown || []);
+    const goalsBreakdown = goalsRaw.map((g: any) => {
+      const comp = Number(g.completed_activities ?? g.completed ?? 0);
+      const pend = Number(g.pending_activities ?? g.pending ?? 0);
+      const delta = Number(g.progress_gain_percentage ?? g.delta_pct ?? 0);
+      return {
+        id: g.goal_id,
+        title: g.title,
+        detail: `${comp} completadas · ${pend} pendientes`,
+        progress: `${delta >= 0 ? '+' : ''}${Math.round(delta)}%`,
+      };
+    });
+
+    return {
+      period: start && end ? `${start} al ${end}` : 'Semana en curso',
+      tagline: 'RESUMEN SEMANAL',
+      title: rate >= 70 ? 'Una semana constante' : 'Progreso en marcha',
+      description: `Completaste el ${rate}% de lo planificado.`,
+      completionRate: rate,
+      completedCount: completed,
+      pendingCount: pending,
+      hoursSpent,
+      daysActivity,
+      goalsBreakdown,
+      mascotTip: rate >= 70
+        ? 'Tu constancia creció esta semana. Cada sesión cuenta.'
+        : 'Mantén el ritmo, cada pequeño paso te acerca a tu meta.',
+    };
+  }
+
+  // HU-32: Pausar objetivo
+  async pauseGoal(userId: number, goalId: number, reason?: string): Promise<Goal> {
+    return this.changeGoalStatus(userId, goalId, GoalStatus.PAUSED, reason);
+  }
+
+  // HU-33: Reanudar objetivo
+  async resumeGoal(userId: number, goalId: number, reason?: string): Promise<Goal> {
+    return this.changeGoalStatus(userId, goalId, GoalStatus.ACTIVE, reason);
+  }
+
+  // HU-46: Archivar objetivo
+  async archiveGoal(userId: number, goalId: number, reason?: string): Promise<Goal> {
+    return this.changeGoalStatus(userId, goalId, GoalStatus.ARCHIVED, reason);
+  }
+
+  // Transición de estado con trazabilidad (trigger trg_goal_status_before / history)
+  async changeGoalStatus(
+    userId: number,
+    goalId: number,
+    newStatus: GoalStatus,
+    reason?: string,
+  ): Promise<Goal> {
+    const goal = await this.goalsRepository.findOne({
+      where: { goal_id: goalId, user_id: userId },
+    });
+
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    try {
+      await this.goalsRepository.manager.transaction(async (manager) => {
+        if (reason) {
+          await manager.query("SELECT set_config('flowstep.change_reason', $1, true)", [reason]);
+        }
+        await manager.update(Goal, { goal_id: goalId }, { status: newStatus });
+      });
+
+      return this.findOneByUser(userId, goalId);
+    } catch (err: any) {
+      if (err.code === '23514') {
+        throw new BadRequestException(
+          `No se permite cambiar el estado del objetivo de '${goal.status}' a '${newStatus}'`,
+        );
+      }
+      throw err;
+    }
+  }
+
+  // HU-34: Modificar fecha límite con registro de historial y validación
+  async updateDueDate(
+    userId: number,
+    goalId: number,
+    dueDate: string,
+    reason?: string,
+  ): Promise<Goal> {
+    const goal = await this.goalsRepository.findOne({
+      where: { goal_id: goalId, user_id: userId },
+    });
+
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    try {
+      await this.goalsRepository.manager.transaction(async (manager) => {
+        if (reason) {
+          await manager.query("SELECT set_config('flowstep.change_reason', $1, true)", [reason]);
+        }
+        await manager.update(Goal, { goal_id: goalId }, { due_date: new Date(dueDate) });
+      });
+
+      return this.findOneByUser(userId, goalId);
+    } catch (err: any) {
+      if (err.code === '23514') {
+        throw new BadRequestException(
+          'La nueva fecha límite no es válida (no puede ser anterior a la fecha de inicio del objetivo ni estar en el pasado)',
+        );
+      }
+      throw err;
+    }
   }
 }

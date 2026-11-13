@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -15,17 +15,22 @@ import { AvailabilityModule } from './availability/availability.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: '.env',
     }),
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
-      username: process.env.DB_USERNAME || 'postgres',
-      password: process.env.DB_PASSWORD || 'password',
-      database: process.env.DB_NAME || 'flowstep_db',
-      autoLoadEntities: true,
-      // El esquema se administra mediante los scripts versionados de database/.
-      synchronize: process.env.DB_SYNCHRONIZE === 'true',
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'postgres',
+        host: config.get<string>('DB_HOST', '127.0.0.1'),
+        port: parseInt(config.get<string>('DB_PORT', '5433'), 10),
+        username: config.get<string>('DB_USERNAME', 'postgres'),
+        password: config.get<string>('DB_PASSWORD', 'password'),
+        database: config.get<string>('DB_NAME', 'flowstep_db'),
+        autoLoadEntities: true,
+        // El esquema se administra mediante los scripts versionados de database/.
+        synchronize: config.get<string>('DB_SYNCHRONIZE') === 'true',
+      }),
     }),
     UsersModule,
     AuthModule,

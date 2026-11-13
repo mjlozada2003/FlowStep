@@ -1,9 +1,13 @@
-import { Controller, Post, Get, Patch, Body, Param, ParseIntPipe, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { Controller, Post, Get, Patch, Body, Param, ParseIntPipe, UseGuards, Request, Query } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { GoalsService } from './goals.service';
 import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalPriorityDto } from './dto/update-goal-priority.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
+import { GoalQueryDto } from './dto/goal-query.dto';
+import { GoalStatusTransitionDto } from './dto/goal-status-transition.dto';
+import { UpdateGoalDueDateDto } from './dto/update-goal-due-date.dto';
+import { WeeklySummaryQueryDto } from './dto/weekly-summary-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('Objetivos')
@@ -72,15 +76,84 @@ export class GoalsController {
 
   @Get()
   @ApiOperation({
-    summary: 'Listar todos los objetivos del usuario autenticado',
-    description: 'Retorna los objetivos registrados por el usuario ordenados de forma descendente por fecha de creación.',
+    summary: 'Listar todos los objetivos del usuario autenticado (HU-44, HU-45)',
+    description: 'Retorna los objetivos registrados por el usuario, con soporte para filtrado por estado (?status=active|paused|archived|completed) y ordenamiento por prioridad (?sortBy=priority).',
   })
   @ApiResponse({
     status: 200,
     description: 'Lista de objetivos recuperada exitosamente.',
   })
-  findAll(@Request() req: any) {
+  findAll(@Request() req: any, @Query() query: GoalQueryDto) {
+    if (query?.status || query?.sortBy) {
+      return this.goalsService.getOverview(req.user.userId, query);
+    }
     return this.goalsService.findAllByUser(req.user.userId);
+  }
+
+  @Get('overview')
+  @ApiOperation({
+    summary: 'Visión general de objetivos con ritmo y orden por prioridad (HU-44, HU-45, HU-48)',
+    description: 'Consulta v_goal_overview para retornar el listado completo de metas con avance ponderado, estado de ritmo (on_track, behind, paused, closed) y posición calculada por prioridad.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Visión general de objetivos recuperada exitosamente.',
+  })
+  getOverview(@Request() req: any, @Query() query: GoalQueryDto) {
+    return this.goalsService.getOverview(req.user.userId, query);
+  }
+
+  @Get('summary')
+  @ApiOperation({
+    summary: 'Resumen consolidado de objetivos del usuario (HU-48)',
+    description: 'Consulta v_user_goal_summary retornando cantidad de objetivos activos, en pausa, archivados, completados, con retraso y porcentaje global de avance.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Resumen consolidado recuperado exitosamente.',
+  })
+  getUserSummary(@Request() req: any) {
+    return this.goalsService.getUserSummary(req.user.userId);
+  }
+
+  @Get('history')
+  @ApiOperation({
+    summary: 'Consultar objetivos anteriores (archivados y completados) (HU-47)',
+    description: 'Consulta v_goal_history retornando objetivos cerrados (archivados o completados) con fecha de cierre y resultados obtenidos.',
+  })
+  @ApiQuery({ name: 'status', required: false, enum: ['archived', 'completed', 'all'] })
+  @ApiResponse({
+    status: 200,
+    description: 'Historial de objetivos anteriores recuperado exitosamente.',
+  })
+  getGoalHistory(@Request() req: any, @Query('status') status?: string) {
+    return this.goalsService.getGoalHistory(req.user.userId, status);
+  }
+
+  @Get('delay-alerts')
+  @ApiOperation({
+    summary: 'Consultar alertas activas de retraso (HU-25)',
+    description: 'Consulta v_goal_delay_alert para retornar alertas detalladas que identifican la meta y la actividad específica afectada por retrasos.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Alertas de retraso recuperadas exitosamente.',
+  })
+  getDelayAlerts(@Request() req: any) {
+    return this.goalsService.getDelayAlerts(req.user.userId);
+  }
+
+  @Get('weekly-summary')
+  @ApiOperation({
+    summary: 'Recibir resumen periódico / semanal de progreso (HU-23)',
+    description: 'Ejecuta la función fn_progress_summary para retornar el resumen de la semana: distribución diaria L-D de minutos invertidos, porcentaje de cumplimiento, actividades listas vs pendientes y desglose por objetivo.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Resumen semanal recuperado exitosamente.',
+  })
+  getWeeklySummary(@Request() req: any, @Query() query: WeeklySummaryQueryDto) {
+    return this.goalsService.getWeeklySummary(req.user.userId, query.startDate, query.endDate);
   }
 
   @Get('progress')
@@ -285,6 +358,110 @@ export class GoalsController {
   })
   getWeeklyProgress(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
     return this.goalsService.getGoalWeeklyProgress(id, req.user.userId);
+  }
+
+  @Patch(':id/pause')
+  @ApiOperation({
+    summary: 'Pausar un objetivo (HU-32)',
+    description: 'Pausa el objetivo deteniendo temporalmente su planificación sin perder el progreso ni historial registrado.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo a pausar', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Objetivo pausado exitosamente.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Transición de estado no permitida desde el estado actual.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Objetivo no encontrado.',
+  })
+  pause(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: GoalStatusTransitionDto,
+  ) {
+    return this.goalsService.pauseGoal(req.user.userId, id, dto?.reason);
+  }
+
+  @Patch(':id/resume')
+  @ApiOperation({
+    summary: 'Reanudar un objetivo pausado (HU-33)',
+    description: 'Reanuda un objetivo que se encontraba en pausa conservando todo el progreso anterior registrado.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo a reanudar', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Objetivo reanudado exitosamente.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Transición de estado no permitida desde el estado actual.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Objetivo no encontrado.',
+  })
+  resume(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: GoalStatusTransitionDto,
+  ) {
+    return this.goalsService.resumeGoal(req.user.userId, id, dto?.reason);
+  }
+
+  @Patch(':id/archive')
+  @ApiOperation({
+    summary: 'Archivar un objetivo (HU-46)',
+    description: 'Archiva el objetivo para organizar la lista de metas activas, registrando fecha de cierre y retirándolo de alertas de retraso.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo a archivar', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Objetivo archivado exitosamente.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Transición de estado no permitida desde el estado actual.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Objetivo no encontrado.',
+  })
+  archive(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: GoalStatusTransitionDto,
+  ) {
+    return this.goalsService.archiveGoal(req.user.userId, id, dto?.reason);
+  }
+
+  @Patch(':id/due-date')
+  @ApiOperation({
+    summary: 'Modificar la fecha límite de un objetivo (HU-34)',
+    description: 'Actualiza la fecha límite del objetivo registrando el cambio en GOAL_DEADLINE_HISTORY.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo a modificar', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Fecha límite actualizada exitosamente.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'La fecha límite no es válida o es anterior al inicio del objetivo.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Objetivo no encontrado.',
+  })
+  updateDueDate(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateGoalDueDateDto,
+  ) {
+    return this.goalsService.updateDueDate(req.user.userId, id, dto.due_date, dto?.reason);
   }
 
   @Patch(':id/priority')
