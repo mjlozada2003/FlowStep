@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -31,7 +31,7 @@ export default function HomeScreen() {
   const [alerts, setAlerts] = useState<DelayAlert[]>([]);
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummaryData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [sortByPriority, setSortByPriority] = useState(false);
+  const [prioritySort, setPrioritySort] = useState<'default' | 'high_first' | 'low_first'>('default');
 
   const loadData = useCallback(async () => {
     if (!token) return;
@@ -64,14 +64,37 @@ export default function HomeScreen() {
 
   const priorityOrder: Record<string, number> = { high: 3, medium: 2, low: 1 };
 
-  const displayedGoals = [...goals].sort((a, b) => {
-    if (sortByPriority) {
-      const pA = priorityOrder[a.priority?.toLowerCase() || ''] || 0;
-      const pB = priorityOrder[b.priority?.toLowerCase() || ''] || 0;
-      return pB - pA;
+  const handleTogglePriority = () => {
+    setPrioritySort((prev) => {
+      if (prev === 'default') return 'high_first';
+      if (prev === 'high_first') return 'low_first';
+      return 'default';
+    });
+  };
+
+  // Filtrar objetivos activos (excluir archivados y completados de la lista principal)
+  const activeGoals = useMemo(() => {
+    return goals.filter((g) => g.status !== 'archived' && g.status !== 'completed');
+  }, [goals]);
+
+  const displayedGoals = useMemo(() => {
+    const list = [...activeGoals];
+    if (prioritySort === 'high_first') {
+      return list.sort((a, b) => {
+        const pA = priorityOrder[a.priority?.toLowerCase() || ''] || 0;
+        const pB = priorityOrder[b.priority?.toLowerCase() || ''] || 0;
+        return pB - pA;
+      });
     }
-    return 0;
-  });
+    if (prioritySort === 'low_first') {
+      return list.sort((a, b) => {
+        const pA = priorityOrder[a.priority?.toLowerCase() || ''] || 0;
+        const pB = priorityOrder[b.priority?.toLowerCase() || ''] || 0;
+        return pA - pB;
+      });
+    }
+    return list;
+  }, [activeGoals, prioritySort]);
 
   const getPriorityLabel = (priority?: string) => {
     const p = priority?.toLowerCase();
@@ -126,7 +149,12 @@ export default function HomeScreen() {
           <TouchableOpacity 
             style={styles.alertBanner} 
             activeOpacity={0.85}
-            onPress={() => router.push('/calendar' as any)}
+            onPress={() =>
+              router.push({
+                pathname: '/progress-analytics',
+                params: { goalId: String(alerts[0].goal_id) },
+              })
+            }
           >
             <View style={styles.alertIconBox}>
               <Feather name="alert-circle" size={18} color="#FFFFFF" />
@@ -144,24 +172,28 @@ export default function HomeScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.sectionHeaderTitle}>Objetivos activos</Text>
             <Text style={styles.sectionCounter}>
-              {goals.length} {goals.length === 1 ? 'objetivo' : 'objetivos'}
+              {activeGoals.length} {activeGoals.length === 1 ? 'objetivo' : 'objetivos'}
             </Text>
           </View>
 
           <View style={styles.actionsRow}>
             <TouchableOpacity 
-              style={[styles.filterBtn, sortByPriority && styles.filterBtnActive]} 
+              style={[styles.filterBtn, prioritySort !== 'default' && styles.filterBtnActive]} 
               activeOpacity={0.8}
-              onPress={() => setSortByPriority((prev) => !prev)}
+              onPress={handleTogglePriority}
             >
               <Feather 
-                name="sliders" 
+                name={prioritySort === 'low_first' ? 'arrow-up' : 'sliders'} 
                 size={12} 
-                color={sortByPriority ? '#FFFFFF' : '#174A62'} 
+                color={prioritySort !== 'default' ? '#FFFFFF' : '#174A62'} 
                 style={{ marginRight: 4 }} 
               />
-              <Text style={[styles.filterBtnText, sortByPriority && styles.filterBtnTextActive]}>
-                Prioridad
+              <Text style={[styles.filterBtnText, prioritySort !== 'default' && styles.filterBtnTextActive]}>
+                {prioritySort === 'high_first'
+                  ? 'Alta primero'
+                  : prioritySort === 'low_first'
+                  ? 'Baja primero'
+                  : 'Prioridad'}
               </Text>
             </TouchableOpacity>
 
@@ -183,7 +215,7 @@ export default function HomeScreen() {
           ) : displayedGoals.length === 0 ? (
             <Text style={styles.emptyGoalsText}>No tienes objetivos activos en este momento.</Text>
           ) : (
-            displayedGoals.map((item) => {
+            displayedGoals.map((item: GoalOverviewItem) => {
               const priorityLabel = getPriorityLabel(item.priority);
               const progressPct = Math.round(item.progress_percentage || 0);
               return (

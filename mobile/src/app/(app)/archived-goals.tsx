@@ -67,11 +67,11 @@ export default function ArchivedGoalsScreen() {
 
   const currentGoals = rawGoals.map((item) => {
     const isCompleted = activeTab === 'completed';
-    const statusLabel = `${isCompleted ? 'COMPLETADO' : 'ARCHIVADO'} · ${formatDisplayDate(item.status_changed_at || item.end_date)}`;
-    const progress = Math.round(item.progress_percentage || 0);
-    const completedActivities = item.completed_activities || 0;
-    const totalActivities = item.total_activities || 0;
-    const hours = Math.round((item.total_minutes_invested || 0) / 60);
+    const statusLabel = `${isCompleted ? 'COMPLETADO' : 'ARCHIVADO'} · ${formatDisplayDate((item as any).closed_at || item.status_changed_at || item.end_date)}`;
+    const progress = Math.round(Number(item.progress_percentage || 0));
+    const completedActivities = Number(item.completed_activities || 0);
+    const totalActivities = Number(item.total_activities || 0);
+    const hours = Math.round(Number((item as any).minutes_spent || item.total_minutes_invested || 0) / 60);
 
     return {
       id: item.goal_id,
