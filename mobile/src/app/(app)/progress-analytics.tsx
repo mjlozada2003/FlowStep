@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -13,7 +13,7 @@ import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Screen } from '@/components/ui/Screen';
 import { BackButton } from '@/components/ui/BackButton';
 import { useAuth } from '@/contexts/auth-context';
-import { getUserGoals } from '@/services/api/goals';
+import { getUserGoals, type CreatedGoal } from '@/services/api/goals';
 import { trackingApi, type GoalChartData, type GoalPaceData } from '@/services/api/tracking';
 
 import { GoalStageProgressSection } from '@/components/features/GoalStageProgressSection';
@@ -21,77 +21,58 @@ import { GoalEvolutionCard } from '@/components/features/GoalEvolutionCard';
 import { GoalDistributionCard } from '@/components/features/GoalDistributionCard';
 import { FlowMascotAvatar } from '@/components/features/FlowMascotAvatar';
 
-const mockChartData: GoalChartData = {
-  goal_id: 1,
-  goal_title: 'Crear una aplicación web',
+const defaultEmptyChartData: GoalChartData = {
+  goal_id: 0,
+  goal_title: 'Cargando objetivo...',
   summary: {
-    progress_percentage: '25.00',
-    total_activities: 12,
-    completed_activities: 3,
-    total_estimated_minutes: 360,
-    completed_estimated_minutes: 90,
-    total_minutes_spent: 85,
+    progress_percentage: '0.00',
+    total_activities: 0,
+    completed_activities: 0,
+    total_estimated_minutes: 0,
+    completed_estimated_minutes: 0,
+    total_minutes_spent: 0,
   },
   weekly_progress: [],
   status_distribution: {
-    completed: 3,
+    completed: 0,
     in_progress: 0,
-    pending: 8,
-    skipped: 1,
+    pending: 0,
+    skipped: 0,
   },
-  stage_progress: [
-    {
-      stage_id: 1,
-      stage_name: 'Aprendizaje',
-      sort_order: 1,
-      total_activities: 4,
-      completed_activities: 2,
-      progress_percentage: '50.00',
-    },
-    {
-      stage_id: 2,
-      stage_name: 'Desarrollo',
-      sort_order: 2,
-      total_activities: 5,
-      completed_activities: 1,
-      progress_percentage: '20.00',
-    },
-    {
-      stage_id: 3,
-      stage_name: 'Pruebas',
-      sort_order: 3,
-      total_activities: 3,
-      completed_activities: 0,
-      progress_percentage: '0.00',
-    },
-  ],
+  stage_progress: [],
 };
 
-const mockPaceData: GoalPaceData = {
-  goal_id: 1,
-  goal_title: 'Crear una aplicación web',
-  progress_percentage: '25.00',
-  expected_progress_percentage: '23.00',
+const defaultEmptyPaceData: GoalPaceData = {
+  goal_id: 0,
+  goal_title: '',
+  progress_percentage: '0.00',
+  expected_progress_percentage: '0.00',
   pace_status: 'on_track',
   is_delayed: false,
   delay_minutes: 0,
   delay_percentage: 0,
-  alert_message: 'Estás 2 puntos por encima del ritmo previsto para hoy. Mantén tu constancia.',
+  alert_message: 'Estás dentro del ritmo planificado.',
 };
 
 export default function ProgressAnalyticsScreen() {
   const { token } = useAuth();
   const params = useLocalSearchParams<{ goalId?: string }>();
   const [activeGoalId, setActiveGoalId] = useState<number | null>(
-    params.goalId && /^\d+$/.test(params.goalId) ? Number(params.goalId) : null
+    params.goalId && /^\d+$/.test(params.goalId) ? Number(params.goalId) : null,
   );
+  const [availableGoals, setAvailableGoals] = useState<CreatedGoal[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
-  const [chartData, setChartData] = useState<GoalChartData>(mockChartData);
-  const [paceData, setPaceData] = useState<GoalPaceData>(mockPaceData);
+  const [chartData, setChartData] = useState<GoalChartData>(defaultEmptyChartData);
+  const [paceData, setPaceData] = useState<GoalPaceData>(defaultEmptyPaceData);
+
+  useEffect(() => {
+    if (params.goalId && /^\d+$/.test(params.goalId)) {
+      setActiveGoalId(Number(params.goalId));
+    }
+  }, [params.goalId]);
 
   const loadData = useCallback(async () => {
-    let resolvedGoalId = activeGoalId;
     if (!token) {
       setIsLoading(false);
       return;
@@ -99,18 +80,26 @@ export default function ProgressAnalyticsScreen() {
 
     try {
       setIsLoading(true);
-      if (!resolvedGoalId) {
-        const goals = await getUserGoals(token);
-        if (goals.length > 0) {
-          resolvedGoalId = goals[0].goal_id;
-          setActiveGoalId(resolvedGoalId);
-        }
+      const goals = await getUserGoals(token);
+      setAvailableGoals(goals);
+
+      let targetGoalId = activeGoalId;
+      if (!targetGoalId && goals.length > 0) {
+        targetGoalId = goals[0].goal_id;
+        setActiveGoalId(targetGoalId);
+      } else if (
+        targetGoalId &&
+        goals.length > 0 &&
+        !goals.some((g) => g.goal_id === targetGoalId)
+      ) {
+        targetGoalId = goals[0].goal_id;
+        setActiveGoalId(targetGoalId);
       }
 
-      if (resolvedGoalId) {
+      if (targetGoalId) {
         const [chartsRes, paceRes] = await Promise.allSettled([
-          trackingApi.getGoalCharts(resolvedGoalId, token),
-          trackingApi.getGoalPace(resolvedGoalId, token),
+          trackingApi.getGoalCharts(targetGoalId, token),
+          trackingApi.getGoalPace(targetGoalId, token),
         ]);
 
         if (chartsRes.status === 'fulfilled' && chartsRes.value) {
@@ -121,7 +110,7 @@ export default function ProgressAnalyticsScreen() {
         }
       }
     } catch {
-      // Fallback a mock data
+      // Mantener datos previos
     } finally {
       setIsLoading(false);
     }
@@ -130,14 +119,22 @@ export default function ProgressAnalyticsScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [loadData])
+    }, [loadData]),
   );
 
-  const rawPercent = parseFloat(chartData.summary.progress_percentage || '0');
-  const displayPercent = Math.min(100, Math.max(0, Math.round(rawPercent)));
+  const rawPercent = parseFloat(String(chartData.summary?.progress_percentage ?? 0));
+  const displayPercent = Math.min(
+    100,
+    Math.max(0, Math.round(isNaN(rawPercent) ? 0 : rawPercent)),
+  );
 
-  const rawExpectedPercent = parseFloat(paceData.expected_progress_percentage || '0');
-  const displayExpectedPercent = Math.min(100, Math.max(0, Math.round(rawExpectedPercent)));
+  const rawExpectedPercent = parseFloat(
+    String(paceData?.expected_progress_percentage ?? 0),
+  );
+  const displayExpectedPercent = Math.min(
+    100,
+    Math.max(0, Math.round(isNaN(rawExpectedPercent) ? 0 : rawExpectedPercent)),
+  );
 
   const isBehind = paceData.pace_status === 'behind' || paceData.is_delayed;
   const isOnTrack = paceData.pace_status === 'on_track';
@@ -145,7 +142,9 @@ export default function ProgressAnalyticsScreen() {
   const motivationalMessage = isBehind
     ? {
         title: '¡No te desanimes!',
-        desc: paceData.alert_message || 'Estás un poco por detrás del ritmo. Dedica unos minutos hoy para retomar el impulso.',
+        desc:
+          paceData.alert_message ||
+          'Estás un poco por detrás del ritmo. Dedica unos minutos hoy para retomar el impulso.',
       }
     : displayPercent >= 50
     ? {
@@ -159,7 +158,11 @@ export default function ProgressAnalyticsScreen() {
 
   return (
     <Screen style={styles.screenBg}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         {/* Cabecera superior con BackButton unificado */}
         <View style={styles.topBar}>
           <BackButton />
@@ -174,8 +177,47 @@ export default function ProgressAnalyticsScreen() {
           Una mirada clara a todo lo que ya has avanzado.
         </Text>
 
+        {/* Selector de Objetivos Horizontal (HU-44) */}
+        {availableGoals.length > 1 && (
+          <View style={styles.selectorWrapper}>
+            <Text style={styles.selectorLabel}>SELECCIONAR OBJETIVO</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.goalSelectorContent}
+              style={styles.goalSelectorScroll}
+            >
+              {availableGoals.map((g) => {
+                const isSelected = g.goal_id === activeGoalId;
+                return (
+                  <TouchableOpacity
+                    key={g.goal_id}
+                    style={[styles.goalPill, isSelected && styles.goalPillActive]}
+                    onPress={() => setActiveGoalId(g.goal_id)}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.goalPillText,
+                        isSelected && styles.goalPillTextActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {g.title}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
         {isLoading ? (
-          <ActivityIndicator size="large" color="#174A62" style={{ marginVertical: 30 }} />
+          <ActivityIndicator
+            size="large"
+            color="#174A62"
+            style={{ marginVertical: 30 }}
+          />
         ) : (
           <>
             {/* Tarjeta 1: Resumen del Objetivo */}
@@ -198,19 +240,27 @@ export default function ProgressAnalyticsScreen() {
               </View>
 
               <View style={styles.progressBarBg}>
-                <View style={[styles.progressBarFill, { width: `${displayPercent}%` }]} />
+                <View
+                  style={[styles.progressBarFill, { width: `${displayPercent}%` }]}
+                />
               </View>
 
               <View style={styles.statsSummaryRow}>
                 <View style={styles.statMiniCol}>
-                  <Text style={styles.statMiniNum}>{chartData.summary.completed_activities}</Text>
+                  <Text style={styles.statMiniNum}>
+                    {chartData.summary?.completed_activities || 0}
+                  </Text>
                   <Text style={styles.statMiniLabel}>completadas</Text>
                 </View>
                 <View style={styles.verticalDivider} />
                 <View style={styles.statMiniCol}>
                   <Text style={styles.statMiniNum}>
                     {chartData.status_distribution?.pending ??
-                      chartData.summary.total_activities - chartData.summary.completed_activities}
+                      Math.max(
+                        0,
+                        (chartData.summary?.total_activities || 0) -
+                          (chartData.summary?.completed_activities || 0),
+                      )}
                   </Text>
                   <Text style={styles.statMiniLabel}>pendientes</Text>
                 </View>
@@ -254,7 +304,7 @@ export default function ProgressAnalyticsScreen() {
               </View>
             </View>
 
-            {/* Tarjeta 2: Ritmo de Avance */}
+            {/* Tarjeta 2: Ritmo de Avance (HU-25 / HU-24) */}
             <View style={styles.card}>
               <View style={styles.cardHeaderRowSpace}>
                 <View>
@@ -281,7 +331,11 @@ export default function ProgressAnalyticsScreen() {
                         : styles.badgeNoScheduleText
                     }
                   >
-                    {isOnTrack ? 'EN RITMO' : isBehind ? 'RETRASADO' : 'SIN CRONOGRAMA'}
+                    {isOnTrack
+                      ? 'EN RITMO'
+                      : isBehind
+                      ? 'RETRASADO'
+                      : 'SIN CRONOGRAMA'}
                   </Text>
                 </View>
               </View>
@@ -292,7 +346,9 @@ export default function ProgressAnalyticsScreen() {
                   <Text style={styles.paceValueText}>{displayPercent}%</Text>
                 </View>
                 <View style={styles.progressBarBg}>
-                  <View style={[styles.progressBarFill, { width: `${displayPercent}%` }]} />
+                  <View
+                    style={[styles.progressBarFill, { width: `${displayPercent}%` }]}
+                  />
                 </View>
               </View>
 
@@ -336,10 +392,17 @@ export default function ProgressAnalyticsScreen() {
 
             {/* Tarjeta 4: Distribución (Gráfica de Pastel / Donut) */}
             <GoalDistributionCard
-              completed={chartData.summary.completed_activities}
-              pending={chartData.status_distribution?.pending ?? (chartData.summary.total_activities - chartData.summary.completed_activities)}
-              skipped={chartData.status_distribution?.skipped ?? 0}
-              total={chartData.summary.total_activities}
+              completed={chartData.summary?.completed_activities || 0}
+              pending={
+                chartData.status_distribution?.pending ??
+                Math.max(
+                  0,
+                  (chartData.summary?.total_activities || 0) -
+                    (chartData.summary?.completed_activities || 0),
+                )
+              }
+              skipped={chartData.status_distribution?.skipped || 0}
+              total={chartData.summary?.total_activities || 0}
             />
 
             {/* Componente reutilizado de Progreso por Etapa */}
@@ -365,7 +428,12 @@ export default function ProgressAnalyticsScreen() {
               activeOpacity={0.85}
             >
               <Text style={styles.bottomNavButtonText}>Ver historial de actividades</Text>
-              <Feather name="arrow-right" size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
+              <Feather
+                name="arrow-right"
+                size={18}
+                color="#FFFFFF"
+                style={{ marginLeft: 8 }}
+              />
             </TouchableOpacity>
           </>
         )}
@@ -412,7 +480,45 @@ const styles = StyleSheet.create({
   descriptionText: {
     fontSize: 13,
     color: '#627D98',
-    marginBottom: 20,
+    marginBottom: 16,
+  },
+  selectorWrapper: {
+    marginBottom: 16,
+  },
+  selectorLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#627D98',
+    letterSpacing: 0.8,
+    marginBottom: 8,
+  },
+  goalSelectorScroll: {
+    flexGrow: 0,
+  },
+  goalSelectorContent: {
+    gap: 8,
+    paddingRight: 16,
+  },
+  goalPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D8ECF8',
+  },
+  goalPillActive: {
+    backgroundColor: '#174A62',
+    borderColor: '#174A62',
+  },
+  goalPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#174A62',
+    maxWidth: 180,
+  },
+  goalPillTextActive: {
+    color: '#FFFFFF',
   },
   card: {
     backgroundColor: '#FFFFFF',
@@ -562,12 +668,12 @@ const styles = StyleSheet.create({
     color: '#991B1B',
   },
   badgeNoSchedule: {
-      backgroundColor: '#F3F4F6',
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: '#D1D5DB',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
   },
   badgeNoScheduleText: {
     fontSize: 10,
