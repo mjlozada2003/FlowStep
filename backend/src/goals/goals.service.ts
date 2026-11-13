@@ -528,7 +528,7 @@ export class GoalsService {
   // HU-25: Alertas activas de retraso
   async getDelayAlerts(userId: number): Promise<any[]> {
     return this.goalsRepository.query(
-      'SELECT * FROM v_goal_delay_alert WHERE user_id = $1 ORDER BY priority_rank, max_days_late DESC',
+      'SELECT *, most_overdue_activity_id AS activity_id, most_overdue_activity_title AS activity_title, max_days_late AS days_delayed FROM v_goal_delay_alert WHERE user_id = $1 ORDER BY priority_rank, max_days_late DESC',
       [userId],
     );
   }
@@ -548,15 +548,41 @@ export class GoalsService {
 
     const rows = await this.goalsRepository.query(sql, params);
     const data = rows[0]?.summary || {};
-    const completed = Number(data.completed_activities || 0);
-    const pending = Number(data.pending_activities || 0);
-    const rate = Number(data.completion_rate_pct || 0);
-    const minutes = Number(data.dedicated_minutes || 0);
+    const completed = Number(data.completed_activities ?? data.completed_planned_activities ?? 0);
+    const pending = Number(data.pending_activities ?? 0);
+    const rate = Math.round(Number(data.completion_rate ?? data.completion_rate_pct ?? 0));
+    const minutes = Number(data.minutes_spent ?? data.dedicated_minutes ?? 0);
     const hours = Math.floor(minutes / 60);
     const remMin = minutes % 60;
     const hoursSpent = hours > 0 ? `${hours} h ${remMin > 0 ? remMin : ''}`.trim() : `${remMin} min`;
-    const start = data.period?.start_date || '';
-    const end = data.period?.end_date || '';
+    const start = data.period_start || data.period?.start_date || '';
+    const end = data.period_end || data.period?.end_date || '';
+
+    const dayLetters = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D'];
+    const dailyRaw = Array.isArray(data.daily) ? data.daily : (data.daily_activity || []);
+    const daysActivity = dailyRaw.map((d: any) => {
+      const dayInitial = d.day_initial || dayLetters[d.iso_day_of_week] || '?';
+      const c = Number(d.completed_activities ?? d.count ?? 0);
+      const m = Number(d.minutes_spent ?? 0);
+      return {
+        day: dayInitial,
+        active: c > 0 || m > 0,
+        height: Math.min(100, Math.max(15, c > 0 ? c * 40 : (m > 0 ? Math.round((m / 60) * 40) : 15))),
+      };
+    });
+
+    const goalsRaw = Array.isArray(data.goals) ? data.goals : (data.goals_breakdown || []);
+    const goalsBreakdown = goalsRaw.map((g: any) => {
+      const comp = Number(g.completed_activities ?? g.completed ?? 0);
+      const pend = Number(g.pending_activities ?? g.pending ?? 0);
+      const delta = Number(g.progress_gain_percentage ?? g.delta_pct ?? 0);
+      return {
+        id: g.goal_id,
+        title: g.title,
+        detail: `${comp} completadas · ${pend} pendientes`,
+        progress: `${delta >= 0 ? '+' : ''}${Math.round(delta)}%`,
+      };
+    });
 
     return {
       period: start && end ? `${start} al ${end}` : 'Semana en curso',
@@ -567,17 +593,8 @@ export class GoalsService {
       completedCount: completed,
       pendingCount: pending,
       hoursSpent,
-      daysActivity: (data.daily_activity || []).map((d: any) => ({
-        day: d.day_initial || '?',
-        active: Number(d.count || 0) > 0,
-        height: Math.min(100, Math.max(15, Number(d.count || 0) * 30)),
-      })),
-      goalsBreakdown: (data.goals_breakdown || []).map((g: any) => ({
-        id: g.goal_id,
-        title: g.title,
-        detail: `${g.completed || 0} completadas · ${g.pending || 0} pendientes`,
-        progress: `${Number(g.delta_pct || 0) >= 0 ? '+' : ''}${g.delta_pct || 0}%`,
-      })),
+      daysActivity,
+      goalsBreakdown,
       mascotTip: rate >= 70
         ? 'Tu constancia creció esta semana. Cada sesión cuenta.'
         : 'Mantén el ritmo, cada pequeño paso te acerca a tu meta.',

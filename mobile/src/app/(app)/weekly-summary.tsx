@@ -36,17 +36,19 @@ const fallbackWeeklyStats: WeeklySummaryData = {
 
 export default function WeeklySummaryScreen() {
   const { token } = useAuth();
-  const [weeklyStats, setWeeklyStats] = useState<WeeklySummaryData>(fallbackWeeklyStats);
+  const [weeklyStats, setWeeklyStats] = useState<WeeklySummaryData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       if (!token) {
+        setWeeklyStats(fallbackWeeklyStats);
         setIsLoading(false);
         return;
       }
 
+      setIsLoading(true);
       getWeeklySummary(token)
         .then((data) => {
           if (active && data) {
@@ -54,7 +56,9 @@ export default function WeeklySummaryScreen() {
           }
         })
         .catch(() => {
-          // Mantener fallback si no hay datos
+          if (active) {
+            setWeeklyStats(fallbackWeeklyStats);
+          }
         })
         .finally(() => {
           if (active) setIsLoading(false);
@@ -65,6 +69,8 @@ export default function WeeklySummaryScreen() {
       };
     }, [token]),
   );
+
+  const stats = weeklyStats || fallbackWeeklyStats;
 
   return (
     <Screen style={styles.screen}>
@@ -79,105 +85,111 @@ export default function WeeklySummaryScreen() {
           <View style={{ width: 36 }} />
         </View>
 
-        {/* Título y Período */}
-        <View style={styles.titleSection}>
-          <Text style={styles.sectionSubtitle}>TU SEMANA</Text>
-          <Text style={styles.mainTitle}>Resumen de progreso</Text>
-          <Text style={styles.periodText}>{weeklyStats.period}</Text>
-        </View>
+        {isLoading && !weeklyStats ? (
+          <ActivityIndicator size="large" color="#174A62" style={{ marginVertical: 40 }} />
+        ) : (
+          <>
+            {/* Título y Período */}
+            <View style={styles.titleSection}>
+              <Text style={styles.sectionSubtitle}>TU SEMANA</Text>
+              <Text style={styles.mainTitle}>Resumen de progreso</Text>
+              <Text style={styles.periodText}>{stats.period}</Text>
+            </View>
 
-        {/* Tarjeta Destacada de Cumplimiento (Azul Oscuro) */}
-        <View style={styles.highlightCard}>
-          <View style={styles.highlightTextContent}>
-            <Text style={styles.highlightTag}>{weeklyStats.tagline}</Text>
-            <Text style={styles.highlightTitle}>{weeklyStats.title}</Text>
-            <Text style={styles.highlightDesc}>{weeklyStats.description}</Text>
-          </View>
-          <View style={styles.circularProgressContainer}>
-            <Text style={styles.circularPercent}>{weeklyStats.completionRate}%</Text>
-            <Text style={styles.circularSub}>del plan</Text>
-          </View>
-        </View>
-
-        {/* 3 Mini Tarjetas de Métricas de la Semana */}
-        <View style={styles.metricsRow}>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>{weeklyStats.completedCount}</Text>
-            <Text style={styles.metricLabel}>completadas</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>{weeklyStats.pendingCount}</Text>
-            <Text style={styles.metricLabel}>pendiente</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>{weeklyStats.hoursSpent}</Text>
-            <Text style={styles.metricLabel}>dedicadas</Text>
-          </View>
-        </View>
-
-        {/* Gráfico de Evolución Semanal */}
-        <View style={styles.cardContainer}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>Evolución semanal</Text>
-            <Text style={styles.badgeTrend}>+2 vs. anterior</Text>
-          </View>
-          <Text style={styles.cardSubtitle}>Actividades completadas</Text>
-
-          <View style={styles.chartContainer}>
-            {weeklyStats.daysActivity.map((item, index) => (
-              <View key={index} style={styles.chartBarColumn}>
-                <View style={styles.chartBarTrack}>
-                  <View 
-                    style={[
-                      styles.chartBarFill, 
-                      { height: `${item.height}%`, opacity: item.active ? 1 : 0.3 }
-                    ]} 
-                  />
-                </View>
-                <Text style={styles.chartDayLabel}>{item.day}</Text>
+            {/* Tarjeta Destacada de Cumplimiento (Azul Oscuro) */}
+            <View style={styles.highlightCard}>
+              <View style={styles.highlightTextContent}>
+                <Text style={styles.highlightTag}>{stats.tagline}</Text>
+                <Text style={styles.highlightTitle}>{stats.title}</Text>
+                <Text style={styles.highlightDesc}>{stats.description}</Text>
               </View>
-            ))}
-          </View>
-        </View>
-
-        {/* Desglose Por Objetivo */}
-        <View style={styles.cardContainer}>
-          <Text style={styles.cardTitle}>Por objetivo</Text>
-          <View style={styles.goalsList}>
-            {weeklyStats.goalsBreakdown.map((goal) => (
-              <View key={goal.id} style={styles.goalBreakdownItem}>
-                <View style={styles.goalIndexBox}>
-                  <Text style={styles.goalIndexText}>{goal.id}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.goalItemTitle}>{goal.title}</Text>
-                  <Text style={styles.goalItemDetail}>{goal.detail}</Text>
-                </View>
-                <Text style={styles.goalItemProgress}>{goal.progress}</Text>
+              <View style={styles.circularProgressContainer}>
+                <Text style={styles.circularPercent}>{stats.completionRate}%</Text>
+                <Text style={styles.circularSub}>del plan</Text>
               </View>
-            ))}
-          </View>
-        </View>
+            </View>
 
-        {/* Mensaje de la Mascota Flow */}
-        <View style={styles.mascotBanner}>
-          <FlowMascotAvatar />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.mascotBannerText}>
-              Flow dice: <Text style={styles.mascotQuote}>"{weeklyStats.mascotTip}"</Text>
-            </Text>
-          </View>
-        </View>
+            {/* 3 Mini Tarjetas de Métricas de la Semana */}
+            <View style={styles.metricsRow}>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricValue}>{stats.completedCount}</Text>
+                <Text style={styles.metricLabel}>completadas</Text>
+              </View>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricValue}>{stats.pendingCount}</Text>
+                <Text style={styles.metricLabel}>pendiente</Text>
+              </View>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricValue}>{stats.hoursSpent}</Text>
+                <Text style={styles.metricLabel}>dedicadas</Text>
+              </View>
+            </View>
 
-        {/* Botón de Estadísticas Completas */}
-        <TouchableOpacity
-          style={styles.fullStatsButton}
-          activeOpacity={0.85}
-          onPress={() => router.push('/progress-analytics' as any)}
-        >
-          <Text style={styles.fullStatsButtonText}>Ver estadísticas completas</Text>
-          <Feather name="arrow-right" size={16} color="#FFFFFF" />
-        </TouchableOpacity>
+            {/* Gráfico de Evolución Semanal */}
+            <View style={styles.cardContainer}>
+              <View style={styles.cardHeaderRow}>
+                <Text style={styles.cardTitle}>Evolución semanal</Text>
+                <Text style={styles.badgeTrend}>+2 vs. anterior</Text>
+              </View>
+              <Text style={styles.cardSubtitle}>Actividades completadas</Text>
+
+              <View style={styles.chartContainer}>
+                {stats.daysActivity.map((item, index) => (
+                  <View key={index} style={styles.chartBarColumn}>
+                    <View style={styles.chartBarTrack}>
+                      <View 
+                        style={[
+                          styles.chartBarFill, 
+                          { height: `${item.height}%`, opacity: item.active ? 1 : 0.3 }
+                        ]} 
+                      />
+                    </View>
+                    <Text style={styles.chartDayLabel}>{item.day}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {/* Desglose Por Objetivo */}
+            <View style={styles.cardContainer}>
+              <Text style={styles.cardTitle}>Por objetivo</Text>
+              <View style={styles.goalsList}>
+                {stats.goalsBreakdown.map((goal) => (
+                  <View key={goal.id} style={styles.goalBreakdownItem}>
+                    <View style={styles.goalIndexBox}>
+                      <Text style={styles.goalIndexText}>{goal.id}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.goalItemTitle}>{goal.title}</Text>
+                      <Text style={styles.goalItemDetail}>{goal.detail}</Text>
+                    </View>
+                    <Text style={styles.goalItemProgress}>{goal.progress}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {/* Mensaje de la Mascota Flow */}
+            <View style={styles.mascotBanner}>
+              <FlowMascotAvatar />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.mascotBannerText}>
+                  Flow dice: <Text style={styles.mascotQuote}>"{stats.mascotTip}"</Text>
+                </Text>
+              </View>
+            </View>
+
+            {/* Botón de Estadísticas Completas */}
+            <TouchableOpacity
+              style={styles.fullStatsButton}
+              activeOpacity={0.85}
+              onPress={() => router.push('/progress-analytics' as any)}
+            >
+              <Text style={styles.fullStatsButtonText}>Ver estadísticas completas</Text>
+              <Feather name="arrow-right" size={16} color="#FFFFFF" />
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </Screen>
   );
