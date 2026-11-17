@@ -1,7 +1,9 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,60 +14,95 @@ import {
 import { Screen } from '@/components/ui/Screen';
 import { BackButton } from '@/components/ui/BackButton';
 import { BrandHeader } from '@/components/ui/BrandHeader';
+import { useAuth } from '@/contexts/auth-context';
+import {
+  addReinforcementActivity,
+  getGoalEvaluation,
+  QuizEvaluationResult,
+  QuizQuestionItem,
+  submitGoalEvaluation,
+} from '@/services/api/learning';
 
-interface Question {
-  id: number;
-  question: string;
-  category: string;
-  options: { key: string; text: string; isCorrect: boolean }[];
-  explanation: string;
-}
-
-// Preguntas preparadas para enlazarse dinámicamente al backend / IA
-const mockQuestions: Question[] = [
+// Preguntas de respaldo si la API aún no ha respondido o está sin conexión
+const fallbackQuestions: QuizQuestionItem[] = [
   {
     id: 1,
     category: 'REACT BÁSICO',
     question: '¿Cuál es el objetivo principal de un componente?',
     options: [
-      { key: 'A', text: 'Reutilizar una parte de la interfaz', isCorrect: true },
-      { key: 'B', text: 'Guardar todos los datos', isCorrect: false },
-      { key: 'C', text: 'Conectar directamente la base de datos', isCorrect: false },
+      { key: 'A', text: 'Reutilizar una parte de la interfaz', is_correct: true },
+      { key: 'B', text: 'Guardar todos los datos', is_correct: false },
+      { key: 'C', text: 'Conectar directamente la base de datos', is_correct: false },
     ],
-    explanation: 'Los componentes permiten reutilizar estructura y comportamiento.',
+    explanation: 'Los componentes permiten modularizar y reutilizar estructura y comportamiento.',
   },
   {
     id: 2,
     category: 'REACT BÁSICO',
-    question: '¿Qué se utiliza para enviar datos a un componente?',
+    question: '¿Qué se utiliza para enviar datos de un componente padre a un hijo?',
     options: [
-      { key: 'A', text: 'Hooks', isCorrect: false },
-      { key: 'B', text: 'Props', isCorrect: true },
-      { key: 'C', text: 'CSS', isCorrect: false },
+      { key: 'A', text: 'Hooks', is_correct: false },
+      { key: 'B', text: 'Props', is_correct: true },
+      { key: 'C', text: 'CSS', is_correct: false },
     ],
-    explanation: 'La respuesta correcta te ayuda a reforzar este concepto antes de continuar.',
+    explanation: 'Las props permiten transferir datos unidireccionalmente hacia componentes secundarios.',
   },
   {
     id: 3,
     category: 'REACT BÁSICO',
-    question: '¿Qué dato puede cambiar dentro de un componente?',
+    question: '¿Qué dato puede cambiar internamente en un componente con el tiempo?',
     options: [
-      { key: 'A', text: 'El estado', isCorrect: true },
-      { key: 'B', text: 'El nombre del archivo', isCorrect: false },
-      { key: 'C', text: 'La etiqueta HTML', isCorrect: false },
+      { key: 'A', text: 'El estado', is_correct: true },
+      { key: 'B', text: 'El nombre del archivo', is_correct: false },
+      { key: 'C', text: 'La etiqueta HTML', is_correct: false },
     ],
-    explanation: 'El estado (state) maneja los datos internos dinámicos del componente.',
+    explanation: 'El estado (state) maneja los valores reactivos internos del componente.',
   },
 ];
 
 export default function EvaluationScreen() {
+  const { token } = useAuth();
+  const params = useLocalSearchParams<{ goalId?: string }>();
+  const goalIdNum = params.goalId ? Number(params.goalId) : 1;
+
+  const [loading, setLoading] = useState<boolean>(true);
+  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [questions, setQuestions] = useState<QuizQuestionItem[]>(fallbackQuestions);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
   const [score, setScore] = useState(0);
+  const [userAnswers, setUserAnswers] = useState<{ question_id: number; selected_option_id: string }[]>([]);
+  const [evaluationResult, setEvaluationResult] = useState<QuizEvaluationResult | null>(null);
 
-  const currentQ = mockQuestions[currentIndex] || mockQuestions[0];
-  const progressPercent = ((currentIndex + 1) / mockQuestions.length) * 100;
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchQuiz() {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+      try {
+        setLoading(true);
+        const res = await getGoalEvaluation(goalIdNum, token);
+        if (isMounted && res && res.length > 0) {
+          setQuestions(res);
+        }
+      } catch (err) {
+        console.warn('Error al cargar preguntas:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    fetchQuiz();
+    return () => {
+      isMounted = false;
+    };
+  }, [goalIdNum, token]);
+
+  const currentQ = questions[currentIndex] || questions[0];
+  const progressPercent = ((currentIndex + 1) / questions.length) * 100;
 
   const handleSelectOption = (key: string, isCorrect: boolean) => {
     if (isAnswered) return;
@@ -74,19 +111,73 @@ export default function EvaluationScreen() {
     if (isCorrect) {
       setScore((prev) => prev + 1);
     }
+    setUserAnswers((prev) => [...prev, { question_id: currentQ.id, selected_option_id: key }]);
   };
 
-  const handleNext = () => {
-    if (currentIndex < mockQuestions.length - 1) {
+  const handleNext = async () => {
+    if (currentIndex < questions.length - 1) {
       setCurrentIndex((prev) => prev + 1);
       setSelectedOption(null);
       setIsAnswered(false);
     } else {
+      // Finalizó el cuestionario, enviar resultados al backend
+      if (token) {
+        try {
+          setSubmitting(true);
+          const result = await submitGoalEvaluation(goalIdNum, userAnswers, token);
+          setEvaluationResult(result);
+          promptReinforcement(result);
+          return;
+        } catch (err) {
+          console.warn('Error al enviar respuestas:', err);
+        } finally {
+          setSubmitting(false);
+        }
+      }
       router.replace('/learning' as any);
     }
   };
 
-  const selectedObj = currentQ.options.find((o) => o.key === selectedOption);
+  const promptReinforcement = (result: QuizEvaluationResult) => {
+    if (result.weak_topics && result.weak_topics.length > 0) {
+      const topic = result.weak_topics[0];
+      Alert.alert(
+        'Resultados de la evaluación',
+        `Puntaje: ${result.score}/${result.total_questions} (${result.percentage}%).\n\nDetectamos oportunidad de refuerzo en: "${topic}".\n\n¿Deseas agregar una sesión de aprendizaje de refuerzo a tu plan?`,
+        [
+          {
+            text: 'Volver a Aprendizaje',
+            style: 'cancel',
+            onPress: () => router.replace('/learning' as any),
+          },
+          {
+            text: 'Añadir refuerzo',
+            onPress: async () => {
+              if (token) {
+                try {
+                  await addReinforcementActivity(
+                    goalIdNum,
+                    { topic, title: `Refuerzo: ${topic}`, estimated_minutes: 30 },
+                    token,
+                  );
+                  Alert.alert('¡Excelente!', 'Actividad de refuerzo añadida a tu cronograma.');
+                } catch {}
+              }
+              router.replace('/learning' as any);
+            },
+          },
+        ],
+      );
+    } else {
+      Alert.alert(
+        '¡Felicitaciones!',
+        `Puntaje perfecto: ${result.score}/${result.total_questions} (100%). ¡Dominas estos conocimientos!`,
+        [{ text: 'Continuar', onPress: () => router.replace('/learning' as any) }],
+      );
+    }
+  };
+
+  const selectedObj = currentQ?.options?.find((o) => o.key === selectedOption);
 
   return (
     <Screen style={styles.screen}>
@@ -97,78 +188,96 @@ export default function EvaluationScreen() {
         {/* Cabecera superior */}
         <View style={styles.topHeader}>
           <BackButton />
-          <Text style={styles.headerStep}>PREGUNTA {currentIndex + 1} DE {mockQuestions.length}</Text>
+          <Text style={styles.headerStep}>
+            PREGUNTA {currentIndex + 1} DE {questions.length}
+          </Text>
           <BrandHeader showTagline={false} />
         </View>
 
-        {/* Barra de progreso */}
-        <View style={styles.progressBarBg}>
-          <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
-        </View>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#174A62" />
+            <Text style={styles.loadingText}>Generando evaluación diagnóstica...</Text>
+          </View>
+        ) : (
+          <>
+            {/* Barra de progreso */}
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
+            </View>
 
-        {/* Categoría */}
-        <Text style={styles.categoryLabel}>{currentQ.category}</Text>
-        
-        {/* Enunciado de la pregunta */}
-        <Text style={styles.questionTitle}>{currentQ.question}</Text>
+            {/* Categoría */}
+            <Text style={styles.categoryLabel}>{currentQ.category}</Text>
 
-        {/* Opciones de respuesta */}
-        <View style={styles.optionsList}>
-          {currentQ.options.map((opt) => {
-            const isSelected = selectedOption === opt.key;
-            const isCorrectOption = opt.isCorrect;
+            {/* Enunciado de la pregunta */}
+            <Text style={styles.questionTitle}>{currentQ.question}</Text>
 
-            return (
+            {/* Opciones de respuesta */}
+            <View style={styles.optionsList}>
+              {currentQ.options.map((opt) => {
+                const isSelected = selectedOption === opt.key;
+                const isCorrectOption = opt.is_correct;
+
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[
+                      styles.optionCard,
+                      isAnswered && isCorrectOption && styles.cardCorrect,
+                      isAnswered && isSelected && !isCorrectOption && styles.cardIncorrect,
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={() => handleSelectOption(opt.key, opt.is_correct)}
+                  >
+                    <View
+                      style={[
+                        styles.optionBadge,
+                        isAnswered && isCorrectOption && styles.badgeCorrect,
+                        isAnswered && isSelected && !isCorrectOption && styles.badgeIncorrect,
+                      ]}
+                    >
+                      <Text style={styles.badgeKey}>{opt.key}</Text>
+                    </View>
+                    <Text style={styles.optionText}>{opt.text}</Text>
+                    {isAnswered && isCorrectOption && (
+                      <Feather name="check" size={18} color="#2F855A" style={{ marginLeft: 'auto' }} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Caja de explicación / retroalimentación inmediata */}
+            {isAnswered && (
+              <View style={[styles.feedbackBox, selectedObj?.is_correct ? styles.feedbackSuccess : styles.feedbackWarn]}>
+                <Text style={[styles.feedbackTitle, selectedObj?.is_correct ? styles.textSuccess : styles.textWarn]}>
+                  {selectedObj?.is_correct ? '¡Correcto!' : 'Casi. Repasemos este punto.'}
+                </Text>
+                <Text style={styles.feedbackDesc}>{currentQ.explanation}</Text>
+              </View>
+            )}
+
+            {/* Botón Siguiente pregunta */}
+            {isAnswered && (
               <TouchableOpacity
-                key={opt.key}
-                style={[
-                  styles.optionCard,
-                  isAnswered && isCorrectOption && styles.cardCorrect,
-                  isAnswered && isSelected && !isCorrectOption && styles.cardIncorrect,
-                ]}
-                activeOpacity={0.8}
-                onPress={() => handleSelectOption(opt.key, opt.isCorrect)}
+                style={styles.nextButton}
+                activeOpacity={0.85}
+                disabled={submitting}
+                onPress={handleNext}
               >
-                <View
-                  style={[
-                    styles.optionBadge,
-                    isAnswered && isCorrectOption && styles.badgeCorrect,
-                    isAnswered && isSelected && !isCorrectOption && styles.badgeIncorrect,
-                  ]}
-                >
-                  <Text style={styles.badgeKey}>{opt.key}</Text>
-                </View>
-                <Text style={styles.optionText}>{opt.text}</Text>
-                {isAnswered && isCorrectOption && (
-                  <Feather name="check" size={18} color="#2F855A" style={{ marginLeft: 'auto' }} />
+                {submitting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Text style={styles.nextButtonText}>
+                      {currentIndex < questions.length - 1 ? 'Siguiente pregunta' : 'Ver resultados'}
+                    </Text>
+                    <Feather name="arrow-right" size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
+                  </>
                 )}
               </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* Caja de explicación / retroalimentación inmediata */}
-        {isAnswered && (
-          <View style={[styles.feedbackBox, selectedObj?.isCorrect ? styles.feedbackSuccess : styles.feedbackWarn]}>
-            <Text style={[styles.feedbackTitle, selectedObj?.isCorrect ? styles.textSuccess : styles.textWarn]}>
-              {selectedObj?.isCorrect ? '¡Correcto!' : 'Casi. Repasemos este punto.'}
-            </Text>
-            <Text style={styles.feedbackDesc}>{currentQ.explanation}</Text>
-          </View>
-        )}
-
-        {/* Botón Siguiente pregunta */}
-        {isAnswered && (
-          <TouchableOpacity
-            style={styles.nextButton}
-            activeOpacity={0.85}
-            onPress={handleNext}
-          >
-            <Text style={styles.nextButtonText}>
-              {currentIndex < mockQuestions.length - 1 ? 'Siguiente pregunta' : 'Ver resultados'}
-            </Text>
-            <Feather name="arrow-right" size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
-          </TouchableOpacity>
+            )}
+          </>
         )}
       </ScrollView>
     </Screen>
@@ -314,5 +423,16 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '800',
+  },
+  loadingContainer: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#627D98',
+    fontWeight: '600',
   },
 });
