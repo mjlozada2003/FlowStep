@@ -28,12 +28,14 @@ export interface LearningResourceItem {
   title: string;
   category: string;
   badge_text: string;
-  icon_name: 'book-open' | 'play' | 'code' | 'file-text';
+  icon_name: 'book-open' | 'play' | 'code' | 'file-text' | 'check-circle' | 'award' | 'activity';
   url?: string;
   summary?: string;
   key_points?: string[];
   video_timestamps?: { time: string; title: string }[];
   practice_steps?: string[];
+  challenge_title?: string;
+  deliverable?: string;
   code_snippet?: string;
 }
 

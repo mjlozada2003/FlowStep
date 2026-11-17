@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { openBrowserAsync, WebBrowserPresentationStyle } from 'expo-web-browser';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -8,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -76,7 +78,7 @@ export default function EvaluationScreen() {
     resourceKeyPoints?: string;
     videoTimestamps?: string;
     practiceSteps?: string;
-    codeSnippet?: string;
+    challengeTitle?: string;
   }>();
   const goalIdNum = params.goalId ? Number(params.goalId) : 1;
   const hasResourceInfo = Boolean(params.resourceTitle || params.resourceId);
@@ -99,6 +101,8 @@ export default function EvaluationScreen() {
     }[]
   >([]);
   const [evaluationResult, setEvaluationResult] = useState<QuizEvaluationResult | null>(null);
+  const [addingReinforcement, setAddingReinforcement] = useState(false);
+  const [reinforcementAdded, setReinforcementAdded] = useState(false);
 
   const resourceTitle = params.resourceTitle || 'Guía conceptual';
   const resourceType = (params.resourceType || 'LECTURA').toUpperCase();
@@ -106,6 +110,11 @@ export default function EvaluationScreen() {
   const resourceDuration = params.resourceDuration || '5 min';
   const resourceBadge = params.resourceBadge || 'Esencial';
   const resourceSummary = params.resourceSummary || '';
+  const challengeTitle = params.challengeTitle || `Reto práctico: ${resourceTitle}`;
+
+  const [practiceNotes, setPracticeNotes] = useState('');
+  const [practicePerception, setPracticePerception] = useState<'easy' | 'good' | 'hard'>('good');
+  const [completedPracticeSteps, setCompletedPracticeSteps] = useState<number[]>([0]);
 
   let keyPoints: string[] = [];
   if (params.resourceKeyPoints) {
@@ -134,8 +143,8 @@ export default function EvaluationScreen() {
   if (videoTimestamps.length === 0) {
     videoTimestamps = [
       { time: '00:00', title: `Introducción a ${resourceCategory}` },
-      { time: '03:15', title: 'Demostración práctica en pantalla' },
-      { time: '07:40', title: 'Casos reales y resolución de dudas' },
+      { time: '03:15', title: 'Demostración paso a paso' },
+      { time: '07:40', title: 'Casos reales y resolución guiada' },
       { time: '11:20', title: 'Resumen final y conclusiones' },
     ];
   }
@@ -149,20 +158,11 @@ export default function EvaluationScreen() {
   }
   if (practiceSteps.length === 0) {
     practiceSteps = [
-      `Configura tu entorno de trabajo inicial para ${resourceCategory}.`,
-      'Implementa el código o solución guiada paso a paso.',
-      'Ejecuta las pruebas de verificación y comprueba que no existan errores.',
+      `Revisa los conceptos esenciales y prepara tu contexto para ${resourceCategory}.`,
+      'Desarrolla la actividad o ejercicio aplicando la técnica sugerida.',
+      'Comprueba tu resultado frente a los criterios y anota tus conclusiones.',
     ];
   }
-
-  const codeSnippet =
-    params.codeSnippet ||
-    `# Taller guiado: ${resourceTitle}\n# 1. Configurar entorno y dependencias\nflowstep init --topic "${(params.resourceCategory || 'ejercicio').toLowerCase()}"\n# 2. Ejecutar y validar resultado\nflowstep run verify`;
-
-  const [isVideoPlaying, setIsVideoPlaying] = useState<boolean>(false);
-  const [selectedTimestamp, setSelectedTimestamp] = useState<string>('00:00');
-  const [completedPracticeSteps, setCompletedPracticeSteps] = useState<number[]>([0]);
-  const [copiedCode, setCopiedCode] = useState<boolean>(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -219,63 +219,75 @@ export default function EvaluationScreen() {
       setIsAnswered(false);
     } else {
       // Finalizó el cuestionario, enviar resultados al backend
-      if (token) {
-        try {
-          setSubmitting(true);
-          const result = await submitGoalEvaluation(goalIdNum, userAnswers, token);
-          setEvaluationResult(result);
-          promptReinforcement(result);
-          return;
-        } catch (err) {
-          console.warn('Error al enviar respuestas:', err);
-        } finally {
-          setSubmitting(false);
+      try {
+        setSubmitting(true);
+        let result: QuizEvaluationResult | null = null;
+        if (token) {
+          try {
+            result = await submitGoalEvaluation(goalIdNum, userAnswers, token);
+          } catch (err) {
+            console.warn('Error al enviar respuestas:', err);
+          }
         }
+        if (!result) {
+          // Fallback de cálculo local para garantizar que siempre se muestren los resultados
+          const correctCount = userAnswers.filter((a) => a.is_correct).length;
+          const weakTopics = Array.from(
+            new Set(userAnswers.filter((a) => !a.is_correct).map((a) => a.category).filter(Boolean)),
+          );
+          const totalQ = userAnswers.length || questions.length || 3;
+          result = {
+            goal_id: goalIdNum,
+            score: correctCount,
+            total_questions: totalQ,
+            percentage: Math.round((correctCount / totalQ) * 100),
+            weak_topics: weakTopics.length > 0 ? weakTopics : (correctCount < totalQ ? [resourceCategory] : []),
+            reinforcement_recommendations: (weakTopics.length > 0 ? weakTopics : (correctCount < totalQ ? [resourceCategory] : [])).map((t) => `Refuerzo: ${t}`),
+          };
+        }
+        setEvaluationResult(result);
+      } finally {
+        setSubmitting(false);
       }
-      router.replace('/(tabs)/learning' as any);
     }
   };
 
-  const promptReinforcement = (result: QuizEvaluationResult) => {
-    if (result.weak_topics && result.weak_topics.length > 0) {
-      const topic = result.weak_topics[0];
-      Alert.alert(
-        'Resultados de la evaluación',
-        `Puntaje: ${result.score}/${result.total_questions} (${result.percentage}%).\n\nDetectamos oportunidad de refuerzo en: "${topic}".\n\n¿Deseas agregar una sesión de aprendizaje de refuerzo a tu plan?`,
-        [
-          {
-            text: 'Volver a Aprendizaje',
-            style: 'cancel',
-            onPress: () => router.replace('/(tabs)/learning' as any),
-          },
-          {
-            text: 'Añadir refuerzo',
-            onPress: async () => {
-              if (token) {
-                try {
-                  await addReinforcementActivity(
-                    goalIdNum,
-                    { topic, title: `Refuerzo: ${topic}`, estimated_minutes: 30 },
-                    token,
-                  );
-                  Alert.alert('¡Excelente!', 'Actividad de refuerzo añadida a tu cronograma.');
-                } catch {}
-              }
-              router.replace('/(tabs)/learning' as any);
-            },
-          },
-        ],
+  const handleAddReinforcement = async () => {
+    if (!token || !evaluationResult?.weak_topics?.[0] || addingReinforcement) return;
+    try {
+      setAddingReinforcement(true);
+      const topic = evaluationResult.weak_topics[0];
+      await addReinforcementActivity(
+        goalIdNum,
+        { topic, title: `Refuerzo: ${topic}`, estimated_minutes: 30 },
+        token,
       );
-    } else {
-      Alert.alert(
-        '¡Felicitaciones!',
-        `Puntaje perfecto: ${result.score}/${result.total_questions} (100%). ¡Dominas estos conocimientos!`,
-        [{ text: 'Continuar', onPress: () => router.replace('/(tabs)/learning' as any) }],
+      setReinforcementAdded(true);
+    } catch (err) {
+      console.warn('Error al agregar actividad de refuerzo:', err);
+    } finally {
+      setAddingReinforcement(false);
+    }
+  };
+
+  const handleOpenVideo = async (specificQuery?: string) => {
+    try {
+      const q = encodeURIComponent(
+        specificQuery || `${resourceTitle} ${params.goalTitle || ''} tutorial`,
       );
+      await openBrowserAsync(`https://www.youtube.com/results?search_query=${q}`, {
+        presentationStyle: WebBrowserPresentationStyle.AUTOMATIC,
+      });
+    } catch (error) {
+      console.warn('No se pudo abrir el navegador de video:', error);
     }
   };
 
   const handleBack = useCallback(() => {
+    if (evaluationResult) {
+      router.replace('/(tabs)/learning' as any);
+      return true;
+    }
     if (!showResourceIntro && hasResourceInfo) {
       setShowResourceIntro(true);
       return true;
@@ -301,7 +313,7 @@ export default function EvaluationScreen() {
       router.replace('/(tabs)/learning' as any);
     }
     return true;
-  }, [showResourceIntro, hasResourceInfo, userAnswers.length, evaluationResult]);
+  }, [evaluationResult, showResourceIntro, hasResourceInfo, userAnswers.length]);
 
   useFocusEffect(
     useCallback(() => {
@@ -326,14 +338,120 @@ export default function EvaluationScreen() {
         <View style={styles.topHeader}>
           <BackButton onPress={handleBack} />
           <Text style={styles.headerStep}>
-            {showResourceIntro
+            {evaluationResult
+              ? 'RESULTADOS DE EVALUACIÓN'
+              : showResourceIntro
               ? 'RECURSO DE APRENDIZAJE'
               : `PREGUNTA ${currentIndex + 1} DE ${questions.length}`}
           </Text>
           <BrandHeader showTagline={false} />
         </View>
 
-        {showResourceIntro ? (
+        {evaluationResult ? (
+          <View style={styles.resultsContainer}>
+            {/* Tarjeta de Puntuación Hero */}
+            <View style={styles.resultsHeroCard}>
+              <View style={styles.scoreCircle}>
+                <Text style={styles.scoreNumber}>
+                  {evaluationResult.score}/{evaluationResult.total_questions}
+                </Text>
+                <Text style={styles.scorePercentLabel}>{evaluationResult.percentage}% acierto</Text>
+              </View>
+
+              <Text style={styles.resultsHeroTitle}>
+                {evaluationResult.percentage >= 80 ? '¡Excelente desempeño!' : '¡Evaluación completada!'}
+              </Text>
+              <Text style={styles.resultsHeroDesc}>
+                {evaluationResult.percentage >= 80
+                  ? `Dominas los conocimientos esenciales sobre "${resourceTitle}". Estás preparado para continuar con las actividades de tu plan.`
+                  : `Has completado el cuestionario de "${resourceTitle}". Identificamos temas clave que te recomendamos reforzar.`}
+              </Text>
+            </View>
+
+            {/* HU-41: Detectar conocimientos por mejorar */}
+            {evaluationResult.weak_topics && evaluationResult.weak_topics.length > 0 ? (
+              <View style={styles.weakTopicsCard}>
+                <View style={styles.weakTopicsHeader}>
+                  <Feather name="alert-circle" size={18} color="#D97706" />
+                  <Text style={styles.weakTopicsTitle}>Temas detectados por mejorar (HU-41)</Text>
+                </View>
+                <Text style={styles.weakTopicsDesc}>
+                  El sistema detectó que los siguientes conceptos presentan oportunidad de refuerzo:
+                </Text>
+                {evaluationResult.weak_topics.map((topic, idx) => (
+                  <View key={idx} style={styles.weakTopicRow}>
+                    <View style={styles.weakTopicDot} />
+                    <Text style={styles.weakTopicName}>{topic}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {/* HU-42: Agregar aprendizaje de refuerzo */}
+            {evaluationResult.weak_topics && evaluationResult.weak_topics.length > 0 ? (
+              <View style={styles.reinforcementCard}>
+                <View style={styles.reinforcementHeader}>
+                  <Feather name="book-open" size={18} color="#174A62" />
+                  <Text style={styles.reinforcementTitle}>Refuerzo adaptativo recomendado (HU-42)</Text>
+                </View>
+                <Text style={styles.reinforcementDesc}>
+                  La IA propone añadir una sesión de aprendizaje focalizada en "{evaluationResult.weak_topics[0]}".
+                </Text>
+
+                {reinforcementAdded ? (
+                  <View style={styles.reinforcementSuccessBox}>
+                    <Feather name="check-circle" size={16} color="#166534" />
+                    <Text style={styles.reinforcementSuccessText}>
+                      ¡Actividad de refuerzo añadida a tu cronograma!
+                    </Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.addReinforcementBtn}
+                    onPress={handleAddReinforcement}
+                    disabled={addingReinforcement}
+                    activeOpacity={0.85}
+                  >
+                    {addingReinforcement ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <>
+                        <Feather name="plus-circle" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                        <Text style={styles.addReinforcementBtnText}>
+                          Añadir actividad de refuerzo al plan
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : null}
+
+            {/* Botones de acción final */}
+            <TouchableOpacity
+              style={styles.primaryResultsBtn}
+              onPress={() => router.replace('/(tabs)/learning' as any)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.primaryResultsBtnText}>Volver a Aprender</Text>
+              <Feather name="arrow-right" size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.secondaryResultsBtn}
+              onPress={() =>
+                router.navigate({
+                  pathname: '/goal-plan',
+                  params: { goalId: String(goalIdNum) },
+                } as any)
+              }
+              activeOpacity={0.85}
+            >
+              <Text style={styles.secondaryResultsBtnText}>Ver mi plan de estudio</Text>
+              <Feather name="target" size={16} color="#174A62" style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
+          </View>
+        ) : showResourceIntro ? (
           <View style={styles.resourceIntroContainer}>
             {/* Tarjeta destacada con información del recurso */}
             <View style={styles.resourceHeroCard}>
@@ -410,66 +528,60 @@ export default function EvaluationScreen() {
             {resourceType === 'VÍDEO' && (
               <View style={styles.resourceContentCard}>
                 <View style={styles.contentHeaderRow}>
-                  <Feather name="play-circle" size={16} color="#174A62" />
-                  <Text style={styles.contentSectionTitle}>Reproductor de tutorial en vídeo</Text>
+                  <Feather name="play-circle" size={18} color="#174A62" />
+                  <Text style={styles.contentSectionTitle}>Tutorial en vídeo guiado</Text>
                 </View>
 
-                {/* Mock Interactivo de Reproductor de Vídeo */}
+                {/* Banner Interactivo de Video con Botón de Reproducción Real */}
                 <View style={styles.videoPlayerBox}>
-                  <View style={styles.videoPlayerScreen}>
+                  <View style={styles.videoThumbnailCard}>
                     <TouchableOpacity
-                      style={styles.videoPlayCircle}
-                      activeOpacity={0.8}
-                      onPress={() => setIsVideoPlaying((prev) => !prev)}
+                      style={styles.videoPlayCircleLarge}
+                      activeOpacity={0.85}
+                      onPress={() => handleOpenVideo()}
                     >
-                      <Feather name={isVideoPlaying ? 'pause' : 'play'} size={28} color="#FFFFFF" />
+                      <Feather name="play" size={32} color="#FFFFFF" style={{ marginLeft: 4 }} />
                     </TouchableOpacity>
-                    <Text style={styles.videoOverlayTime}>
-                      {isVideoPlaying ? '04:15' : selectedTimestamp} / {resourceDuration}
-                    </Text>
-                  </View>
-                  <View style={styles.videoControlsRow}>
-                    <TouchableOpacity onPress={() => setIsVideoPlaying((prev) => !prev)}>
-                      <Feather name={isVideoPlaying ? 'pause' : 'play'} size={18} color="#FFFFFF" />
-                    </TouchableOpacity>
-                    <View style={styles.videoProgressBarTrack}>
-                      <View style={[styles.videoProgressBarFill, { width: isVideoPlaying ? '35%' : '0%' }]} />
+                    <View style={styles.videoDurationBadge}>
+                      <Feather name="clock" size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
+                      <Text style={styles.videoDurationBadgeText}>{resourceDuration}</Text>
                     </View>
-                    <Feather name="volume-2" size={16} color="#9FB3C8" />
-                    <Feather name="maximize" size={16} color="#9FB3C8" />
                   </View>
+
+                  <TouchableOpacity
+                    style={styles.openRealVideoButton}
+                    activeOpacity={0.85}
+                    onPress={() => handleOpenVideo()}
+                  >
+                    <Feather name="play" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                    <Text style={styles.openRealVideoButtonText}>Ver video tutorial en YouTube</Text>
+                    <Feather name="external-link" size={14} color="#90C2DE" style={{ marginLeft: 8 }} />
+                  </TouchableOpacity>
                 </View>
 
                 <Text style={styles.contentSummaryText}>
                   {resourceSummary ||
-                    `Explicación audiovisual guiada paso a paso sobre "${resourceTitle}". Observa la demostración en pantalla y las recomendaciones prácticas.`}
+                    `Explicación audiovisual guiada paso a paso sobre "${resourceTitle}".`}
                 </Text>
 
-                {/* Índice interactivo de marcas de tiempo del vídeo */}
+                {/* Índice interactivo de capítulos del vídeo */}
                 <View style={styles.timestampsBox}>
-                  <Text style={styles.timestampsHeader}>Índice y marcas de tiempo del vídeo:</Text>
-                  {videoTimestamps.map((ts, idx) => {
-                    const isCurrentTime = selectedTimestamp === ts.time;
-                    return (
-                      <TouchableOpacity
-                        key={idx}
-                        style={[styles.timestampItem, isCurrentTime && styles.timestampItemActive]}
-                        activeOpacity={0.7}
-                        onPress={() => {
-                          setSelectedTimestamp(ts.time);
-                          setIsVideoPlaying(true);
-                        }}
-                      >
-                        <View style={styles.timestampBadge}>
-                          <Feather name="play" size={10} color="#174A62" />
-                          <Text style={styles.timestampBadgeText}>{ts.time}</Text>
-                        </View>
-                        <Text style={[styles.timestampTitle, isCurrentTime && styles.timestampTitleActive]}>
-                          {ts.title}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+                  <Text style={styles.timestampsHeader}>Capítulos y marcas de tiempo del vídeo:</Text>
+                  {videoTimestamps.map((ts, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      style={styles.timestampItem}
+                      activeOpacity={0.7}
+                      onPress={() => handleOpenVideo(`${resourceTitle} ${ts.title}`)}
+                    >
+                      <View style={styles.timestampBadge}>
+                        <Feather name="play" size={10} color="#174A62" />
+                        <Text style={styles.timestampBadgeText}>{ts.time}</Text>
+                      </View>
+                      <Text style={styles.timestampTitle}>{ts.title}</Text>
+                      <Feather name="external-link" size={12} color="#94A3B8" />
+                    </TouchableOpacity>
+                  ))}
                 </View>
               </View>
             )}
@@ -477,42 +589,28 @@ export default function EvaluationScreen() {
             {resourceType === 'PRÁCTICA' && (
               <View style={styles.resourceContentCard}>
                 <View style={styles.contentHeaderRow}>
-                  <Feather name="code" size={16} color="#174A62" />
+                  <Feather name="check-circle" size={18} color="#2F855A" />
                   <Text style={styles.contentSectionTitle}>Taller y reto práctico guiado</Text>
                 </View>
 
-                <Text style={styles.contentSummaryText}>
-                  {resourceSummary ||
-                    `Este laboratorio práctico te guía a través de pasos reales para consolidar "${resourceTitle}". Sigue la lista de verificación y ejecuta los comandos correspondientes.`}
-                </Text>
-
-                {/* Terminal / Snippet de código con botón de copiar */}
-                <View style={styles.terminalBox}>
-                  <View style={styles.terminalHeader}>
-                    <View style={styles.terminalDotsRow}>
-                      <View style={[styles.terminalDot, { backgroundColor: '#EF4444' }]} />
-                      <View style={[styles.terminalDot, { backgroundColor: '#F59E0B' }]} />
-                      <View style={[styles.terminalDot, { backgroundColor: '#10B981' }]} />
-                    </View>
-                    <Text style={styles.terminalTitle}>bash · terminal</Text>
-                    <TouchableOpacity
-                      style={styles.terminalCopyBtn}
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        setCopiedCode(true);
-                        setTimeout(() => setCopiedCode(false), 2000);
-                      }}
-                    >
-                      <Feather name={copiedCode ? 'check' : 'copy'} size={12} color="#FFFFFF" />
-                      <Text style={styles.terminalCopyText}>{copiedCode ? '¡Copiado!' : 'Copiar'}</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <Text style={styles.terminalCode}>{codeSnippet}</Text>
+                <View style={styles.challengeHeroBox}>
+                  <Text style={styles.challengeCategoryTag}>DESAFÍO PRÁCTICO</Text>
+                  <Text style={styles.challengeMainTitle}>{challengeTitle}</Text>
+                  <Text style={styles.challengeDescription}>
+                    {resourceSummary ||
+                      `Aplica los conocimientos de "${resourceTitle}" en una actividad práctica real para asegurar tu avance.`}
+                  </Text>
                 </View>
 
-                {/* Checklist de pasos interactivos */}
+                {/* Checklist de pasos interactivos con contador de progreso */}
                 <View style={styles.practiceStepsBox}>
-                  <Text style={styles.practiceStepsTitle}>Pasos del ejercicio (toca para marcar):</Text>
+                  <View style={styles.practiceStepsHeaderRow}>
+                    <Text style={styles.practiceStepsTitle}>Pasos del ejercicio:</Text>
+                    <Text style={styles.practiceStepsCount}>
+                      {completedPracticeSteps.length} de {practiceSteps.length} listos
+                    </Text>
+                  </View>
+
                   {practiceSteps.map((step, idx) => {
                     const isChecked = completedPracticeSteps.includes(idx);
                     return (
@@ -529,14 +627,59 @@ export default function EvaluationScreen() {
                         }}
                       >
                         <View style={[styles.practiceCheckbox, isChecked && styles.practiceCheckboxChecked]}>
-                          {isChecked && <Feather name="check" size={12} color="#FFFFFF" />}
+                          {isChecked && <Feather name="check" size={13} color="#FFFFFF" />}
                         </View>
                         <Text style={[styles.practiceStepText, isChecked && styles.practiceStepTextChecked]}>
-                          Paso {idx + 1}: {step}
+                          <Text style={{ fontWeight: '700' }}>Paso {idx + 1}: </Text>
+                          {step}
                         </Text>
                       </TouchableOpacity>
                     );
                   })}
+                </View>
+
+                {/* Registro de Resultados y Notas de la Práctica (Cumple HU-39) */}
+                <View style={styles.practiceNotesContainer}>
+                  <Text style={styles.practiceNotesLabel}>
+                    Registro de tus resultados o reflexiones (HU-39):
+                  </Text>
+                  <TextInput
+                    style={styles.practiceNotesInput}
+                    placeholder="Anota aquí qué lograste, qué aprendiste o cualquier conclusión de tu práctica..."
+                    placeholderTextColor="#94A3B8"
+                    value={practiceNotes}
+                    onChangeText={setPracticeNotes}
+                    multiline
+                    numberOfLines={3}
+                  />
+
+                  <Text style={styles.practicePerceptionLabel}>¿Cómo sentiste la dificultad del reto?</Text>
+                  <View style={styles.perceptionRow}>
+                    {[
+                      { key: 'easy', label: 'Fácil' },
+                      { key: 'good', label: 'Adecuado' },
+                      { key: 'hard', label: 'Desafiante' },
+                    ].map((item) => (
+                      <TouchableOpacity
+                        key={item.key}
+                        style={[
+                          styles.perceptionBtn,
+                          practicePerception === item.key && styles.perceptionBtnActive,
+                        ]}
+                        onPress={() => setPracticePerception(item.key as any)}
+                        activeOpacity={0.8}
+                      >
+                        <Text
+                          style={[
+                            styles.perceptionBtnText,
+                            practicePerception === item.key && styles.perceptionBtnTextActive,
+                          ]}
+                        >
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
               </View>
             )}
@@ -946,54 +1089,56 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     elevation: 4,
   },
-  videoPlayerScreen: {
-    height: 160,
-    backgroundColor: '#0B1924',
+  videoThumbnailCard: {
+    height: 150,
+    backgroundColor: '#091E2A',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
   },
-  videoPlayCircle: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: 'rgba(23, 74, 98, 0.85)',
+  videoPlayCircleLarge: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#174A62',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    elevation: 4,
   },
-  videoOverlayTime: {
+  videoDurationBadge: {
     position: 'absolute',
-    bottom: 8,
-    right: 10,
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  videoControlsRow: {
+    bottom: 10,
+    right: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: '#0F2C40',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
-  videoProgressBarTrack: {
-    flex: 1,
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 2,
-    overflow: 'hidden',
+  videoDurationBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
-  videoProgressBarFill: {
-    height: '100%',
-    backgroundColor: '#38BDF8',
-    borderRadius: 2,
+  openRealVideoButton: {
+    backgroundColor: '#C53030',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  openRealVideoButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   timestampsBox: {
     backgroundColor: '#F8FAFC',
@@ -1018,9 +1163,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 8,
   },
-  timestampItemActive: {
-    backgroundColor: '#EBF5FB',
-  },
   timestampBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1041,61 +1183,28 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
-  timestampTitleActive: {
-    color: '#174A62',
-    fontWeight: '800',
-  },
-  terminalBox: {
-    backgroundColor: '#1E293B',
+  challengeHeroBox: {
+    backgroundColor: '#F0FDF4',
     borderRadius: 14,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  terminalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#0F172A',
-    borderBottomWidth: 1,
-    borderBottomColor: '#334155',
-  },
-  terminalDotsRow: {
-    flexDirection: 'row',
+    padding: 14,
     gap: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: '#2F855A',
   },
-  terminalDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  terminalTitle: {
+  challengeCategoryTag: {
     fontSize: 10,
-    color: '#94A3B8',
-    fontFamily: 'monospace',
-    fontWeight: '600',
+    fontWeight: '800',
+    color: '#2F855A',
+    letterSpacing: 0.8,
   },
-  terminalCopyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#334155',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+  challengeMainTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F2C40',
   },
-  terminalCopyText: {
-    fontSize: 9,
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  terminalCode: {
-    padding: 12,
-    fontSize: 11,
-    color: '#38BDF8',
-    fontFamily: 'monospace',
+  challengeDescription: {
+    fontSize: 12,
+    color: '#4A5568',
     lineHeight: 18,
   },
   practiceStepsBox: {
@@ -1106,12 +1215,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#EDF2F7',
   },
+  practiceStepsHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   practiceStepsTitle: {
     fontSize: 11,
     fontWeight: '800',
     color: '#174A62',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
+  },
+  practiceStepsCount: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2F855A',
   },
   practiceStepItem: {
     flexDirection: 'row',
@@ -1120,7 +1239,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   practiceStepItemChecked: {
-    opacity: 0.65,
+    opacity: 0.7,
   },
   practiceCheckbox: {
     width: 22,
@@ -1133,19 +1252,253 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   practiceCheckboxChecked: {
-    backgroundColor: '#174A62',
-    borderColor: '#174A62',
+    backgroundColor: '#2F855A',
+    borderColor: '#2F855A',
   },
   practiceStepText: {
     fontSize: 12,
     color: '#1E293B',
-    fontWeight: '600',
+    fontWeight: '500',
     flex: 1,
     lineHeight: 18,
   },
   practiceStepTextChecked: {
     textDecorationLine: 'line-through',
     color: '#64748B',
+  },
+  practiceNotesContainer: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 14,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#EDF2F7',
+  },
+  practiceNotesLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#174A62',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  practiceNotesInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    padding: 10,
+    fontSize: 12,
+    color: '#0F2C40',
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  practicePerceptionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#627D98',
+    marginTop: 2,
+  },
+  perceptionRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  perceptionBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  perceptionBtnActive: {
+    backgroundColor: '#174A62',
+    borderColor: '#174A62',
+  },
+  perceptionBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#627D98',
+  },
+  perceptionBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  resultsContainer: {
+    gap: 16,
+  },
+  resultsHeroCard: {
+    backgroundColor: '#174A62',
+    borderRadius: 22,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#174A62',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    elevation: 4,
+    gap: 12,
+  },
+  scoreCircle: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scoreNumber: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  scorePercentLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#90C2DE',
+    letterSpacing: 0.5,
+  },
+  resultsHeroTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  resultsHeroDesc: {
+    fontSize: 13,
+    color: '#D8ECF8',
+    textAlign: 'center',
+    lineHeight: 19,
+  },
+  weakTopicsCard: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 18,
+    padding: 16,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  weakTopicsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  weakTopicsTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#92400E',
+  },
+  weakTopicsDesc: {
+    fontSize: 12,
+    color: '#78350F',
+    lineHeight: 17,
+  },
+  weakTopicRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 3,
+  },
+  weakTopicDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#D97706',
+  },
+  weakTopicName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  reinforcementCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 16,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    shadowColor: '#174A62',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    elevation: 2,
+  },
+  reinforcementHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reinforcementTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#174A62',
+  },
+  reinforcementDesc: {
+    fontSize: 12,
+    color: '#4A5568',
+    lineHeight: 17,
+  },
+  reinforcementSuccessBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F0FDF4',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  reinforcementSuccessText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  addReinforcementBtn: {
+    backgroundColor: '#174A62',
+    height: 46,
+    borderRadius: 14,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  addReinforcementBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  primaryResultsBtn: {
+    backgroundColor: '#174A62',
+    height: 52,
+    borderRadius: 18,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#174A62',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    elevation: 3,
+    marginTop: 6,
+  },
+  primaryResultsBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  secondaryResultsBtn: {
+    backgroundColor: '#FFFFFF',
+    height: 48,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  secondaryResultsBtnText: {
+    color: '#174A62',
+    fontSize: 14,
+    fontWeight: '700',
   },
   keyPointsContainer: {
     backgroundColor: '#F8FAFC',

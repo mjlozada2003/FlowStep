@@ -318,7 +318,7 @@ export default function LearningScreen() {
                           resourceKeyPoints: res.key_points ? JSON.stringify(res.key_points) : '',
                           videoTimestamps: res.video_timestamps ? JSON.stringify(res.video_timestamps) : '',
                           practiceSteps: res.practice_steps ? JSON.stringify(res.practice_steps) : '',
-                          codeSnippet: res.code_snippet || '',
+                          challengeTitle: res.challenge_title || res.title,
                         },
                       } as any)
                     }

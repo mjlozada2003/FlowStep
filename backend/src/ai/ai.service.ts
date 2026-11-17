@@ -668,7 +668,7 @@ export class AiService {
           "id": "2",
           "type": "VÍDEO",
           "duration": "12 min",
-          "title": "Título del vídeo",
+          "title": "Tutorial en vídeo: Nombre del tema",
           "category": "Categoría",
           "badge_text": "Recomendado",
           "icon_name": "play",
@@ -676,23 +676,35 @@ export class AiService {
           "key_points": [
             "Demostración guiada del proceso",
             "Errores comunes y cómo evitarlos"
+          ],
+          "video_timestamps": [
+            { "time": "00:00", "title": "Introducción y fundamentos" },
+            { "time": "03:45", "title": "Demostración paso a paso" },
+            { "time": "08:30", "title": "Buenas prácticas y aplicación real" }
           ]
         },
         {
           "id": "3",
           "type": "PRÁCTICA",
           "duration": "20 min",
-          "title": "Ejercicio guiado",
+          "title": "Reto aplicado: Nombre del ejercicio",
           "category": "Práctica",
           "badge_text": "Intermedio",
-          "icon_name": "code",
-          "summary": "Taller enfocado en implementar una solución concreta relacionada al objetivo...",
+          "icon_name": "check-circle",
+          "summary": "Taller enfocado en aplicar directamente una solución concreta relacionada al objetivo...",
+          "challenge_title": "Desafío de aplicación real",
           "key_points": [
             "Puesta en práctica de los conceptos adquiridos",
             "Validación y comprobación de resultados"
+          ],
+          "practice_steps": [
+            "Paso 1: Preparación del escenario o contexto de trabajo",
+            "Paso 2: Ejecución guiada de la actividad",
+            "Paso 3: Revisión y comprobación del resultado"
           ]
         }
       ]
+      IMPORTANTE: Para el recurso PRÁCTICA, NO generes comandos de terminal bash ni código informático a menos que el objetivo sea explícitamente programación; genera pasos prácticos y retos accionables para cualquier meta.
     `;
 
     try {
@@ -705,7 +717,7 @@ export class AiService {
           title: item.title || `Recurso ${idx + 1}`,
           category: item.category || 'Aprendizaje',
           badge_text: item.badge_text || 'Recomendado',
-          icon_name: item.type === 'VÍDEO' ? 'play' : item.type === 'PRÁCTICA' ? 'code' : 'book-open',
+          icon_name: item.type === 'VÍDEO' ? 'play' : item.type === 'PRÁCTICA' ? 'check-circle' : 'book-open',
           summary:
             item.summary ||
             `Información esencial sobre "${item.title || 'este tema'}" para fortalecer los conocimientos necesarios para tu objetivo.`,
@@ -717,6 +729,23 @@ export class AiService {
                   'Buenas prácticas y flujo de trabajo recomendado.',
                   'Cómo aplicar este concepto en tus actividades planificadas.',
                 ],
+          video_timestamps:
+            Array.isArray(item.video_timestamps) && item.video_timestamps.length > 0
+              ? item.video_timestamps
+              : [
+                  { time: '00:00', title: `Introducción a ${item.title}` },
+                  { time: '04:15', title: 'Explicación y demostración práctica' },
+                  { time: '09:30', title: 'Puntos clave y resumen' },
+                ],
+          practice_steps:
+            Array.isArray(item.practice_steps) && item.practice_steps.length > 0
+              ? item.practice_steps
+              : [
+                  `Prepara el contexto o materiales necesarios para ${item.category || goalTitle}.`,
+                  'Aplica la técnica o solución propuesta desarrollando el ejercicio.',
+                  'Revisa y registra tu resultado frente al objetivo propuesto.',
+                ],
+          challenge_title: (item as any).challenge_title || `Reto práctico: ${item.title}`,
         }));
       }
     } catch {
@@ -747,13 +776,13 @@ export class AiService {
         id: '2',
         type: 'VÍDEO',
         duration: '15 min',
-        title: `Tutorial práctico: ${t2}`,
+        title: `Tutorial en vídeo: ${t2}`,
         category: t2,
         badge_text: 'Recomendado',
         icon_name: 'play',
         summary: `Demostración visual y resolución guiada de problemas centrada en "${t2}".`,
         key_points: [
-          'Configuración paso a paso del entorno de trabajo.',
+          'Demostración visual y flujo de trabajo guiado.',
           'Resolución de casos y ejemplos reales.',
           'Recomendaciones para afianzar el aprendizaje.',
         ],
@@ -768,10 +797,10 @@ export class AiService {
         id: '3',
         type: 'PRÁCTICA',
         duration: '25 min',
-        title: `Taller guiado: ${t3}`,
+        title: `Taller aplicado: ${t3}`,
         category: t3,
         badge_text: 'Intermedio',
-        icon_name: 'code',
+        icon_name: 'check-circle',
         summary: `Ejercicio práctico estructurado para consolidar las habilidades operativas de "${t3}".`,
         key_points: [
           'Planteamiento del desafío práctico.',
@@ -779,11 +808,11 @@ export class AiService {
           'Verificación de resultados y autoevaluación.',
         ],
         practice_steps: [
-          `Configura el entorno de trabajo y verifica dependencias para ${t3}.`,
-          'Implementa la estructura base siguiendo el ejemplo guiado.',
-          'Ejecuta las pruebas de funcionamiento y valida la solución.',
+          `Revisa los conceptos base y prepara tu espacio para ${t3}.`,
+          'Desarrolla el ejercicio siguiendo los criterios de calidad recomendados.',
+          'Verifica tus resultados y anota tus conclusiones.',
         ],
-        code_snippet: `# Taller práctico: ${t3}\n# 1. Preparar entorno y dependencias\nflowstep init --topic "${t3.toLowerCase().replace(/\\s+/g, '-')}"\n# 2. Ejecutar prueba del ejercicio\nflowstep run verify`,
+        challenge_title: `Reto práctico: ${t3}`,
       },
     ];
   }
