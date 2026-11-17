@@ -38,6 +38,7 @@ export interface QuizQuestionOption {
   key: string;
   text: string;
   is_correct: boolean;
+  isCorrect?: boolean;
 }
 
 export interface QuizQuestionItem {
@@ -101,13 +102,26 @@ export async function getGoalEvaluation(
  */
 export async function submitGoalEvaluation(
   goalId: number,
-  answers: { question_id: number; selected_option_id: string }[],
+  answers: {
+    question_id: number;
+    selected_option?: string;
+    selected_option_id?: string;
+    is_correct?: boolean;
+    category?: string;
+  }[],
   token: string,
 ): Promise<QuizEvaluationResult> {
+  const normalizedAnswers = answers.map((a) => ({
+    question_id: a.question_id,
+    selected_option: a.selected_option || a.selected_option_id || '',
+    selected_option_id: a.selected_option_id || a.selected_option || '',
+    is_correct: a.is_correct,
+    category: a.category,
+  }));
   return apiRequest<QuizEvaluationResult>(`/goals/${goalId}/evaluation/submit`, {
     method: 'POST',
     token,
-    body: JSON.stringify({ answers }),
+    body: JSON.stringify({ answers: normalizedAnswers }),
   });
 }
 

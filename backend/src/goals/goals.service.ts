@@ -1030,6 +1030,33 @@ export class GoalsService {
       throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
     }
 
+    const hasClientGrading = dto.answers && dto.answers.some((a) => typeof a.is_correct === 'boolean');
+    if (hasClientGrading) {
+      let score = 0;
+      const weakTopicsSet = new Set<string>();
+      for (const a of dto.answers) {
+        if (a.is_correct) {
+          score++;
+        } else {
+          weakTopicsSet.add(a.category || 'General');
+        }
+      }
+      const total = dto.answers.length || 1;
+      const percentage = Math.round((score / total) * 100);
+      const weak_topics = Array.from(weakTopicsSet);
+      return {
+        score,
+        total_questions: total,
+        percentage,
+        weak_topics,
+        reinforcement_recommendations: weak_topics.map((topic) => ({
+          topic,
+          suggested_title: `Refuerzo guiado: ${topic}`,
+          estimated_minutes: 30,
+        })),
+      };
+    }
+
     const stageNames = goal.stages?.map((s) => s.name) || [];
     const questions = await this.aiService.generateEvaluationQuiz(goalId, goal.title, stageNames);
     return this.aiService.evaluateQuizAnswers(questions, dto.answers);

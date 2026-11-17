@@ -85,7 +85,15 @@ export default function EvaluationScreen() {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
   const [score, setScore] = useState(0);
-  const [userAnswers, setUserAnswers] = useState<{ question_id: number; selected_option_id: string }[]>([]);
+  const [userAnswers, setUserAnswers] = useState<
+    {
+      question_id: number;
+      selected_option: string;
+      selected_option_id: string;
+      is_correct: boolean;
+      category: string;
+    }[]
+  >([]);
   const [evaluationResult, setEvaluationResult] = useState<QuizEvaluationResult | null>(null);
 
   const resourceTitle = params.resourceTitle || 'Guía conceptual';
@@ -148,7 +156,16 @@ export default function EvaluationScreen() {
     if (isCorrect) {
       setScore((prev) => prev + 1);
     }
-    setUserAnswers((prev) => [...prev, { question_id: currentQ.id, selected_option_id: key }]);
+    setUserAnswers((prev) => [
+      ...prev,
+      {
+        question_id: currentQ.id,
+        selected_option: key,
+        selected_option_id: key,
+        is_correct: isCorrect,
+        category: currentQ.category,
+      },
+    ]);
   };
 
   const handleNext = async () => {
@@ -341,7 +358,7 @@ export default function EvaluationScreen() {
             <View style={styles.optionsList}>
               {currentQ.options.map((opt) => {
                 const isSelected = selectedOption === opt.key;
-                const isCorrectOption = opt.is_correct;
+                const isCorrectOption = Boolean(opt.is_correct ?? opt.isCorrect);
 
                 return (
                   <TouchableOpacity
@@ -352,7 +369,7 @@ export default function EvaluationScreen() {
                       isAnswered && isSelected && !isCorrectOption && styles.cardIncorrect,
                     ]}
                     activeOpacity={0.8}
-                    onPress={() => handleSelectOption(opt.key, opt.is_correct)}
+                    onPress={() => handleSelectOption(opt.key, isCorrectOption)}
                   >
                     <View
                       style={[
@@ -374,9 +391,25 @@ export default function EvaluationScreen() {
 
             {/* Caja de explicación / retroalimentación inmediata */}
             {isAnswered && (
-              <View style={[styles.feedbackBox, selectedObj?.is_correct ? styles.feedbackSuccess : styles.feedbackWarn]}>
-                <Text style={[styles.feedbackTitle, selectedObj?.is_correct ? styles.textSuccess : styles.textWarn]}>
-                  {selectedObj?.is_correct ? '¡Correcto!' : 'Casi. Repasemos este punto.'}
+              <View
+                style={[
+                  styles.feedbackBox,
+                  (selectedObj?.is_correct ?? selectedObj?.isCorrect)
+                    ? styles.feedbackSuccess
+                    : styles.feedbackWarn,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.feedbackTitle,
+                    (selectedObj?.is_correct ?? selectedObj?.isCorrect)
+                      ? styles.textSuccess
+                      : styles.textWarn,
+                  ]}
+                >
+                  {(selectedObj?.is_correct ?? selectedObj?.isCorrect)
+                    ? '¡Correcto!'
+                    : 'Casi. Repasemos este punto.'}
                 </Text>
                 <Text style={styles.feedbackDesc}>{currentQ.explanation}</Text>
               </View>

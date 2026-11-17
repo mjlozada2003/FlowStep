@@ -108,6 +108,7 @@ export interface QuizOption {
   key: string;
   text: string;
   isCorrect: boolean;
+  is_correct?: boolean;
 }
 
 export interface QuizQuestionItem {
@@ -808,7 +809,21 @@ export class AiService {
     try {
       const parsed = await this.callGeminiJson<QuizQuestionItem[]>(prompt);
       if (Array.isArray(parsed) && parsed.length >= 2) {
-        return parsed;
+        return parsed.map((item, idx) => ({
+          id: item.id || idx + 1,
+          category: item.category || 'Conceptos clave',
+          question: item.question,
+          options: (item.options || []).map((opt) => {
+            const isCorr = Boolean(opt.isCorrect ?? (opt as any).is_correct);
+            return {
+              key: opt.key,
+              text: opt.text,
+              isCorrect: isCorr,
+              is_correct: isCorr,
+            };
+          }),
+          explanation: item.explanation || 'Respuesta orientada a reforzar los conceptos clave.',
+        }));
       }
     } catch {
       // Fallback
@@ -821,9 +836,9 @@ export class AiService {
         category: 'CONCEPTOS BÁSICOS',
         question: `¿Cuál es el primer principio fundamental para dominar "${firstTopic}"?`,
         options: [
-          { key: 'A', text: 'Comprender los fundamentos y practicar de forma constante', isCorrect: true },
-          { key: 'B', text: 'Memorizar todos los conceptos sin practicar', isCorrect: false },
-          { key: 'C', text: 'Saltar directamente a proyectos complejos sin base', isCorrect: false },
+          { key: 'A', text: 'Comprender los fundamentos y practicar de forma constante', isCorrect: true, is_correct: true },
+          { key: 'B', text: 'Memorizar todos los conceptos sin practicar', isCorrect: false, is_correct: false },
+          { key: 'C', text: 'Saltar directamente a proyectos complejos sin base', isCorrect: false, is_correct: false },
         ],
         explanation: 'La comprensión conceptual combinada con práctica progresiva garantiza retención duradera.',
       },
@@ -832,9 +847,9 @@ export class AiService {
         category: 'METODOLOGÍA',
         question: '¿Qué acción se recomienda cuando encuentras una dificultad alta en una actividad?',
         options: [
-          { key: 'A', text: 'Abandonar la actividad y pasar a otra', isCorrect: false },
-          { key: 'B', text: 'Desglosarla en pasos más pequeños y consultar recursos de apoyo', isCorrect: true },
-          { key: 'C', text: 'Ignorar el problema y continuar', isCorrect: false },
+          { key: 'A', text: 'Abandonar la actividad y pasar a otra', isCorrect: false, is_correct: false },
+          { key: 'B', text: 'Desglosarla en pasos más pequeños y consultar recursos de apoyo', isCorrect: true, is_correct: true },
+          { key: 'C', text: 'Ignorar el problema y continuar', isCorrect: false, is_correct: false },
         ],
         explanation: 'La descomposición de problemas y el refuerzo puntual facilitan superar bloqueos técnicos.',
       },
@@ -843,9 +858,9 @@ export class AiService {
         category: 'APLICACIÓN PRÁCTICA',
         question: `¿Cómo se consolida de mejor forma el aprendizaje adquirido en "${goalTitle}"?`,
         options: [
-          { key: 'A', text: 'Aplicándolo en un ejercicio práctico o proyecto real', isCorrect: true },
-          { key: 'B', text: 'Leyendo la teoría una sola vez', isCorrect: false },
-          { key: 'C', text: 'Postergando la práctica indefinidamente', isCorrect: false },
+          { key: 'A', text: 'Aplicándolo en un ejercicio práctico o proyecto real', isCorrect: true, is_correct: true },
+          { key: 'B', text: 'Leyendo la teoría una sola vez', isCorrect: false, is_correct: false },
+          { key: 'C', text: 'Postergando la práctica indefinidamente', isCorrect: false, is_correct: false },
         ],
         explanation: 'La práctica deliberada transfiere el conocimiento teórico a habilidades operativas reales.',
       },
@@ -857,23 +872,29 @@ export class AiService {
    */
   evaluateQuizAnswers(
     questions: QuizQuestionItem[],
-    answers: { question_id: number; selected_option: string }[],
+    answers: { question_id: number; selected_option?: string; selected_option_id?: string; is_correct?: boolean; category?: string }[],
   ): QuizEvaluationResult {
     let score = 0;
     const weakTopicsSet = new Set<string>();
 
     for (const q of questions) {
       const userAns = answers.find((a) => a.question_id === q.id);
-      const correctOpt = q.options.find((o) => o.isCorrect);
+      const correctOpt = q.options.find((o) => o.isCorrect || o.is_correct);
 
-      if (userAns && correctOpt && userAns.selected_option === correctOpt.key) {
+      const userChoice = userAns?.selected_option || userAns?.selected_option_id;
+      const isCorrect =
+        typeof userAns?.is_correct === 'boolean'
+          ? userAns.is_correct
+          : Boolean(userAns && correctOpt && userChoice === correctOpt.key);
+
+      if (isCorrect) {
         score++;
       } else {
-        weakTopicsSet.add(q.category || 'General');
+        weakTopicsSet.add(q.category || userAns?.category || 'General');
       }
     }
 
-    const total = questions.length || 1;
+    const total = questions.length || answers.length || 1;
     const percentage = Math.round((score / total) * 100);
     const weak_topics = Array.from(weakTopicsSet);
 
