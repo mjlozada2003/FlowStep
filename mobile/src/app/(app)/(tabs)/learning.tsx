@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,50 +12,101 @@ import {
 
 import { Screen } from '@/components/ui/Screen';
 import { BrandHeader } from '@/components/ui/BrandHeader';
+import { useAuth } from '@/contexts/auth-context';
+import { getGoalsOverview } from '@/services/api/goals';
+import {
+  getGoalKnowledge,
+  getGoalResources,
+  GoalKnowledgeResponse,
+  LearningResourceItem,
+} from '@/services/api/learning';
 
-interface LearningResource {
-  id: string;
-  type: 'LECTURA' | 'VÍDEO' | 'PRÁCTICA';
-  duration: string;
-  title: string;
-  category: string;
-  badgeText: string;
-  iconName: keyof typeof Feather.glyphMap;
-}
-
-const mockResources: LearningResource[] = [
+const fallbackResources: LearningResourceItem[] = [
   {
     id: '1',
     type: 'LECTURA',
     duration: '3 min',
-    title: 'Pensar en componentes',
-    category: 'Componentes de React',
-    badgeText: 'Esencial',
-    iconName: 'book-open',
+    title: 'Pensar en componentes y estructura',
+    category: 'Fundamentos',
+    badge_text: 'Esencial',
+    icon_name: 'book-open',
   },
   {
     id: '2',
     type: 'VÍDEO',
     duration: '12 min',
-    title: 'Estado y propiedades paso a paso',
-    category: 'React básico',
-    badgeText: 'Recomendado',
-    iconName: 'play',
+    title: 'Flujo de datos y propiedades paso a paso',
+    category: 'Conceptos clave',
+    badge_text: 'Recomendado',
+    icon_name: 'play',
   },
   {
     id: '3',
     type: 'PRÁCTICA',
     duration: '20 min',
-    title: 'Construye tu primera interfaz',
-    category: 'Componentes',
-    badgeText: 'Intermedio',
-    iconName: 'code',
+    title: 'Construye tu primer ejercicio práctico',
+    category: 'Práctica guiada',
+    badge_text: 'Intermedio',
+    icon_name: 'code',
   },
 ];
 
 export default function LearningScreen() {
-  const [dominantCount] = useState(2);
-  const [totalConcepts] = useState(5);
+  const { token } = useAuth();
+  const [loading, setLoading] = useState<boolean>(true);
+  const [currentGoalId, setCurrentGoalId] = useState<number>(1);
+  const [knowledge, setKnowledge] = useState<GoalKnowledgeResponse | null>(null);
+  const [resources, setResources] = useState<LearningResourceItem[]>(fallbackResources);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadLearningData() {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+      try {
+        setLoading(true);
+        // Obtener la meta activa principal
+        const goals = await getGoalsOverview(token).catch(() => []);
+        const activeGoal = goals && goals.length > 0 ? goals[0] : null;
+        const targetGoalId = activeGoal ? Number(activeGoal.goal_id) : 1;
+        setCurrentGoalId(targetGoalId);
+
+        const [knowRes, resRes] = await Promise.all([
+          getGoalKnowledge(targetGoalId, token).catch(() => null),
+          getGoalResources(targetGoalId, token).catch(() => null),
+        ]);
+
+        if (isMounted) {
+          if (knowRes) setKnowledge(knowRes);
+          if (resRes && resRes.length > 0) setResources(resRes);
+        }
+      } catch (err) {
+        console.warn('Error al cargar datos de aprendizaje:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    loadLearningData();
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
+
+  const dominantCount = knowledge?.dominant_count ?? 2;
+  const totalConcepts = knowledge?.total_concepts ?? 5;
+  const goalTitle = knowledge?.goal_title || 'Objetivo de aprendizaje';
+  const progressPercent = knowledge?.progress_percentage ?? 33;
+  const topics = knowledge?.topics || [
+    { name: 'HTML y CSS', status: 'completed' as const },
+    { name: 'JavaScript', status: 'completed' as const },
+    { name: 'Componentes', status: 'current' as const },
+    { name: 'Hooks', status: 'pending' as const },
+    { name: 'APIs', status: 'pending' as const },
+    { name: 'Pruebas', status: 'pending' as const },
+  ];
 
   return (
     <Screen style={styles.screen}>
@@ -74,90 +126,134 @@ export default function LearningScreen() {
           </View>
         </View>
 
-        {/* Tarjeta Azul Oscura del Objetivo Actual */}
-        <View style={styles.goalCardDark}>
-          <View style={styles.goalCardTop}>
-            <Text style={styles.goalLabel}>OBJETIVO</Text>
-            <Text style={styles.goalPercent}>33%</Text>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#174A62" />
+            <Text style={styles.loadingText}>Cargando conocimientos y recursos...</Text>
           </View>
-          <Text style={styles.goalTitle}>Crear una aplicación web</Text>
-          
-          <View style={styles.progressBarBg}>
-            <View style={styles.progressBarFill} />
-          </View>
+        ) : (
+          <>
+            {/* Tarjeta Azul Oscura del Objetivo Actual */}
+            <View style={styles.goalCardDark}>
+              <View style={styles.goalCardTop}>
+                <Text style={styles.goalLabel}>OBJETIVO</Text>
+                <Text style={styles.goalPercent}>{progressPercent}%</Text>
+              </View>
+              <Text style={styles.goalTitle}>{goalTitle}</Text>
 
-          {/* Píldoras de temas */}
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.pillsRow}
-          >
-            <View style={[styles.topicPill, styles.topicDone]}><Text style={styles.topicDoneText}>✓ HTML y CSS</Text></View>
-            <View style={[styles.topicPill, styles.topicDone]}><Text style={styles.topicDoneText}>✓ JavaScript</Text></View>
-            <View style={[styles.topicPill, styles.topicActive]}><Text style={styles.topicActiveText}>React</Text></View>
-            <View style={styles.topicPill}><Text style={styles.topicText}>Hooks</Text></View>
-            <View style={styles.topicPill}><Text style={styles.topicText}>APIs</Text></View>
-            <View style={styles.topicPill}><Text style={styles.topicText}>Pruebas</Text></View>
-          </ScrollView>
-        </View>
+              <View style={styles.progressBarBg}>
+                <View style={[styles.progressBarFill, { width: `${Math.min(100, Math.max(5, progressPercent))}%` }]} />
+              </View>
 
-        {/* Sección RECURSOS RECOMENDADOS */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionMainTitle}>Recursos recomendados</Text>
-          <Text style={styles.sectionSubHint}>Según tus dificultades</Text>
-        </View>
+              {/* Píldoras de temas */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.pillsRow}
+              >
+                {topics.map((t, idx) => {
+                  const isDone = t.status === 'completed';
+                  const isActive = t.status === 'current';
+                  return (
+                    <View
+                      key={idx}
+                      style={[
+                        styles.topicPill,
+                        isDone && styles.topicDone,
+                        isActive && styles.topicActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.topicText,
+                          isDone && styles.topicDoneText,
+                          isActive && styles.topicActiveText,
+                        ]}
+                      >
+                        {isDone ? `✓ ${t.name}` : t.name}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </View>
 
-        <View style={styles.resourcesList}>
-          {mockResources.map((res) => (
-            <TouchableOpacity 
-              key={res.id} 
-              style={styles.resourceCard} 
-              activeOpacity={0.8}
-              onPress={() => router.push({ pathname: '/evaluation', params: { resourceId: res.id } } as any)}
+            {/* Sección RECURSOS RECOMENDADOS */}
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionMainTitle}>Recursos recomendados</Text>
+              <Text style={styles.sectionSubHint}>Según tus dificultades</Text>
+            </View>
+
+            <View style={styles.resourcesList}>
+              {resources.map((res) => {
+                const iconName: any = res.icon_name || 'book-open';
+                return (
+                  <TouchableOpacity
+                    key={res.id}
+                    style={styles.resourceCard}
+                    activeOpacity={0.8}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/evaluation',
+                        params: { goalId: String(currentGoalId), resourceId: res.id },
+                      } as any)
+                    }
+                  >
+                    <View style={styles.resourceIconBox}>
+                      <Feather name={iconName} size={20} color="#174A62" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.resourceType}>{res.type} · {res.duration}</Text>
+                      <Text style={styles.resourceTitle}>{res.title}</Text>
+                      <View style={styles.resourceFooterRow}>
+                        <Text style={styles.resourceCategory}>{res.category}</Text>
+                        <View style={styles.miniBadge}>
+                          <Text style={styles.miniBadgeText}>{res.badge_text || 'Esencial'}</Text>
+                        </View>
+                      </View>
+                    </View>
+                    <Feather name="chevron-right" size={18} color="#627D98" />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Tarjeta de Evaluación Interactiva */}
+            <TouchableOpacity
+              style={styles.evaluationBanner}
+              activeOpacity={0.85}
+              onPress={() =>
+                router.push({
+                  pathname: '/evaluation',
+                  params: { goalId: String(currentGoalId) },
+                } as any)
+              }
             >
-              <View style={styles.resourceIconBox}>
-                <Feather name={res.iconName} size={20} color="#174A62" />
+              <View style={styles.evalIconBox}>
+                <Feather name="help-circle" size={22} color="#FFFFFF" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.resourceType}>{res.type} · {res.duration}</Text>
-                <Text style={styles.resourceTitle}>{res.title}</Text>
-                <View style={styles.resourceFooterRow}>
-                  <Text style={styles.resourceCategory}>{res.category}</Text>
-                  <View style={styles.miniBadge}>
-                    <Text style={styles.miniBadgeText}>{res.badgeText}</Text>
-                  </View>
-                </View>
+                <Text style={styles.evalTag}>COMPRUEBA LO APRENDIDO</Text>
+                <Text style={styles.evalTitle}>Evaluación diagnóstica adaptativa</Text>
+                <Text style={styles.evalSubtitle}>Preguntas clave · Refuerzo con IA</Text>
               </View>
-              <Feather name="chevron-right" size={18} color="#627D98" />
+              <Text style={styles.evalAction}>Empezar</Text>
             </TouchableOpacity>
-          ))}
-        </View>
 
-        {/* Tarjeta de Evaluación Interactiva */}
-        <TouchableOpacity 
-          style={styles.evaluationBanner}
-          activeOpacity={0.85}
-          onPress={() => router.push('/evaluation' as any)}
-        >
-          <View style={styles.evalIconBox}>
-            <Feather name="help-circle" size={22} color="#FFFFFF" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.evalTag}>COMPRUEBA LO APRENDIDO</Text>
-            <Text style={styles.evalTitle}>Evaluación de React básico</Text>
-            <Text style={styles.evalSubtitle}>3 preguntas · 5 minutos</Text>
-          </View>
-          <Text style={styles.evalAction}>Empezar</Text>
-        </TouchableOpacity>
-
-        {/* Enlace a plan conectado */}
-        <TouchableOpacity style={styles.planConnectedCard} activeOpacity={0.8}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.planConnectedTitle}>Aprendizaje conectado a tu plan</Text>
-            <Text style={styles.planConnectedDesc}>Las actividades que añadas aparecerán en la Etapa I.</Text>
-          </View>
-          <Text style={styles.planConnectedAction}>Ver plan</Text>
-        </TouchableOpacity>
+            {/* Enlace a plan conectado */}
+            <TouchableOpacity
+              style={styles.planConnectedCard}
+              activeOpacity={0.8}
+              onPress={() => router.push('/(tabs)/goals' as any)}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.planConnectedTitle}>Aprendizaje conectado a tu plan</Text>
+                <Text style={styles.planConnectedDesc}>Las actividades de refuerzo aparecerán programadas en tu plan.</Text>
+              </View>
+              <Text style={styles.planConnectedAction}>Ver plan</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </Screen>
   );
@@ -428,5 +524,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#174A62',
+  },
+  loadingContainer: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#627D98',
+    fontWeight: '600',
   },
 });
