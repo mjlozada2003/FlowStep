@@ -26,6 +26,102 @@ export interface InitialPlanResponse {
   stages: PlanStage[];
 }
 
+export interface RecommendationDiagnostic {
+  goal_id: number;
+  goal_title: string;
+  activity_title?: string;
+  max_days_late?: number;
+  alert_level: 'warning' | 'critical' | 'info';
+  alert_message: string;
+  difficulty_context?: string;
+  why_suggested: string;
+  solution_focus: string;
+  solutions: string[];
+  metrics: {
+    progress_percentage: number;
+    completed_activities: number;
+    total_activities: number;
+    available_hours?: number;
+  };
+}
+
+export interface ReplanProposalItem {
+  type: 'balanced' | 'learning' | 'time';
+  type_label: string;
+  title: string;
+  badge_text: string;
+  description: string;
+  stats_summary: string;
+  pills: string[];
+  explanation: string;
+  rescheduled_count: number;
+  added_resources_count?: number;
+  extended_days?: number;
+}
+
+export interface ReplanAlternativesResponse {
+  goal_id: number;
+  goal_title: string;
+  current_progress_percentage: number;
+  completed_count: number;
+  completed_hours: number;
+  proposals: ReplanProposalItem[];
+}
+
+export interface GoalTopicItem {
+  id: string;
+  name: string;
+  is_mastered: boolean;
+  stage_name?: string;
+}
+
+export interface GoalKnowledgeResponse {
+  goal_id: number;
+  goal_title: string;
+  dominant_count: number;
+  total_concepts: number;
+  progress_percentage: number;
+  topics: GoalTopicItem[];
+}
+
+export interface LearningResourceItem {
+  id: string;
+  type: 'LECTURA' | 'VÍDEO' | 'PRÁCTICA';
+  duration: string;
+  title: string;
+  category: string;
+  badge_text: string;
+  icon_name: 'book-open' | 'play' | 'code';
+  url?: string;
+  activity_id?: number;
+}
+
+export interface QuizOption {
+  key: string;
+  text: string;
+  isCorrect: boolean;
+}
+
+export interface QuizQuestionItem {
+  id: number;
+  category: string;
+  question: string;
+  options: QuizOption[];
+  explanation: string;
+}
+
+export interface QuizEvaluationResult {
+  score: number;
+  total_questions: number;
+  percentage: number;
+  weak_topics: string[];
+  reinforcement_recommendations: {
+    topic: string;
+    suggested_title: string;
+    estimated_minutes: number;
+  }[];
+}
+
 @Injectable()
 export class AiService {
   private ai: GoogleGenAI;
@@ -46,10 +142,38 @@ export class AiService {
     }
     const firstBrace = text.indexOf('{');
     const lastBrace = text.lastIndexOf('}');
+    const firstBracket = text.indexOf('[');
+    const lastBracket = text.lastIndexOf(']');
+
+    if (firstBracket !== -1 && lastBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+      return text.slice(firstBracket, lastBracket + 1);
+    }
     if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      text = text.slice(firstBrace, lastBrace + 1);
+      return text.slice(firstBrace, lastBrace + 1);
     }
     return text;
+  }
+
+  private async callGeminiJson<T>(prompt: string): Promise<T | null> {
+    const candidateModels = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest'];
+    for (const model of candidateModels) {
+      try {
+        const response = await this.ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+          },
+        });
+        const cleaned = this.cleanJsonText(response?.text);
+        if (cleaned) {
+          return JSON.parse(cleaned) as T;
+        }
+      } catch (err: any) {
+        // Continuar con el siguiente modelo candidato
+      }
+    }
+    return null;
   }
 
   private generateFallbackPlan(
@@ -241,5 +365,439 @@ export class AiService {
       userAvailabilities,
       sessionDurationMinutes,
     );
+  }
+
+  /**
+   * HU-04, HU-26, HU-30: Generar diagnóstico y recomendación asistida por IA
+   */
+  async generateRecommendationDiagnostic(
+    goalId: number,
+    goalTitle: string,
+    overdueActivityTitle?: string,
+    maxDaysLate = 0,
+    difficultyNotes?: string,
+    missReason?: string,
+    progressPercentage = 0,
+    completedActivities = 0,
+    totalActivities = 0,
+    availableHours = 4,
+  ): Promise<RecommendationDiagnostic> {
+    const isDelayed = maxDaysLate > 0;
+    const hasDifficulty = Boolean(difficultyNotes || missReason);
+
+    const prompt = `
+      Actúa como un mentor educativo y pedagógico empático de la aplicación FlowStep.
+      El usuario tiene el objetivo: "${goalTitle}"
+      Progreso actual: ${progressPercentage}%, actividades completadas: ${completedActivities} de ${totalActivities}.
+      Horas disponibles estimadas esta semana: ${availableHours}h.
+      ${isDelayed ? `Actividad con retraso: "${overdueActivityTitle}" con ${maxDaysLate} días de atraso.` : 'El objetivo no presenta retrasos críticos.'}
+      ${hasDifficulty ? `Dificultad o causa registrada: "${difficultyNotes || missReason}".` : 'No se registraron dificultades severas.'}
+
+      Genera un diagnóstico constructivo que explique claramente la razón de la recomendación y qué busca solucionar.
+      Devuelve ESTRICTAMENTE un JSON con:
+      {
+        "why_suggested": "Explicación breve de 1 o 2 oraciones de por qué se sugiere",
+        "solution_focus": "Enfoque de la solución (ej: Dar más espacio al aprendizaje, Optimizar carga)",
+        "solutions": [
+          "Conservar las ${completedActivities} actividades ya completadas.",
+          "Segunda acción propuesta...",
+          "Tercera acción propuesta..."
+        ]
+      }
+    `;
+
+    try {
+      const parsed = await this.callGeminiJson<{
+        why_suggested?: string;
+        solution_focus?: string;
+        solutions?: string[];
+      }>(prompt);
+
+      if (parsed?.why_suggested && parsed?.solution_focus && Array.isArray(parsed?.solutions)) {
+        return {
+          goal_id: goalId,
+          goal_title: goalTitle,
+          activity_title: overdueActivityTitle || 'Actividad programada',
+          max_days_late: maxDaysLate,
+          alert_level: maxDaysLate > 3 ? 'critical' : isDelayed ? 'warning' : 'info',
+          alert_message: isDelayed
+            ? `"${overdueActivityTitle || 'Una actividad'}" lleva ${maxDaysLate} ${maxDaysLate === 1 ? 'día' : 'días'} de retraso.`
+            : 'Estás al día con tu planificación.',
+          difficulty_context: difficultyNotes || missReason || undefined,
+          why_suggested: parsed.why_suggested,
+          solution_focus: parsed.solution_focus,
+          solutions: parsed.solutions,
+          metrics: {
+            progress_percentage: Number(progressPercentage),
+            completed_activities: completedActivities,
+            total_activities: totalActivities,
+            available_hours: availableHours,
+          },
+        };
+      }
+    } catch {
+      // Usar fallback
+    }
+
+    // Fallback pedagógico contextual
+    const defaultWhy = isDelayed
+      ? `"${overdueActivityTitle || 'Una actividad'}" no pudo completarse dentro del plazo${hasDifficulty ? ` y registraste: ${difficultyNotes || missReason}` : ''}.`
+      : 'Mantén el buen ritmo actual asegurando sesiones de repaso para consolidar tu avance.';
+
+    return {
+      goal_id: goalId,
+      goal_title: goalTitle,
+      activity_title: overdueActivityTitle || 'Actividad del plan',
+      max_days_late: maxDaysLate,
+      alert_level: maxDaysLate > 3 ? 'critical' : isDelayed ? 'warning' : 'info',
+      alert_message: isDelayed
+        ? `"${overdueActivityTitle || 'Una actividad'}" lleva ${maxDaysLate} ${maxDaysLate === 1 ? 'día' : 'días'} de retraso.`
+        : 'Estás al día con tu planificación.',
+      difficulty_context: difficultyNotes || missReason || undefined,
+      why_suggested: defaultWhy,
+      solution_focus: isDelayed ? 'Dar más espacio al aprendizaje' : 'Consolidar el progreso alcanzado',
+      solutions: [
+        `Conservar las ${completedActivities} actividades ya completadas y tu avance registrado.`,
+        isDelayed
+          ? 'Reorganizar las actividades restantes según tu disponibilidad horaria real.'
+          : 'Continuar con las actividades programadas en tus bloques disponibles.',
+        'Ofrecer refuerzos guiados si encuentras conceptos complejos en las siguientes sesiones.',
+      ],
+      metrics: {
+        progress_percentage: Number(progressPercentage),
+        completed_activities: completedActivities,
+        total_activities: totalActivities,
+        available_hours: availableHours,
+      },
+    };
+  }
+
+  /**
+   * HU-27, HU-28, HU-29, HU-30, HU-51: Generar alternativas comparativas de replanificación
+   */
+  async generateReplanAlternatives(
+    goalId: number,
+    goalTitle: string,
+    progressPercentage: number,
+    completedCount: number,
+    completedHours: number,
+    pendingActivitiesCount: number,
+  ): Promise<ReplanAlternativesResponse> {
+    const proposals: ReplanProposalItem[] = [
+      {
+        type: 'balanced',
+        type_label: 'Equilibrada',
+        title: 'Redistribuir esta semana',
+        badge_text: 'RECOMENDADA',
+        description: `Mueve ${Math.min(pendingActivitiesCount, 2)} actividades a franjas libres y mantiene la fecha límite.`,
+        stats_summary: '3 sesiones · máx. 60 min',
+        pills: ['Ajuste semanal', 'Sin cambiar fecha'],
+        explanation: 'Aprovecha tu disponibilidad de fin de semana para resolver el retraso sin alterar la fecha límite original.',
+        rescheduled_count: Math.min(pendingActivitiesCount, 2),
+      },
+      {
+        type: 'learning',
+        type_label: 'Más aprendizaje',
+        title: 'Añadir refuerzo guiado',
+        badge_text: 'MÁS APOYO',
+        description: 'Agrega 2 recursos de refuerzo y desplaza la práctica 3 días.',
+        stats_summary: '4 sesiones · Incluye refuerzo',
+        pills: ['+ 2 recursos', 'Práctica guiada'],
+        explanation: 'Ideal si necesitas afianzar conceptos clave antes de avanzar con ejercicios prácticos más complejos.',
+        rescheduled_count: Math.min(pendingActivitiesCount, 3),
+        added_resources_count: 2,
+      },
+      {
+        type: 'time',
+        type_label: 'Más tiempo',
+        title: 'Extender fecha límite',
+        badge_text: 'MENOR CARGA',
+        description: 'Reduce la carga semanal y extiende el cierre 14 días.',
+        stats_summary: '2 sesiones · máx. 45 min',
+        pills: ['+ 14 días', '- 1 sesión/sem'],
+        explanation: 'Distribuye mejor el esfuerzo diario si tienes una agenda apretada en las próximas semanas.',
+        rescheduled_count: pendingActivitiesCount,
+        extended_days: 14,
+      },
+    ];
+
+    return {
+      goal_id: goalId,
+      goal_title: goalTitle,
+      current_progress_percentage: progressPercentage,
+      completed_count: completedCount,
+      completed_hours: completedHours,
+      proposals,
+    };
+  }
+
+  /**
+   * HU-37: Consultar conocimientos necesarios del objetivo
+   */
+  async generateGoalKnowledge(
+    goalId: number,
+    goalTitle: string,
+    completedRatio = 0.33,
+  ): Promise<GoalKnowledgeResponse> {
+    const prompt = `
+      Para el objetivo: "${goalTitle}", lista entre 4 y 6 temas o conocimientos técnicos/teóricos clave ordenados de lo básico a lo avanzado.
+      Responde ESTRICTAMENTE con un array JSON de strings con los nombres cortos de los temas, por ejemplo:
+      ["Fundamentos", "Estructuras de datos", "Algoritmos", "Buenas prácticas"]
+    `;
+
+    let topicNames: string[] = [];
+    try {
+      const parsed = await this.callGeminiJson<string[]>(prompt);
+      if (Array.isArray(parsed) && parsed.length >= 3) {
+        topicNames = parsed;
+      }
+    } catch {
+      // Fallback
+    }
+
+    if (topicNames.length === 0) {
+      topicNames = [
+        `Fundamentos de ${goalTitle.split(' ')[0] || 'Objetivo'}`,
+        'Conceptos clave y configuración',
+        'Desarrollo de habilidades prácticas',
+        'Técnicas avanzadas y optimización',
+        'Evaluación e integración final',
+      ];
+    }
+
+    const total = topicNames.length;
+    const dominantCount = Math.max(1, Math.min(Math.round(total * completedRatio), total));
+
+    const topics: GoalTopicItem[] = topicNames.map((name, index) => ({
+      id: String(index + 1),
+      name,
+      is_mastered: index < dominantCount,
+    }));
+
+    return {
+      goal_id: goalId,
+      goal_title: goalTitle,
+      dominant_count: dominantCount,
+      total_concepts: total,
+      progress_percentage: Math.round(completedRatio * 100),
+      topics,
+    };
+  }
+
+  /**
+   * HU-05, HU-38: Recursos de aprendizaje asociados al objetivo y sus actividades
+   */
+  async generateLearningResources(
+    goalId: number,
+    goalTitle: string,
+  ): Promise<LearningResourceItem[]> {
+    const prompt = `
+      Para el objetivo: "${goalTitle}", genera 3 o 4 recursos de aprendizaje recomendados.
+      Devuelve ESTRICTAMENTE un array JSON con esta estructura:
+      [
+        {
+          "id": "1",
+          "type": "LECTURA",
+          "duration": "5 min",
+          "title": "Título del recurso",
+          "category": "Categoría conceptual",
+          "badge_text": "Esencial",
+          "icon_name": "book-open"
+        },
+        {
+          "id": "2",
+          "type": "VÍDEO",
+          "duration": "12 min",
+          "title": "Título del vídeo",
+          "category": "Categoría",
+          "badge_text": "Recomendado",
+          "icon_name": "play"
+        },
+        {
+          "id": "3",
+          "type": "PRÁCTICA",
+          "duration": "20 min",
+          "title": "Ejercicio guiado",
+          "category": "Práctica",
+          "badge_text": "Intermedio",
+          "icon_name": "code"
+        }
+      ]
+    `;
+
+    try {
+      const parsed = await this.callGeminiJson<LearningResourceItem[]>(prompt);
+      if (Array.isArray(parsed) && parsed.length >= 2) {
+        return parsed.map((item, idx) => ({
+          id: String(idx + 1),
+          type: item.type || 'LECTURA',
+          duration: item.duration || '10 min',
+          title: item.title || `Recurso ${idx + 1}`,
+          category: item.category || 'Aprendizaje',
+          badge_text: item.badge_text || 'Recomendado',
+          icon_name: item.type === 'VÍDEO' ? 'play' : item.type === 'PRÁCTICA' ? 'code' : 'book-open',
+        }));
+      }
+    } catch {
+      // Fallback
+    }
+
+    return [
+      {
+        id: '1',
+        type: 'LECTURA',
+        duration: '5 min',
+        title: `Guía esencial de ${goalTitle}`,
+        category: 'Fundamentos',
+        badge_text: 'Esencial',
+        icon_name: 'book-open',
+      },
+      {
+        id: '2',
+        type: 'VÍDEO',
+        duration: '15 min',
+        title: 'Explicación conceptual paso a paso',
+        category: 'Conceptos clave',
+        badge_text: 'Recomendado',
+        icon_name: 'play',
+      },
+      {
+        id: '3',
+        type: 'PRÁCTICA',
+        duration: '25 min',
+        title: 'Ejercicio guiado y resolución de problemas',
+        category: 'Práctica',
+        badge_text: 'Intermedio',
+        icon_name: 'code',
+      },
+    ];
+  }
+
+  /**
+   * HU-40: Cuestionario de evaluación de conocimientos
+   */
+  async generateEvaluationQuiz(
+    goalId: number,
+    goalTitle: string,
+  ): Promise<QuizQuestionItem[]> {
+    const prompt = `
+      Para el objetivo: "${goalTitle}", crea 3 preguntas diagnósticas de opción múltiple (A, B, C) con una sola respuesta correcta y explicación.
+      Devuelve ESTRICTAMENTE un array JSON con:
+      [
+        {
+          "id": 1,
+          "category": "CATEGORÍA",
+          "question": "¿Pregunta?",
+          "options": [
+            { "key": "A", "text": "Opción correcta...", "isCorrect": true },
+            { "key": "B", "text": "Opción incorrecta...", "isCorrect": false },
+            { "key": "C", "text": "Opción incorrecta...", "isCorrect": false }
+          ],
+          "explanation": "Explicación breve de por qué es la correcta."
+        }
+      ]
+    `;
+
+    try {
+      const parsed = await this.callGeminiJson<QuizQuestionItem[]>(prompt);
+      if (Array.isArray(parsed) && parsed.length >= 2) {
+        return parsed;
+      }
+    } catch {
+      // Fallback
+    }
+
+    return [
+      {
+        id: 1,
+        category: 'CONCEPTOS BÁSICOS',
+        question: `¿Cuál es el primer principio fundamental para avanzar en "${goalTitle}"?`,
+        options: [
+          { key: 'A', text: 'Comprender los fundamentos y practicar de forma constante', isCorrect: true },
+          { key: 'B', text: 'Memorizar todos los conceptos sin practicar', isCorrect: false },
+          { key: 'C', text: 'Saltar directamente a proyectos complejos sin base', isCorrect: false },
+        ],
+        explanation: 'La comprensión conceptual combinada con práctica progresiva garantiza retención duradera.',
+      },
+      {
+        id: 2,
+        category: 'METODOLOGÍA',
+        question: '¿Qué acción se recomienda cuando encuentras una dificultad alta en una actividad?',
+        options: [
+          { key: 'A', text: 'Abandonar la actividad y pasar a otra', isCorrect: false },
+          { key: 'B', text: 'Desglosarla en pasos más pequeños y consultar recursos de apoyo', isCorrect: true },
+          { key: 'C', text: 'Ignorar el problema y continuar', isCorrect: false },
+        ],
+        explanation: 'La descomposición de problemas y el refuerzo puntual facilitan superar bloqueos técnicos.',
+      },
+      {
+        id: 3,
+        category: 'APLICACIÓN PRÁCTICA',
+        question: '¿Cómo se consolida de mejor forma el aprendizaje adquirido?',
+        options: [
+          { key: 'A', text: 'Aplicándolo en un ejercicio práctico o proyecto real', isCorrect: true },
+          { key: 'B', text: 'Leyendo la teoría una sola vez', isCorrect: false },
+          { key: 'C', text: 'Postergando la práctica indefinidamente', isCorrect: false },
+        ],
+        explanation: 'La práctica deliberada transfiere el conocimiento teórico a habilidades operativas reales.',
+      },
+    ];
+  }
+
+  /**
+   * HU-40, HU-41, HU-42: Evaluar respuestas y detectar temas por reforzar
+   */
+  evaluateQuizAnswers(
+    questions: QuizQuestionItem[],
+    answers: { question_id: number; selected_option: string }[],
+  ): QuizEvaluationResult {
+    let score = 0;
+    const weakTopicsSet = new Set<string>();
+
+    for (const q of questions) {
+      const userAns = answers.find((a) => a.question_id === q.id);
+      const correctOpt = q.options.find((o) => o.isCorrect);
+
+      if (userAns && correctOpt && userAns.selected_option === correctOpt.key) {
+        score++;
+      } else {
+        weakTopicsSet.add(q.category || 'General');
+      }
+    }
+
+    const total = questions.length || 1;
+    const percentage = Math.round((score / total) * 100);
+    const weak_topics = Array.from(weakTopicsSet);
+
+    const reinforcement_recommendations = weak_topics.map((topic) => ({
+      topic,
+      suggested_title: `Refuerzo guiado: ${topic}`,
+      estimated_minutes: 30,
+    }));
+
+    return {
+      score,
+      total_questions: total,
+      percentage,
+      weak_topics,
+      reinforcement_recommendations,
+    };
+  }
+
+  /**
+   * HU-26: Sugerencia puntual ante dificultad de una actividad
+   */
+  async generateActivitySuggestion(
+    activityTitle: string,
+    difficultyNotes?: string,
+  ): Promise<{ suggestion: string; alternative_actions: string[] }> {
+    return {
+      suggestion: `Para abordar "${activityTitle}" tras registrar dificultad${difficultyNotes ? ` ("${difficultyNotes}")` : ''}, te sugerimos dividirla en dos sesiones cortas de 20 minutos y revisar el material introductorio.`,
+      alternative_actions: [
+        'Consultar lectura o video introductorio de 5 minutos.',
+        'Reducir la complejidad del ejercicio inicial.',
+        'Reprogramar la sesión para tu franja de mayor concentración.',
+      ],
+    };
   }
 }
