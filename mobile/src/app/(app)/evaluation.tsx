@@ -62,9 +62,22 @@ const fallbackQuestions: QuizQuestionItem[] = [
 
 export default function EvaluationScreen() {
   const { token } = useAuth();
-  const params = useLocalSearchParams<{ goalId?: string }>();
+  const params = useLocalSearchParams<{
+    goalId?: string;
+    goalTitle?: string;
+    resourceId?: string;
+    resourceTitle?: string;
+    resourceType?: string;
+    resourceCategory?: string;
+    resourceDuration?: string;
+    resourceBadge?: string;
+    resourceSummary?: string;
+    resourceKeyPoints?: string;
+  }>();
   const goalIdNum = params.goalId ? Number(params.goalId) : 1;
+  const hasResourceInfo = Boolean(params.resourceTitle || params.resourceId);
 
+  const [showResourceIntro, setShowResourceIntro] = useState<boolean>(hasResourceInfo);
   const [loading, setLoading] = useState<boolean>(true);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [questions, setQuestions] = useState<QuizQuestionItem[]>(fallbackQuestions);
@@ -74,6 +87,30 @@ export default function EvaluationScreen() {
   const [score, setScore] = useState(0);
   const [userAnswers, setUserAnswers] = useState<{ question_id: number; selected_option_id: string }[]>([]);
   const [evaluationResult, setEvaluationResult] = useState<QuizEvaluationResult | null>(null);
+
+  const resourceTitle = params.resourceTitle || 'Guía conceptual';
+  const resourceType = params.resourceType || 'LECTURA';
+  const resourceCategory = params.resourceCategory || 'Conceptos clave';
+  const resourceDuration = params.resourceDuration || '5 min';
+  const resourceBadge = params.resourceBadge || 'Esencial';
+  const resourceSummary = params.resourceSummary || '';
+
+  let keyPoints: string[] = [];
+  if (params.resourceKeyPoints) {
+    try {
+      const parsed = JSON.parse(params.resourceKeyPoints);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        keyPoints = parsed;
+      }
+    } catch {}
+  }
+  if (keyPoints.length === 0) {
+    keyPoints = [
+      `Fundamentos esenciales y terminología básica de ${resourceCategory}.`,
+      'Principios metodológicos y buenas prácticas para avanzar sin bloqueos.',
+      'Aplicación práctica de los conocimientos en tus actividades planificadas.',
+    ];
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -187,14 +224,102 @@ export default function EvaluationScreen() {
       >
         {/* Cabecera superior */}
         <View style={styles.topHeader}>
-          <BackButton />
+          <BackButton
+            onPress={() => {
+              if (!showResourceIntro && hasResourceInfo) {
+                setShowResourceIntro(true);
+              } else {
+                router.back();
+              }
+            }}
+          />
           <Text style={styles.headerStep}>
-            PREGUNTA {currentIndex + 1} DE {questions.length}
+            {showResourceIntro
+              ? 'RECURSO DE APRENDIZAJE'
+              : `PREGUNTA ${currentIndex + 1} DE ${questions.length}`}
           </Text>
           <BrandHeader showTagline={false} />
         </View>
 
-        {loading ? (
+        {showResourceIntro ? (
+          <View style={styles.resourceIntroContainer}>
+            {/* Tarjeta destacada con información del recurso */}
+            <View style={styles.resourceHeroCard}>
+              <View style={styles.resourceBadgeRow}>
+                <View style={styles.resourceTypeTag}>
+                  <Feather
+                    name={
+                      resourceType === 'VÍDEO'
+                        ? 'play'
+                        : resourceType === 'PRÁCTICA'
+                        ? 'code'
+                        : 'book-open'
+                    }
+                    size={13}
+                    color="#174A62"
+                  />
+                  <Text style={styles.resourceTypeTagText}>
+                    {resourceType} · {resourceDuration}
+                  </Text>
+                </View>
+                {resourceBadge ? (
+                  <View style={styles.resourceHeroBadge}>
+                    <Text style={styles.resourceHeroBadgeText}>{resourceBadge}</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <Text style={styles.resourceHeroTitle}>{resourceTitle}</Text>
+              <Text style={styles.resourceHeroCategory}>{resourceCategory}</Text>
+            </View>
+
+            {/* Contenido didáctico y conceptos clave del tema */}
+            <View style={styles.resourceContentCard}>
+              <View style={styles.contentHeaderRow}>
+                <Feather name="info" size={16} color="#174A62" />
+                <Text style={styles.contentSectionTitle}>Información y conceptos clave</Text>
+              </View>
+
+              <Text style={styles.contentSummaryText}>
+                {resourceSummary ||
+                  `Este recurso te brinda los conocimientos teóricos y prácticos fundamentales sobre "${resourceTitle}". Comprenderás su aplicación práctica para avanzar con seguridad en tu objetivo.`}
+              </Text>
+
+              <View style={styles.keyPointsContainer}>
+                <Text style={styles.keyPointsTitle}>Puntos clave a recordar:</Text>
+                {keyPoints.map((pt, idx) => (
+                  <View key={idx} style={styles.keyPointRow}>
+                    <View style={styles.bulletCheck}>
+                      <Feather name="check" size={12} color="#174A62" />
+                    </View>
+                    <Text style={styles.keyPointText}>{pt}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {/* Tarjeta explicativa sobre la evaluación posterior */}
+            <View style={styles.evalPromptCard}>
+              <Feather name="help-circle" size={20} color="#174A62" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.evalPromptTitle}>Comprobación de conocimientos</Text>
+                <Text style={styles.evalPromptDesc}>
+                  Pon a prueba lo aprendido con 3 preguntas clave. Recibirás retroalimentación inmediata y recomendaciones de refuerzo adaptativo.
+                </Text>
+              </View>
+            </View>
+
+            {/* Botón para iniciar la evaluación */}
+            <TouchableOpacity
+              style={styles.startQuizButton}
+              activeOpacity={0.85}
+              onPress={() => setShowResourceIntro(false)}
+            >
+              <Text style={styles.startQuizButtonText}>Comenzar evaluación</Text>
+              <Feather name="arrow-right" size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
+            </TouchableOpacity>
+          </View>
+        ) : loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#174A62" />
             <Text style={styles.loadingText}>Generando evaluación diagnóstica...</Text>
@@ -434,5 +559,163 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#627D98',
     fontWeight: '600',
+  },
+  resourceIntroContainer: {
+    gap: 16,
+    marginTop: 4,
+  },
+  resourceHeroCard: {
+    backgroundColor: '#174A62',
+    borderRadius: 22,
+    padding: 20,
+    gap: 10,
+    shadowColor: '#174A62',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    elevation: 3,
+  },
+  resourceBadgeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  resourceTypeTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EBF5FB',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+  },
+  resourceTypeTagText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#174A62',
+    letterSpacing: 0.8,
+  },
+  resourceHeroBadge: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  resourceHeroBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  resourceHeroTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    lineHeight: 24,
+  },
+  resourceHeroCategory: {
+    fontSize: 12,
+    color: '#D8ECF8',
+    fontWeight: '600',
+  },
+  resourceContentCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 18,
+    gap: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#174A62',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    elevation: 2,
+  },
+  contentHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  contentSectionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F2C40',
+  },
+  contentSummaryText: {
+    fontSize: 13,
+    color: '#4A5568',
+    lineHeight: 20,
+  },
+  keyPointsContainer: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 14,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#EDF2F7',
+  },
+  keyPointsTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#174A62',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  keyPointRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  bulletCheck: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#EBF5FB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 1,
+  },
+  keyPointText: {
+    fontSize: 12,
+    color: '#2D3748',
+    flex: 1,
+    lineHeight: 18,
+  },
+  evalPromptCard: {
+    backgroundColor: '#EBF5FB',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#D8ECF8',
+  },
+  evalPromptTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#174A62',
+  },
+  evalPromptDesc: {
+    fontSize: 11,
+    color: '#627D98',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  startQuizButton: {
+    backgroundColor: '#174A62',
+    borderRadius: 18,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#174A62',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    elevation: 3,
+    marginTop: 4,
+  },
+  startQuizButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
   },
 });

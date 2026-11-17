@@ -30,6 +30,8 @@ export interface LearningResourceItem {
   badge_text: string;
   icon_name: 'book-open' | 'play' | 'code' | 'file-text';
   url?: string;
+  summary?: string;
+  key_points?: string[];
 }
 
 export interface QuizQuestionOption {

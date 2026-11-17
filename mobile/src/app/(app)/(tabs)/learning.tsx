@@ -130,6 +130,12 @@ export default function LearningScreen() {
             category: 'Fundamentos',
             badge_text: 'Esencial',
             icon_name: 'book-open',
+            summary: `Conceptos introductorios y fundamentos clave para estructurar y dominar "${goalTitle}".`,
+            key_points: [
+              'Comprender los principios teóricos básicos.',
+              'Configurar el flujo de trabajo inicial.',
+              'Buenas prácticas y recomendaciones de estudio.',
+            ],
           },
           {
             id: '2',
@@ -139,6 +145,12 @@ export default function LearningScreen() {
             category: 'Conceptos clave',
             badge_text: 'Recomendado',
             icon_name: 'play',
+            summary: `Explicación visual y resolución práctica de problemas para avanzar en "${goalTitle}".`,
+            key_points: [
+              'Demostración guiada del proceso.',
+              'Resolución de errores frecuentes.',
+              'Consejos para maximizar la retención.',
+            ],
           },
           {
             id: '3',
@@ -148,6 +160,12 @@ export default function LearningScreen() {
             category: 'Práctica guiada',
             badge_text: 'Intermedio',
             icon_name: 'code',
+            summary: `Ejercicio práctico diseñado para poner a prueba tus habilidades en "${goalTitle}".`,
+            key_points: [
+              'Planteamiento del reto práctico.',
+              'Desarrollo e implementación paso a paso.',
+              'Comprobación final del resultado obtenido.',
+            ],
           },
         ];
 
@@ -275,7 +293,18 @@ export default function LearningScreen() {
                     onPress={() =>
                       router.push({
                         pathname: '/evaluation',
-                        params: { goalId: String(currentGoalId), resourceId: res.id },
+                        params: {
+                          goalId: String(currentGoalId),
+                          goalTitle,
+                          resourceId: res.id,
+                          resourceTitle: res.title,
+                          resourceType: res.type,
+                          resourceCategory: res.category,
+                          resourceDuration: res.duration,
+                          resourceBadge: res.badge_text,
+                          resourceSummary: res.summary || '',
+                          resourceKeyPoints: res.key_points ? JSON.stringify(res.key_points) : '',
+                        },
                       } as any)
                     }
                   >

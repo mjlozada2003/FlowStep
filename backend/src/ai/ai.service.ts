@@ -100,6 +100,8 @@ export interface LearningResourceItem {
   icon_name: 'book-open' | 'play' | 'code';
   url?: string;
   activity_id?: number;
+  summary?: string;
+  key_points?: string[];
 }
 
 export interface QuizOption {
@@ -640,6 +642,7 @@ export class AiService {
       Para el objetivo: "${goalTitle}".
       ${stageContext}
       Genera 3 o 4 recursos de aprendizaje recomendados específicos para este objetivo y sus temas.
+      Cada recurso debe incluir información pedagógica: un resumen informativo del tema (summary) y entre 2 y 3 puntos clave destacados (key_points).
       Devuelve ESTRICTAMENTE un array JSON con esta estructura:
       [
         {
@@ -649,7 +652,13 @@ export class AiService {
           "title": "Título del recurso",
           "category": "Categoría conceptual",
           "badge_text": "Esencial",
-          "icon_name": "book-open"
+          "icon_name": "book-open",
+          "summary": "Resumen claro y didáctico que proporciona la información esencial sobre este tema...",
+          "key_points": [
+            "Punto clave o concepto fundamental 1",
+            "Punto clave o aplicación práctica 2",
+            "Buenas prácticas recomendadas 3"
+          ]
         },
         {
           "id": "2",
@@ -658,7 +667,12 @@ export class AiService {
           "title": "Título del vídeo",
           "category": "Categoría",
           "badge_text": "Recomendado",
-          "icon_name": "play"
+          "icon_name": "play",
+          "summary": "Explicación audiovisual paso a paso de los aspectos operativos más importantes...",
+          "key_points": [
+            "Demostración guiada del proceso",
+            "Errores comunes y cómo evitarlos"
+          ]
         },
         {
           "id": "3",
@@ -667,7 +681,12 @@ export class AiService {
           "title": "Ejercicio guiado",
           "category": "Práctica",
           "badge_text": "Intermedio",
-          "icon_name": "code"
+          "icon_name": "code",
+          "summary": "Taller enfocado en implementar una solución concreta relacionada al objetivo...",
+          "key_points": [
+            "Puesta en práctica de los conceptos adquiridos",
+            "Validación y comprobación de resultados"
+          ]
         }
       ]
     `;
@@ -683,6 +702,17 @@ export class AiService {
           category: item.category || 'Aprendizaje',
           badge_text: item.badge_text || 'Recomendado',
           icon_name: item.type === 'VÍDEO' ? 'play' : item.type === 'PRÁCTICA' ? 'code' : 'book-open',
+          summary:
+            item.summary ||
+            `Información esencial sobre "${item.title || 'este tema'}" para fortalecer los conocimientos necesarios para tu objetivo.`,
+          key_points:
+            Array.isArray(item.key_points) && item.key_points.length > 0
+              ? item.key_points
+              : [
+                  `Fundamentos y terminología básica de ${item.category || goalTitle}.`,
+                  'Buenas prácticas y flujo de trabajo recomendado.',
+                  'Cómo aplicar este concepto en tus actividades planificadas.',
+                ],
         }));
       }
     } catch {
@@ -702,6 +732,12 @@ export class AiService {
         category: t1,
         badge_text: 'Esencial',
         icon_name: 'book-open',
+        summary: `En esta guía se introducen los conceptos y fundamentos de "${t1}", explicando su importancia conceptual y cómo aplicarlo paso a paso.`,
+        key_points: [
+          `Comprender los principios base de ${t1}.`,
+          'Identificar las herramientas y flujo de trabajo recomendados.',
+          'Buenas prácticas para evitar errores comunes durante la ejecución.',
+        ],
       },
       {
         id: '2',
@@ -711,6 +747,12 @@ export class AiService {
         category: t2,
         badge_text: 'Recomendado',
         icon_name: 'play',
+        summary: `Demostración visual y resolución guiada de problemas centrada en "${t2}".`,
+        key_points: [
+          'Configuración paso a paso del entorno de trabajo.',
+          'Resolución de casos y ejemplos reales.',
+          'Recomendaciones para afianzar el aprendizaje.',
+        ],
       },
       {
         id: '3',
@@ -720,6 +762,12 @@ export class AiService {
         category: t3,
         badge_text: 'Intermedio',
         icon_name: 'code',
+        summary: `Ejercicio práctico estructurado para consolidar las habilidades operativas de "${t3}".`,
+        key_points: [
+          'Planteamiento del desafío práctico.',
+          'Desarrollo e implementación guiada del ejercicio.',
+          'Verificación de resultados y autoevaluación.',
+        ],
       },
     ];
   }
