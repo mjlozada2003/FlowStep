@@ -6,7 +6,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
 
-  // Altura dinámica que se adapta al espacio seguro de Android/iOS para evitar solapes
   const tabBarHeight = 60 + (Platform.OS === 'android' ? Math.max(insets.bottom, 8) : insets.bottom);
 
   return (
@@ -49,6 +48,20 @@ export default function TabLayout() {
           tabBarIcon: ({ focused, size }) => (
             <Feather
               name="calendar"
+              size={size}
+              color={focused ? '#174A62' : '#94A3B8'}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="learning"
+        options={{
+          title: 'Aprender',
+          tabBarIcon: ({ focused, size }) => (
+            <Feather
+              name="compass"
               size={size}
               color={focused ? '#174A62' : '#94A3B8'}
             />

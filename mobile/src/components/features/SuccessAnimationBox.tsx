@@ -2,7 +2,11 @@ import { Feather } from '@expo/vector-icons';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 
-export function SuccessAnimationBox() {
+interface SuccessAnimationBoxProps {
+  isError?: boolean;
+}
+
+export function SuccessAnimationBox({ isError = false }: SuccessAnimationBoxProps) {
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const bounceAnim = useRef(new Animated.Value(1)).current;
 
@@ -23,7 +27,7 @@ export function SuccessAnimationBox() {
       }),
     ]).start();
 
-    // Animación de pulso continuo sutil en el check
+    // Animación de pulso continuo sutil
     Animated.loop(
       Animated.sequence([
         Animated.timing(bounceAnim, {
@@ -47,12 +51,17 @@ export function SuccessAnimationBox() {
       <Animated.View
         style={[
           styles.successCircle,
+          isError && styles.errorCircle,
           {
             transform: [{ scale: Animated.multiply(scaleAnim, bounceAnim) }],
           },
         ]}
       >
-        <Feather name="check" size={34} color="#FFFFFF" />
+        <Feather 
+          name={isError ? 'x' : 'check'} 
+          size={34} 
+          color="#FFFFFF" 
+        />
       </Animated.View>
     </View>
   );
@@ -76,5 +85,9 @@ const styles = StyleSheet.create({
     elevation: 6,
     borderWidth: 3,
     borderColor: '#FFFFFF',
+  },
+  errorCircle: {
+    backgroundColor: '#C53030',
+    shadowColor: '#C53030',
   },
 });

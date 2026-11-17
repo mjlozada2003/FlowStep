@@ -100,7 +100,7 @@ export default function GoalSuccessScreen() {
       router.dismissTo({
         pathname: '/goal-plan',
         params: { goalId: String(goalId) },
-      });
+      } as any);
     } else {
       router.dismissAll();
     }
@@ -130,7 +130,8 @@ export default function GoalSuccessScreen() {
             <View style={styles.headerSpacer} />
           </View>
 
-          <SuccessAnimationBox />
+          {/* Caja animada que cambia a X roja si no está confirmado */}
+          <SuccessAnimationBox isError={!isConfirmed} />
 
           <GoalSuccessHeader
             isLoading={isScreenLoading}
@@ -157,10 +158,9 @@ export default function GoalSuccessScreen() {
 
           <GoalSuccessMascotCard />
 
-          {/* Acción Principal: Continuar con mi plan / Volver a mis objetivos */}
+          {/* Acción Principal: Continuar con mi plan / Volver al inicio */}
           <TouchableOpacity
-            style={[styles.submitButton, !isConfirmed && styles.submitButtonDisabled]}
-            disabled={!isConfirmed}
+            style={styles.submitButton}
             onPress={handleContinue}
             activeOpacity={0.85}
           >
@@ -180,7 +180,7 @@ export default function GoalSuccessScreen() {
                   goalId: goalId ? String(goalId) : '',
                   fromSuccess: '1',
                 },
-              })
+              } as any)
             }
             activeOpacity={0.85}
           >
@@ -198,7 +198,7 @@ export default function GoalSuccessScreen() {
                   goalId: goalId ? String(goalId) : '',
                   fromSuccess: '1',
                 },
-              })
+              } as any)
             }
             activeOpacity={0.85}
           >
@@ -280,9 +280,6 @@ const styles = StyleSheet.create({
   },
   buttonArrow: {
     marginLeft: 8,
-  },
-  submitButtonDisabled: {
-    opacity: 0.55,
   },
   errorText: {
     color: '#C53030',

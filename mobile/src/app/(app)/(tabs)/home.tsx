@@ -153,7 +153,7 @@ export default function HomeScreen() {
               router.push({
                 pathname: '/progress-analytics',
                 params: { goalId: String(alerts[0].goal_id) },
-              })
+              } as any)
             }
           >
             <View style={styles.alertIconBox}>
@@ -167,7 +167,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Sección Objetivos Activos con botones */}
+        {/* Sección Objetivos Activos con botones y Selector de Prioridad */}
         <View style={styles.sectionHeaderRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.sectionHeaderTitle}>Objetivos activos</Text>
@@ -199,7 +199,7 @@ export default function HomeScreen() {
 
             <TouchableOpacity
               style={styles.addGoalBtn}
-              onPress={() => router.push('/create-goal')}
+              onPress={() => router.push('/create-goal' as any)}
               activeOpacity={0.8}
             >
               <Feather name="plus" size={14} color="#FFFFFF" />
@@ -227,7 +227,7 @@ export default function HomeScreen() {
                     router.push({
                       pathname: '/goal-plan',
                       params: { goalId: String(item.goal_id), title: item.title },
-                    })
+                    } as any)
                   }
                 >
                   <View style={styles.goalCardTopRow}>
@@ -265,6 +265,30 @@ export default function HomeScreen() {
             })
           )}
         </View>
+
+        {/* Tarjeta de Recomendación Personalizada (Sprint 5)[cite: 12] */}
+        <TouchableOpacity
+          style={styles.recommendationCard}
+          activeOpacity={0.9}
+          onPress={() =>
+            router.push({
+              pathname: '/recommendation',
+              params: { goalId: alerts[0] ? String(alerts[0].goal_id) : '1' },
+            } as any)
+          }
+        >
+          <View style={styles.recommendationContent}>
+            <View style={styles.recommendationIconBox}>
+              <Feather name="zap" size={20} color="#174A62" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.recommendationTag}>RECOMENDACIÓN PERSONALIZADA</Text>
+              <Text style={styles.recommendationTitle}>Ajusta una sesión para recuperar el ritmo</Text>
+              <Text style={styles.recommendationSubtitle}>Basada en tu progreso y dificultad registrada.</Text>
+            </View>
+            <Feather name="chevron-right" size={20} color="#174A62" />
+          </View>
+        </TouchableOpacity>
 
         {/* Banner Resumen Semanal */}
         <TouchableOpacity
@@ -535,6 +559,47 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#174A62',
+  },
+  recommendationCard: {
+    backgroundColor: '#EBF5FB',
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1.5,
+    borderColor: '#D8ECF8',
+    shadowColor: '#174A62',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    elevation: 2,
+  },
+  recommendationContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  recommendationIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#D8ECF8',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recommendationTag: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#174A62',
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  recommendationTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F2C40',
+    marginBottom: 2,
+  },
+  recommendationSubtitle: {
+    fontSize: 11,
+    color: '#627D98',
   },
   weeklySummaryCard: {
     backgroundColor: '#174A62',
