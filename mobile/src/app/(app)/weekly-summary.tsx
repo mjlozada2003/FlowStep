@@ -9,55 +9,35 @@ import { FlowMascotAvatar } from '@/components/features/FlowMascotAvatar';
 import { useAuth } from '@/contexts/auth-context';
 import { getWeeklySummary, type WeeklySummaryData } from '@/services/api/goals';
 
-const fallbackWeeklyStats: WeeklySummaryData = {
-  period: 'Semana actual',
-  tagline: 'SEMANA EN CURSO',
-  title: 'Una semana constante',
-  description: 'Completaste el 80% de lo planificado.',
-  completionRate: 80,
-  completedCount: 4,
-  pendingCount: 1,
-  hoursSpent: '3 h 20',
-  daysActivity: [
-    { day: 'L', active: true, height: 40 },
-    { day: 'M', active: false, height: 15 },
-    { day: 'X', active: true, height: 50 },
-    { day: 'J', active: true, height: 35 },
-    { day: 'V', active: true, height: 65 },
-    { day: 'S', active: true, height: 40 },
-    { day: 'D', active: false, height: 15 },
-  ],
-  goalsBreakdown: [
-    { id: 1, title: 'Crear una aplicación web', detail: '2 completadas · 1 pendiente', progress: '+8%' },
-    { id: 2, title: 'Mejorar mi inglés', detail: '2 completadas · al día', progress: '+5%' },
-  ],
-  mascotTip: 'Tu constancia creció esta semana. Cada sesión cuenta.',
-};
-
 export default function WeeklySummaryScreen() {
   const { token } = useAuth();
   const [weeklyStats, setWeeklyStats] = useState<WeeklySummaryData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       if (!token) {
-        setWeeklyStats(fallbackWeeklyStats);
         setIsLoading(false);
+        setErrorMessage('No se encontró una sesión activa.');
         return;
       }
 
       setIsLoading(true);
+      setErrorMessage(null);
+
       getWeeklySummary(token)
         .then((data) => {
           if (active && data) {
             setWeeklyStats(data);
           }
         })
-        .catch(() => {
+        .catch((error: unknown) => {
           if (active) {
-            setWeeklyStats(fallbackWeeklyStats);
+            setErrorMessage(
+              error instanceof Error ? error.message : 'No se pudo cargar el resumen semanal.',
+            );
           }
         })
         .finally(() => {
@@ -69,8 +49,6 @@ export default function WeeklySummaryScreen() {
       };
     }, [token]),
   );
-
-  const stats = weeklyStats || fallbackWeeklyStats;
 
   return (
     <Screen style={styles.screen}>
@@ -85,26 +63,47 @@ export default function WeeklySummaryScreen() {
           <View style={{ width: 36 }} />
         </View>
 
-        {isLoading && !weeklyStats ? (
-          <ActivityIndicator size="large" color="#174A62" style={{ marginVertical: 40 }} />
-        ) : (
+        {isLoading ? (
+          <View style={styles.centeredContainer}>
+            <ActivityIndicator size="large" color="#174A62" />
+            <Text style={styles.loadingText}>Cargando resumen semanal...</Text>
+          </View>
+        ) : errorMessage ? (
+          <View style={styles.centeredContainer}>
+            <Feather name="alert-circle" size={36} color="#C53030" />
+            <Text style={styles.errorText}>{errorMessage}</Text>
+            <TouchableOpacity 
+              style={styles.retryButton}
+              onPress={() => {
+                setIsLoading(true);
+                setErrorMessage(null);
+                getWeeklySummary(token!)
+                  .then(setWeeklyStats)
+                  .catch((e) => setErrorMessage(e.message))
+                  .finally(() => setIsLoading(false));
+              }}
+            >
+              <Text style={styles.retryButtonText}>Reintentar</Text>
+            </TouchableOpacity>
+          </View>
+        ) : weeklyStats ? (
           <>
             {/* Título y Período */}
             <View style={styles.titleSection}>
               <Text style={styles.sectionSubtitle}>TU SEMANA</Text>
               <Text style={styles.mainTitle}>Resumen de progreso</Text>
-              <Text style={styles.periodText}>{stats.period}</Text>
+              <Text style={styles.periodText}>{weeklyStats.period}</Text>
             </View>
 
             {/* Tarjeta Destacada de Cumplimiento (Azul Oscuro) */}
             <View style={styles.highlightCard}>
               <View style={styles.highlightTextContent}>
-                <Text style={styles.highlightTag}>{stats.tagline}</Text>
-                <Text style={styles.highlightTitle}>{stats.title}</Text>
-                <Text style={styles.highlightDesc}>{stats.description}</Text>
+                <Text style={styles.highlightTag}>{weeklyStats.tagline}</Text>
+                <Text style={styles.highlightTitle}>{weeklyStats.title}</Text>
+                <Text style={styles.highlightDesc}>{weeklyStats.description}</Text>
               </View>
               <View style={styles.circularProgressContainer}>
-                <Text style={styles.circularPercent}>{stats.completionRate}%</Text>
+                <Text style={styles.circularPercent}>{weeklyStats.completionRate}%</Text>
                 <Text style={styles.circularSub}>del plan</Text>
               </View>
             </View>
@@ -112,15 +111,15 @@ export default function WeeklySummaryScreen() {
             {/* 3 Mini Tarjetas de Métricas de la Semana */}
             <View style={styles.metricsRow}>
               <View style={styles.metricCard}>
-                <Text style={styles.metricValue}>{stats.completedCount}</Text>
+                <Text style={styles.metricValue}>{weeklyStats.completedCount}</Text>
                 <Text style={styles.metricLabel}>completadas</Text>
               </View>
               <View style={styles.metricCard}>
-                <Text style={styles.metricValue}>{stats.pendingCount}</Text>
-                <Text style={styles.metricLabel}>pendiente</Text>
+                <Text style={styles.metricValue}>{weeklyStats.pendingCount}</Text>
+                <Text style={styles.metricLabel}>pendientes</Text>
               </View>
               <View style={styles.metricCard}>
-                <Text style={styles.metricValue}>{stats.hoursSpent}</Text>
+                <Text style={styles.metricValue}>{weeklyStats.hoursSpent}</Text>
                 <Text style={styles.metricLabel}>dedicadas</Text>
               </View>
             </View>
@@ -129,12 +128,11 @@ export default function WeeklySummaryScreen() {
             <View style={styles.cardContainer}>
               <View style={styles.cardHeaderRow}>
                 <Text style={styles.cardTitle}>Evolución semanal</Text>
-                <Text style={styles.badgeTrend}>+2 vs. anterior</Text>
               </View>
-              <Text style={styles.cardSubtitle}>Actividades completadas</Text>
+              <Text style={styles.cardSubtitle}>Actividades completadas por día</Text>
 
               <View style={styles.chartContainer}>
-                {stats.daysActivity.map((item, index) => (
+                {weeklyStats.daysActivity.map((item, index) => (
                   <View key={index} style={styles.chartBarColumn}>
                     <View style={styles.chartBarTrack}>
                       <View 
@@ -154,10 +152,10 @@ export default function WeeklySummaryScreen() {
             <View style={styles.cardContainer}>
               <Text style={styles.cardTitle}>Por objetivo</Text>
               <View style={styles.goalsList}>
-                {stats.goalsBreakdown.map((goal) => (
-                  <View key={goal.id} style={styles.goalBreakdownItem}>
+                {weeklyStats.goalsBreakdown.map((goal, idx) => (
+                  <View key={goal.id ?? idx} style={styles.goalBreakdownItem}>
                     <View style={styles.goalIndexBox}>
-                      <Text style={styles.goalIndexText}>{goal.id}</Text>
+                      <Text style={styles.goalIndexText}>{idx + 1}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.goalItemTitle}>{goal.title}</Text>
@@ -174,7 +172,7 @@ export default function WeeklySummaryScreen() {
               <FlowMascotAvatar />
               <View style={{ flex: 1 }}>
                 <Text style={styles.mascotBannerText}>
-                  Flow dice: <Text style={styles.mascotQuote}>"{stats.mascotTip}"</Text>
+                  Flow dice: <Text style={styles.mascotQuote}>"{weeklyStats.mascotTip}"</Text>
                 </Text>
               </View>
             </View>
@@ -189,7 +187,7 @@ export default function WeeklySummaryScreen() {
               <Feather name="arrow-right" size={16} color="#FFFFFF" />
             </TouchableOpacity>
           </>
-        )}
+        ) : null}
       </ScrollView>
     </Screen>
   );
@@ -201,6 +199,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 40,
     gap: 16,
@@ -215,6 +214,34 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#627D98',
     letterSpacing: 1.2,
+  },
+  centeredContainer: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: '#627D98',
+    fontWeight: '600',
+  },
+  errorText: {
+    fontSize: 13,
+    color: '#C53030',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  retryButton: {
+    backgroundColor: '#174A62',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 12,
   },
   titleSection: {
     gap: 2,
@@ -333,15 +360,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#627D98',
   },
-  badgeTrend: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#2F855A',
-    backgroundColor: '#F0FDF4',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
   chartContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -428,7 +446,6 @@ const styles = StyleSheet.create({
   mascotBannerText: {
     fontSize: 12,
     color: '#174A62',
-    lineHeight: 17,
   },
   mascotQuote: {
     fontStyle: 'italic',
