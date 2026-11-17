@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Switch,
@@ -18,18 +18,16 @@ import { logoutUser } from '@/services/api/auth';
 import {
   getUserPreferences,
   updateUserPreferences,
-  type UserPreferences,
 } from '@/services/api/users';
 
 export default function PreferencesScreen() {
   const { user, token, clearSession } = useAuth();
 
-  // Estados locales para los switches de preferencias (HU-49)
+  // Estados locales para las preferencias (HU-49)
   const [remindersEnabled, setRemindersEnabled] = useState(true);
   const [delayAlertsEnabled, setDelayAlertsEnabled] = useState(true);
   const [weeklyDigestEnabled, setWeeklyDigestEnabled] = useState(true);
   const [reminderMinutes, setReminderMinutes] = useState(30);
-  const [isUpdating, setIsUpdating] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -82,6 +80,22 @@ export default function PreferencesScreen() {
     try {
       await updateUserPreferences(token, { weekly_digest_enabled: val });
     } catch {}
+  };
+
+  // Ciclar entre opciones de minutos de anticipación (15, 30, 45, 60)
+  const handleCycleReminderMinutes = async () => {
+    const options = [15, 30, 45, 60];
+    const currentIndex = options.indexOf(reminderMinutes);
+    const nextMinutes = options[(currentIndex + 1) % options.length];
+    
+    setReminderMinutes(nextMinutes);
+    if (!token) return;
+    try {
+      await updateUserPreferences(token, { reminder_lead_minutes: nextMinutes });
+    } catch {
+      // Revertir en caso de error de red
+      setReminderMinutes(reminderMinutes);
+    }
   };
 
   const displayName = user?.name ?? 'Lucía Martínez';
@@ -175,11 +189,15 @@ export default function PreferencesScreen() {
             />
           </View>
 
-          {/* Opción 4: Hora de recordatorio */}
-          <TouchableOpacity style={styles.preferenceItemClickable} activeOpacity={0.7}>
+          {/* Opción 4: Hora de recordatorio (Conectada para cambiar minutos) */}
+          <TouchableOpacity 
+            style={styles.preferenceItemClickable} 
+            activeOpacity={0.7}
+            onPress={handleCycleReminderMinutes}
+          >
             <View style={{ flex: 1 }}>
               <Text style={styles.preferenceTitle}>Hora de recordatorio</Text>
-              <Text style={styles.preferenceSubtitle}>Antes de cada actividad</Text>
+              <Text style={styles.preferenceSubtitle}>Toca para cambiar anticipación</Text>
             </View>
             <View style={styles.rowValueContainer}>
               <Text style={styles.valueText}>{reminderMinutes} min</Text>
@@ -210,8 +228,15 @@ export default function PreferencesScreen() {
             <Feather name="chevron-right" size={16} color="#627D98" />
           </TouchableOpacity>
 
-          {/* Privacidad y datos */}
-          <TouchableOpacity style={styles.menuRowButton} activeOpacity={0.7}>
+          {/* Privacidad y datos (Conectado con alerta informativa) */}
+          <TouchableOpacity 
+            style={styles.menuRowButton} 
+            activeOpacity={0.7}
+            onPress={() => Alert.alert(
+              'Privacidad y datos', 
+              'Tus datos están protegidos y sincronizados de manera segura con tu cuenta académica de FlowStep.'
+            )}
+          >
             <View style={styles.menuIconBox}>
               <Feather name="lock" size={16} color="#174A62" />
             </View>
