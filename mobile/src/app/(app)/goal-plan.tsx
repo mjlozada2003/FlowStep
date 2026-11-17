@@ -379,7 +379,7 @@ export default function GoalPlanScreen() {
                   params: {
                     goalId: goalId ? String(goalId) : '',
                   },
-                })
+                } as any)
               }
             >
               <Text style={styles.miniMetricValue}>
@@ -390,6 +390,30 @@ export default function GoalPlanScreen() {
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* Tarjeta de Acceso a Conocimientos para tu Objetivo (Sprint 5) */}
+          <TouchableOpacity
+            style={styles.scheduleAccessCard}
+            activeOpacity={0.85}
+            onPress={() =>
+              router.push({
+                pathname: '/learning',
+                params: { goalId: goalId ? String(goalId) : '' },
+              } as any)
+            }
+          >
+            <View style={styles.scheduleCardLeft}>
+              <View style={styles.calendarIconBox}>
+                <Feather name="book-open" size={18} color="#174A62" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.scheduleCardTag}>CONOCIMIENTOS PARA TU OBJETIVO</Text>
+                <Text style={styles.scheduleCardTitle}>React, componentes, hooks y APIs</Text>
+                <Text style={styles.scheduleCardSub}>2 de 5 temas dominados</Text>
+              </View>
+            </View>
+            <Feather name="arrow-right" size={18} color="#174A62" />
+          </TouchableOpacity>
 
           {/* Resumen de conteo */}
           <View style={styles.summaryRow}>
@@ -418,7 +442,7 @@ export default function GoalPlanScreen() {
                 params: {
                   goalId: goalId ? String(goalId) : '',
                 },
-              })
+              } as any)
             }
           >
             <View style={styles.scheduleCardLeft}>
@@ -461,7 +485,7 @@ export default function GoalPlanScreen() {
                 params: {
                   goalId: goalId ? String(goalId) : '',
                 },
-              })
+              } as any)
             }
           >
             <View style={styles.scheduleCardLeft}>
@@ -505,7 +529,7 @@ export default function GoalPlanScreen() {
                       goalId: goalId ? String(goalId) : '',
                       title: stage.name,
                     },
-                  })
+                  } as any)
                 }
               />
             ))}
@@ -696,6 +720,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: '#0F2C40',
+  },
+  scheduleCardSub: {
+    fontSize: 11,
+    color: '#627D98',
+    marginTop: 1,
   },
   timelineContainer: {
     position: 'relative',
