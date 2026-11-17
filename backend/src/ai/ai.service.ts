@@ -102,6 +102,9 @@ export interface LearningResourceItem {
   activity_id?: number;
   summary?: string;
   key_points?: string[];
+  video_timestamps?: { time: string; title: string }[];
+  practice_steps?: string[];
+  code_snippet?: string;
 }
 
 export interface QuizOption {
@@ -754,6 +757,12 @@ export class AiService {
           'Resolución de casos y ejemplos reales.',
           'Recomendaciones para afianzar el aprendizaje.',
         ],
+        video_timestamps: [
+          { time: '00:00', title: `Introducción a ${t2}` },
+          { time: '04:15', title: 'Demostración práctica paso a paso' },
+          { time: '09:30', title: 'Errores comunes y optimización' },
+          { time: '13:50', title: 'Resumen y conclusiones clave' },
+        ],
       },
       {
         id: '3',
@@ -769,6 +778,12 @@ export class AiService {
           'Desarrollo e implementación guiada del ejercicio.',
           'Verificación de resultados y autoevaluación.',
         ],
+        practice_steps: [
+          `Configura el entorno de trabajo y verifica dependencias para ${t3}.`,
+          'Implementa la estructura base siguiendo el ejemplo guiado.',
+          'Ejecuta las pruebas de funcionamiento y valida la solución.',
+        ],
+        code_snippet: `# Taller práctico: ${t3}\n# 1. Preparar entorno y dependencias\nflowstep init --topic "${t3.toLowerCase().replace(/\\s+/g, '-')}"\n# 2. Ejecutar prueba del ejercicio\nflowstep run verify`,
       },
     ];
   }

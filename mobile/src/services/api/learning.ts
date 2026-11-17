@@ -32,6 +32,9 @@ export interface LearningResourceItem {
   url?: string;
   summary?: string;
   key_points?: string[];
+  video_timestamps?: { time: string; title: string }[];
+  practice_steps?: string[];
+  code_snippet?: string;
 }
 
 export interface QuizQuestionOption {

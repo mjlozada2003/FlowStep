@@ -151,6 +151,12 @@ export default function LearningScreen() {
               'Resolución de errores frecuentes.',
               'Consejos para maximizar la retención.',
             ],
+            video_timestamps: [
+              { time: '00:00', title: `Introducción a ${goalTitle}` },
+              { time: '03:30', title: 'Flujo de trabajo y demostración' },
+              { time: '07:45', title: 'Resolución de errores comunes' },
+              { time: '11:10', title: 'Resumen y conclusiones' },
+            ],
           },
           {
             id: '3',
@@ -166,6 +172,12 @@ export default function LearningScreen() {
               'Desarrollo e implementación paso a paso.',
               'Comprobación final del resultado obtenido.',
             ],
+            practice_steps: [
+              `Configurar el entorno inicial para ${goalTitle}.`,
+              'Implementar la solución guiada paso a paso.',
+              'Ejecutar las pruebas y verificar el resultado.',
+            ],
+            code_snippet: `# Taller práctico para: ${goalTitle}\n# 1. Iniciar sesión y preparar entorno\nflowstep init --goal "${goalTitle.toLowerCase().replace(/\\s+/g, '-')}"\n# 2. Ejecutar prueba del ejercicio\nflowstep run verify`,
           },
         ];
 
@@ -304,6 +316,9 @@ export default function LearningScreen() {
                           resourceBadge: res.badge_text,
                           resourceSummary: res.summary || '',
                           resourceKeyPoints: res.key_points ? JSON.stringify(res.key_points) : '',
+                          videoTimestamps: res.video_timestamps ? JSON.stringify(res.video_timestamps) : '',
+                          practiceSteps: res.practice_steps ? JSON.stringify(res.practice_steps) : '',
+                          codeSnippet: res.code_snippet || '',
                         },
                       } as any)
                     }
