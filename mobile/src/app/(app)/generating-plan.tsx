@@ -142,6 +142,7 @@ export default function GeneratingPlanScreen() {
           title: createdGoal.title,
           targetDate: createdGoal.due_date ?? '',
           priority: createdGoal.priority ?? mappedPriority,
+          isNew: '1',
         },
       });
     } catch (error) {

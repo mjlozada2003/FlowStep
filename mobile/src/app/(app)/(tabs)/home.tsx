@@ -133,7 +133,7 @@ export default function HomeScreen() {
           <TouchableOpacity 
             style={styles.profileBadge}
             activeOpacity={0.8}
-            onPress={() => router.push('/preferences' as any)}
+            onPress={() => router.navigate('/(tabs)/preferences' as any)}
           >
             <Text style={styles.profileInitials}>{initials}</Text>
           </TouchableOpacity>

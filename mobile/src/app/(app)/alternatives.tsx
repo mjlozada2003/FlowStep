@@ -1,9 +1,10 @@
 import { Feather } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   ScrollView,
   StyleSheet,
   Text,
@@ -61,7 +62,7 @@ export default function AlternativesScreen() {
 
   const handleApplyProposal = async () => {
     if (!token) {
-      router.push({
+      router.replace({
         pathname: '/goal-success',
         params: { goalId: String(goalIdNum), fromSuccess: '1', isReplan: '1' },
       } as any);
@@ -71,7 +72,7 @@ export default function AlternativesScreen() {
     try {
       setSubmitting(true);
       await applyReplanAlternative(goalIdNum, selectedProposal, token);
-      router.push({
+      router.replace({
         pathname: '/goal-success',
         params: { goalId: String(goalIdNum), fromSuccess: '1', isReplan: '1' },
       } as any);
@@ -85,13 +86,44 @@ export default function AlternativesScreen() {
     }
   };
 
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else if (params.goalId) {
+      router.navigate({
+        pathname: '/goal-plan',
+        params: { goalId: String(goalIdNum) },
+      } as any);
+    } else {
+      router.navigate('/(tabs)/home' as any);
+    }
+  }, [params.goalId, goalIdNum]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleBack]),
+  );
+
   const handleRejectChanges = async () => {
     if (token) {
       try {
         await rejectReplanAlternative(goalIdNum, token);
       } catch {}
     }
-    router.replace('/home' as any);
+    if (params.goalId) {
+      router.navigate({
+        pathname: '/goal-plan',
+        params: { goalId: String(goalIdNum) },
+      } as any);
+    } else {
+      router.navigate('/(tabs)/home' as any);
+    }
   };
 
   const completedCount = alternativesData?.completed_count ?? 3;
@@ -110,7 +142,7 @@ export default function AlternativesScreen() {
       >
         {/* Cabecera superior */}
         <View style={styles.topHeader}>
-          <BackButton />
+          <BackButton onPress={handleBack} />
           <Text style={styles.headerTag}>COMPARAR PROPUESTAS</Text>
           <View style={styles.brandContainer}>
             <Feather name="bar-chart-2" size={16} color="#174A62" />

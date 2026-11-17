@@ -24,6 +24,10 @@ export default function AppLayout() {
       <Stack.Screen name="activity-history" />
       <Stack.Screen name="archived-goals" />
       <Stack.Screen name="weekly-summary" />
+      <Stack.Screen name="recommendation" />
+      <Stack.Screen name="alternatives" />
+      <Stack.Screen name="evaluation" />
+      <Stack.Screen name="availability" />
     </Stack>
   );
 }

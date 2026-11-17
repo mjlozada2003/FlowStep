@@ -3,6 +3,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   ScrollView,
   StyleSheet,
   Text,
@@ -60,6 +61,25 @@ export default function ArchivedGoalsScreen() {
     }, [token]),
   );
 
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/home' as any);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleBack]),
+  );
+
   const archivedGoals = history.filter((g) => g.status === 'archived');
   const completedGoals = history.filter((g) => g.status === 'completed');
 
@@ -92,7 +112,7 @@ export default function ArchivedGoalsScreen() {
       >
         {/* Cabecera superior con BackButton, etiqueta y Logo */}
         <View style={styles.topHeader}>
-          <BackButton />
+          <BackButton onPress={handleBack} />
           <Text style={styles.headerTag}>OBJETIVOS</Text>
           <BrandHeader showTagline={false} />
         </View>

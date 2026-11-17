@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Modal,
   ScrollView,
   StyleSheet,
@@ -36,6 +37,7 @@ import { FlowMascotAvatar } from '@/components/features/FlowMascotAvatar';
 export default function GoalPlanScreen() {
   const params = useLocalSearchParams<{
     goalId?: string;
+    isNew?: string;
   }>();
 
   const { token } = useAuth();
@@ -171,6 +173,27 @@ export default function GoalPlanScreen() {
     }, [goalId, token]),
   );
 
+  const handleBack = useCallback(() => {
+    if (params.isNew === '1') {
+      router.navigate('/(tabs)/home' as any);
+    } else if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/home' as any);
+    }
+  }, [params.isNew]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleBack]),
+  );
+
   const handleCyclePriority = async () => {
     if (!goalId || !token || isUpdatingPriority || !priority) return;
 
@@ -235,7 +258,7 @@ export default function GoalPlanScreen() {
           {/* Header Superior con BackButton y Menú de Opciones (Sprint 4) */}
           <View style={styles.topRow}>
             <View style={styles.headerLeftContainer}>
-              <BackButton />
+              <BackButton onPress={handleBack} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.badge}>TU PLAN PERSONALIZADO</Text>
                 <Text style={styles.mainTitle} numberOfLines={1}>Tu Plan Personalizado</Text>
@@ -396,8 +419,8 @@ export default function GoalPlanScreen() {
             style={styles.scheduleAccessCard}
             activeOpacity={0.85}
             onPress={() =>
-              router.push({
-                pathname: '/learning',
+              router.navigate({
+                pathname: '/(tabs)/learning',
                 params: { goalId: goalId ? String(goalId) : '' },
               } as any)
             }
@@ -461,7 +484,7 @@ export default function GoalPlanScreen() {
           <TouchableOpacity
             style={styles.scheduleAccessCard}
             activeOpacity={0.85}
-            onPress={() => router.navigate('/calendar' as any)}
+            onPress={() => router.navigate('/(tabs)/calendar' as any)}
           >
             <View style={styles.scheduleCardLeft}>
               <View style={[styles.calendarIconBox, { backgroundColor: '#E2EEF1' }]}>

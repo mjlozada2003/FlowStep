@@ -1,9 +1,10 @@
 import { Feather } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   ScrollView,
   StyleSheet,
   Text,
@@ -231,7 +232,7 @@ export default function EvaluationScreen() {
           setSubmitting(false);
         }
       }
-      router.replace('/learning' as any);
+      router.replace('/(tabs)/learning' as any);
     }
   };
 
@@ -245,7 +246,7 @@ export default function EvaluationScreen() {
           {
             text: 'Volver a Aprendizaje',
             style: 'cancel',
-            onPress: () => router.replace('/learning' as any),
+            onPress: () => router.replace('/(tabs)/learning' as any),
           },
           {
             text: 'Añadir refuerzo',
@@ -260,7 +261,7 @@ export default function EvaluationScreen() {
                   Alert.alert('¡Excelente!', 'Actividad de refuerzo añadida a tu cronograma.');
                 } catch {}
               }
-              router.replace('/learning' as any);
+              router.replace('/(tabs)/learning' as any);
             },
           },
         ],
@@ -269,10 +270,49 @@ export default function EvaluationScreen() {
       Alert.alert(
         '¡Felicitaciones!',
         `Puntaje perfecto: ${result.score}/${result.total_questions} (100%). ¡Dominas estos conocimientos!`,
-        [{ text: 'Continuar', onPress: () => router.replace('/learning' as any) }],
+        [{ text: 'Continuar', onPress: () => router.replace('/(tabs)/learning' as any) }],
       );
     }
   };
+
+  const handleBack = useCallback(() => {
+    if (!showResourceIntro && hasResourceInfo) {
+      setShowResourceIntro(true);
+      return true;
+    }
+    if (userAnswers.length > 0 && !evaluationResult) {
+      Alert.alert(
+        '¿Salir de la evaluación?',
+        'Tienes respuestas en progreso. Si sales ahora, deberás iniciarla nuevamente.',
+        [
+          { text: 'Quedarme', style: 'cancel' },
+          {
+            text: 'Salir',
+            style: 'destructive',
+            onPress: () => router.replace('/(tabs)/learning' as any),
+          },
+        ],
+      );
+      return true;
+    }
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/learning' as any);
+    }
+    return true;
+  }, [showResourceIntro, hasResourceInfo, userAnswers.length, evaluationResult]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleBack]),
+  );
 
   const selectedObj = currentQ?.options?.find((o) => o.key === selectedOption);
 
@@ -284,15 +324,7 @@ export default function EvaluationScreen() {
       >
         {/* Cabecera superior */}
         <View style={styles.topHeader}>
-          <BackButton
-            onPress={() => {
-              if (!showResourceIntro && hasResourceInfo) {
-                setShowResourceIntro(true);
-              } else {
-                router.back();
-              }
-            }}
-          />
+          <BackButton onPress={handleBack} />
           <Text style={styles.headerStep}>
             {showResourceIntro
               ? 'RECURSO DE APRENDIZAJE'

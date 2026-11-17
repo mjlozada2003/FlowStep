@@ -6,6 +6,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   Platform,
   ScrollView,
   StyleSheet,
@@ -126,6 +127,30 @@ export default function StageDetailScreen() {
     (!stageId || !token
       ? 'Inicia sesión y abre una etapa válida para consultar sus actividades.'
       : null);
+
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else if (goalId) {
+      router.navigate({
+        pathname: '/goal-plan',
+        params: { goalId: String(goalId) },
+      } as any);
+    } else {
+      router.replace('/(tabs)/home' as any);
+    }
+  }, [goalId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleBack]),
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -349,7 +374,7 @@ export default function StageDetailScreen() {
         <View style={styles.container}>
           {/* Top Bar con BackButton unificado */}
           <View style={styles.topBar}>
-            <BackButton />
+            <BackButton onPress={handleBack} />
             <Text style={styles.headerStepTag}>ETAPA ACTIVA</Text>
             <BrandHeader showTagline={false} />
           </View>

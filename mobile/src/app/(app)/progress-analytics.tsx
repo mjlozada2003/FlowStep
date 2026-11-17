@@ -76,15 +76,17 @@ export default function ProgressAnalyticsScreen() {
   const handleBack = useCallback(() => {
     if (params.fromSuccess === '1') {
       if (activeGoalId) {
-        router.dismissTo({
+        router.navigate({
           pathname: '/goal-plan',
           params: { goalId: String(activeGoalId) },
-        });
+        } as any);
       } else {
-        router.dismissAll();
+        router.navigate('/(tabs)/home' as any);
       }
-    } else {
+    } else if (router.canGoBack()) {
       router.back();
+    } else {
+      router.replace('/(tabs)/home' as any);
     }
   }, [params.fromSuccess, activeGoalId]);
 

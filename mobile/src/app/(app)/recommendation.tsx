@@ -1,8 +1,9 @@
 import { Feather } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   ScrollView,
   StyleSheet,
   Text,
@@ -70,8 +71,34 @@ export default function RecommendationScreen() {
     diagnostic?.recommended_actions?.[0] ||
     'Recuperar el ritmo manteniendo sesiones adaptadas a tu disponibilidad.';
 
+  const handleBack = useCallback(() => {
+    if (params.goalId && router.canGoBack()) {
+      router.back();
+    } else if (params.goalId) {
+      router.navigate({
+        pathname: '/goal-plan',
+        params: { goalId: String(goalIdNum) },
+      } as any);
+    } else if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.navigate('/(tabs)/home' as any);
+    }
+  }, [params.goalId, goalIdNum]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleBack]),
+  );
+
   const handleKeepCurrentPlan = () => {
-    router.replace('/home' as any);
+    handleBack();
   };
 
   const handleCompareProposals = () => {
@@ -89,7 +116,7 @@ export default function RecommendationScreen() {
       >
         {/* Cabecera superior */}
         <View style={styles.topHeader}>
-          <BackButton />
+          <BackButton onPress={handleBack} />
           <Text style={styles.headerTag}>RECOMENDACIÓN</Text>
           <View style={styles.brandContainer}>
             <Feather name="bar-chart-2" size={16} color="#174A62" />

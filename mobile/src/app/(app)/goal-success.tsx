@@ -101,12 +101,12 @@ export default function GoalSuccessScreen() {
 
   const handleContinue = useCallback(() => {
     if (goalId) {
-      router.dismissTo({
+      router.navigate({
         pathname: '/goal-plan',
         params: { goalId: String(goalId) },
       } as any);
     } else {
-      router.dismissAll();
+      router.navigate('/(tabs)/home' as any);
     }
   }, [goalId]);
 

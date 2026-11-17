@@ -46,7 +46,7 @@ export default function LoginScreen() {
         password,
       });
       setSession(session);
-      router.replace('/home');
+      router.replace('/(tabs)/home' as any);
     } catch (error) {
       setErrors({
         form:

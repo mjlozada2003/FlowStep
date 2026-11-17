@@ -1,7 +1,15 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  BackHandler,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 import { Screen } from '@/components/ui/Screen';
 import { BackButton } from '@/components/ui/BackButton';
@@ -50,6 +58,25 @@ export default function WeeklySummaryScreen() {
     }, [token]),
   );
 
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/home' as any);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleBack]),
+  );
+
   return (
     <Screen style={styles.screen}>
       <ScrollView
@@ -58,7 +85,7 @@ export default function WeeklySummaryScreen() {
       >
         {/* Cabecera superior */}
         <View style={styles.topHeader}>
-          <BackButton />
+          <BackButton onPress={handleBack} />
           <Text style={styles.headerTag}>RESÚMENES</Text>
           <View style={{ width: 36 }} />
         </View>

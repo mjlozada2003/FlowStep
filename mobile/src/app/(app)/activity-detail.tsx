@@ -1,8 +1,9 @@
 import { Feather } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   ScrollView,
   StyleSheet,
   Text,
@@ -67,6 +68,30 @@ export default function ActivityDetailScreen() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else if (goalId) {
+      router.navigate({
+        pathname: '/goal-plan',
+        params: { goalId: String(goalId) },
+      } as any);
+    } else {
+      router.replace('/(tabs)/home' as any);
+    }
+  }, [goalId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleBack]),
+  );
 
   const handleCompleteActivity = async () => {
     if (!token || !activityId || isSubmitting) return;
@@ -140,7 +165,7 @@ export default function ActivityDetailScreen() {
     <Screen style={styles.screenBg}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.topBar}>
-          <BackButton />
+          <BackButton onPress={handleBack} />
           <Text style={styles.topBarTitle} numberOfLines={1}>DETALLE DE ACTIVIDAD</Text>
           <BrandHeader />
         </View>
