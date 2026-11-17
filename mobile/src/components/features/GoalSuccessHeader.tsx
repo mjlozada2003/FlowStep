@@ -5,6 +5,7 @@ interface GoalSuccessHeaderProps {
   isConfirmed: boolean;
   completedActivityTitle?: string;
   errorMessage: string | null;
+  isReplan?: boolean;
 }
 
 export function GoalSuccessHeader({
@@ -12,18 +13,23 @@ export function GoalSuccessHeader({
   isConfirmed,
   completedActivityTitle,
   errorMessage,
+  isReplan = false,
 }: GoalSuccessHeaderProps) {
   const badgeText = isLoading
     ? 'CONSULTANDO TU PROGRESO'
-    : isConfirmed
-      ? 'PRIMER PASO COMPLETADO'
-      : 'ESTADO NO CONFIRMADO';
+    : isReplan
+      ? 'PLAN ADAPTADO EXITOSAMENTE'
+      : isConfirmed
+        ? 'PRIMER PASO COMPLETADO'
+        : 'ESTADO NO CONFIRMADO';
 
   const titleText = isLoading
     ? 'Actualizando tu progreso'
-    : isConfirmed
-      ? '¡Muy bien, lo has conseguido!'
-      : 'No se pudo confirmar el cambio';
+    : isReplan
+      ? '¡Tu plan ha sido actualizado!'
+      : isConfirmed
+        ? '¡Muy bien, lo has conseguido!'
+        : 'No se pudo confirmar el cambio';
 
   return (
     <View style={styles.titleSection}>
@@ -32,13 +38,15 @@ export function GoalSuccessHeader({
       <Text style={styles.subtitle}>
         {isLoading
           ? 'Consultando el estado guardado de la actividad.'
-          : isConfirmed
-            ? (
-                <>
-                  Completaste <Text style={styles.boldText}>{completedActivityTitle}</Text>. Cada actividad te acerca un poco más a tu objetivo.
-                </>
-              )
-            : errorMessage}
+          : isReplan
+            ? 'Aplicamos la propuesta seleccionada. Tus actividades pendientes se reorganizaron respetando tu tiempo y protegiendo tu progreso anterior.'
+            : isConfirmed
+              ? (
+                  <>
+                    Completaste <Text style={styles.boldText}>{completedActivityTitle}</Text>. Cada actividad te acerca un poco más a tu objetivo.
+                  </>
+                )
+              : errorMessage}
       </Text>
     </View>
   );

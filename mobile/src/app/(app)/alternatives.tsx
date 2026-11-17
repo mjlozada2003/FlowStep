@@ -63,7 +63,7 @@ export default function AlternativesScreen() {
     if (!token) {
       router.push({
         pathname: '/goal-success',
-        params: { goalId: String(goalIdNum), fromSuccess: '1' },
+        params: { goalId: String(goalIdNum), fromSuccess: '1', isReplan: '1' },
       } as any);
       return;
     }
@@ -73,7 +73,7 @@ export default function AlternativesScreen() {
       await applyReplanAlternative(goalIdNum, selectedProposal, token);
       router.push({
         pathname: '/goal-success',
-        params: { goalId: String(goalIdNum), fromSuccess: '1' },
+        params: { goalId: String(goalIdNum), fromSuccess: '1', isReplan: '1' },
       } as any);
     } catch (err: any) {
       Alert.alert(

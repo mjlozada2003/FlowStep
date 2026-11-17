@@ -27,6 +27,8 @@ export default function GoalSuccessScreen() {
     stageId?: string;
     goalId?: string;
     stageTitle?: string;
+    fromSuccess?: string;
+    isReplan?: string;
   }>();
   const { token } = useAuth();
   const [activities, setActivities] = useState<StageActivity[]>([]);
@@ -42,11 +44,12 @@ export default function GoalSuccessScreen() {
   const goalId = /^\d+$/.test(params.goalId ?? '')
     ? Number(params.goalId)
     : null;
+  const isReplan = params.isReplan === '1' || (Boolean(params.fromSuccess) && !activityId);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      if (!token || !stageId || !activityId) return undefined;
+      if (isReplan || !token || !stageId || !activityId) return undefined;
 
       getStageActivities(stageId, token)
         .then((serverActivities) => {
@@ -74,7 +77,7 @@ export default function GoalSuccessScreen() {
       return () => {
         active = false;
       };
-    }, [activityId, stageId, token]),
+    }, [activityId, isReplan, stageId, token]),
   );
 
   const completedActivity = activities.find(
@@ -87,13 +90,14 @@ export default function GoalSuccessScreen() {
   const totalCount = activities.length;
   const progressPercent =
     totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : null;
-  const isScreenLoading = isLoading && Boolean(token && stageId && activityId);
-  const displayLoadError =
-    loadError ??
-    (!token || !stageId || !activityId
-      ? 'Inicia sesión y vuelve a abrir la actividad completada.'
-      : null);
-  const isConfirmed = Boolean(completedActivity && !displayLoadError);
+  const isScreenLoading = !isReplan && isLoading && Boolean(token && stageId && activityId);
+  const displayLoadError = isReplan
+    ? null
+    : (loadError ??
+      (!token || !stageId || !activityId
+        ? 'Inicia sesión y vuelve a abrir la actividad completada.'
+        : null));
+  const isConfirmed = isReplan || Boolean(completedActivity && !displayLoadError);
 
   const handleContinue = useCallback(() => {
     if (goalId) {
@@ -138,6 +142,7 @@ export default function GoalSuccessScreen() {
             isConfirmed={isConfirmed}
             completedActivityTitle={completedActivity?.title}
             errorMessage={displayLoadError}
+            isReplan={isReplan}
           />
 
           {isScreenLoading ? (
@@ -156,7 +161,13 @@ export default function GoalSuccessScreen() {
             />
           ) : null}
 
-          <GoalSuccessMascotCard />
+          <GoalSuccessMascotCard
+            quote={
+              isReplan
+                ? 'Adaptar el plan a tu tiempo y ritmo real es la clave para asegurar que llegues a la meta.'
+                : undefined
+            }
+          />
 
           {/* Acción Principal: Continuar con mi plan / Volver al inicio */}
           <TouchableOpacity
