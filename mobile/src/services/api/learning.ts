@@ -1,8 +1,10 @@
 import { apiRequest } from '@/services/api/client';
 
 export interface TopicItem {
+  id?: string;
   name: string;
-  status: 'completed' | 'current' | 'pending';
+  is_mastered?: boolean;
+  status?: 'completed' | 'current' | 'pending';
 }
 
 export interface GoalKnowledgeResponse {

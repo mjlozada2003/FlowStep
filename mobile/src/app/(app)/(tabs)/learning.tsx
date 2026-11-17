@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -13,7 +13,7 @@ import {
 import { Screen } from '@/components/ui/Screen';
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { useAuth } from '@/contexts/auth-context';
-import { getGoalsOverview } from '@/services/api/goals';
+import { getGoalsOverview, GoalOverviewItem } from '@/services/api/goals';
 import {
   getGoalKnowledge,
   getGoalResources,
@@ -21,92 +21,135 @@ import {
   LearningResourceItem,
 } from '@/services/api/learning';
 
-const fallbackResources: LearningResourceItem[] = [
-  {
-    id: '1',
-    type: 'LECTURA',
-    duration: '3 min',
-    title: 'Pensar en componentes y estructura',
-    category: 'Fundamentos',
-    badge_text: 'Esencial',
-    icon_name: 'book-open',
-  },
-  {
-    id: '2',
-    type: 'VÍDEO',
-    duration: '12 min',
-    title: 'Flujo de datos y propiedades paso a paso',
-    category: 'Conceptos clave',
-    badge_text: 'Recomendado',
-    icon_name: 'play',
-  },
-  {
-    id: '3',
-    type: 'PRÁCTICA',
-    duration: '20 min',
-    title: 'Construye tu primer ejercicio práctico',
-    category: 'Práctica guiada',
-    badge_text: 'Intermedio',
-    icon_name: 'code',
-  },
-];
-
 export default function LearningScreen() {
   const { token } = useAuth();
+  const params = useLocalSearchParams<{ goalId?: string }>();
   const [loading, setLoading] = useState<boolean>(true);
+  const [switchingGoal, setSwitchingGoal] = useState<boolean>(false);
+  const [goalsList, setGoalsList] = useState<GoalOverviewItem[]>([]);
   const [currentGoalId, setCurrentGoalId] = useState<number>(1);
   const [knowledge, setKnowledge] = useState<GoalKnowledgeResponse | null>(null);
-  const [resources, setResources] = useState<LearningResourceItem[]>(fallbackResources);
+  const [resources, setResources] = useState<LearningResourceItem[]>([]);
+
+  const fetchGoalData = useCallback(
+    async (goalId: number, userToken: string) => {
+      try {
+        const [knowRes, resRes] = await Promise.all([
+          getGoalKnowledge(goalId, userToken).catch(() => null),
+          getGoalResources(goalId, userToken).catch(() => null),
+        ]);
+        if (knowRes) setKnowledge(knowRes);
+        if (resRes && resRes.length > 0) setResources(resRes);
+      } catch (err) {
+        console.warn('Error al cargar datos de aprendizaje:', err);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     let isMounted = true;
-    async function loadLearningData() {
+    async function loadInitial() {
       if (!token) {
         setLoading(false);
         return;
       }
       try {
         setLoading(true);
-        // Obtener la meta activa principal
         const goals = await getGoalsOverview(token).catch(() => []);
-        const activeGoal = goals && goals.length > 0 ? goals[0] : null;
-        const targetGoalId = activeGoal ? Number(activeGoal.goal_id) : 1;
-        setCurrentGoalId(targetGoalId);
+        if (!isMounted) return;
+        setGoalsList(goals);
 
-        const [knowRes, resRes] = await Promise.all([
-          getGoalKnowledge(targetGoalId, token).catch(() => null),
-          getGoalResources(targetGoalId, token).catch(() => null),
-        ]);
-
-        if (isMounted) {
-          if (knowRes) setKnowledge(knowRes);
-          if (resRes && resRes.length > 0) setResources(resRes);
+        let targetId = 1;
+        if (params.goalId && goals.some((g) => g.goal_id === Number(params.goalId))) {
+          targetId = Number(params.goalId);
+        } else if (goals && goals.length > 0) {
+          targetId = Number(goals[0].goal_id);
         }
+
+        setCurrentGoalId(targetId);
+        await fetchGoalData(targetId, token);
       } catch (err) {
-        console.warn('Error al cargar datos de aprendizaje:', err);
+        console.warn('Error al inicializar pantalla de aprendizaje:', err);
       } finally {
         if (isMounted) setLoading(false);
       }
     }
 
-    loadLearningData();
+    loadInitial();
     return () => {
       isMounted = false;
     };
-  }, [token]);
+  }, [token, params.goalId, fetchGoalData]);
 
-  const dominantCount = knowledge?.dominant_count ?? 2;
-  const totalConcepts = knowledge?.total_concepts ?? 5;
-  const goalTitle = knowledge?.goal_title || 'Objetivo de aprendizaje';
-  const progressPercent = knowledge?.progress_percentage ?? 33;
-  const topics = knowledge?.topics || [
-    { name: 'HTML y CSS', status: 'completed' as const },
-    { name: 'JavaScript', status: 'completed' as const },
-    { name: 'Componentes', status: 'current' as const },
-    { name: 'Hooks', status: 'pending' as const },
-    { name: 'APIs', status: 'pending' as const },
-    { name: 'Pruebas', status: 'pending' as const },
-  ];
+  const handleSelectGoal = async (goalId: number) => {
+    if (goalId === currentGoalId || !token) return;
+    try {
+      setSwitchingGoal(true);
+      setCurrentGoalId(goalId);
+      await fetchGoalData(goalId, token);
+    } finally {
+      setSwitchingGoal(false);
+    }
+  };
+
+  const activeGoalObj = goalsList.find((g) => g.goal_id === currentGoalId);
+  const goalTitle = knowledge?.goal_title || activeGoalObj?.title || 'Objetivo de aprendizaje';
+  const dominantCount = knowledge?.dominant_count ?? 1;
+  const totalConcepts = knowledge?.total_concepts ?? (knowledge?.topics?.length || 4);
+  const progressPercent = knowledge?.progress_percentage ?? (activeGoalObj?.progress_percentage || 0);
+
+  const topics =
+    knowledge?.topics && knowledge.topics.length > 0
+      ? knowledge.topics.map((t, idx) => ({
+          name: t.name,
+          status:
+            t.status ||
+            (t.is_mastered
+              ? ('completed' as const)
+              : idx === (knowledge.dominant_count || 0)
+              ? ('current' as const)
+              : ('pending' as const)),
+        }))
+      : [
+          { name: `Fundamentos de ${goalTitle}`, status: 'completed' as const },
+          { name: 'Conceptos clave y práctica', status: 'current' as const },
+          { name: 'Técnicas intermedias', status: 'pending' as const },
+          { name: 'Dominio avanzado', status: 'pending' as const },
+        ];
+
+  const displayResources: LearningResourceItem[] =
+    resources.length > 0
+      ? resources
+      : [
+          {
+            id: '1',
+            type: 'LECTURA',
+            duration: '5 min',
+            title: `Guía introductoria: ${goalTitle}`,
+            category: 'Fundamentos',
+            badge_text: 'Esencial',
+            icon_name: 'book-open',
+          },
+          {
+            id: '2',
+            type: 'VÍDEO',
+            duration: '12 min',
+            title: `Tutorial paso a paso de ${goalTitle}`,
+            category: 'Conceptos clave',
+            badge_text: 'Recomendado',
+            icon_name: 'play',
+          },
+          {
+            id: '3',
+            type: 'PRÁCTICA',
+            duration: '20 min',
+            title: 'Taller guiado para aplicar lo aprendido',
+            category: 'Práctica guiada',
+            badge_text: 'Intermedio',
+            icon_name: 'code',
+          },
+        ];
 
   return (
     <Screen style={styles.screen}>
@@ -126,13 +169,50 @@ export default function LearningScreen() {
           </View>
         </View>
 
+        {/* Selector interactivo de objetivos si el usuario tiene más de uno */}
+        {goalsList.length > 1 && (
+          <View style={styles.goalSelectorContainer}>
+            <Text style={styles.selectorLabel}>SELECCIONAR OBJETIVO</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.goalSelectorScroll}
+            >
+              {goalsList.map((g) => {
+                const isSelected = g.goal_id === currentGoalId;
+                return (
+                  <TouchableOpacity
+                    key={g.goal_id}
+                    style={[
+                      styles.goalSelectorPill,
+                      isSelected && styles.goalSelectorPillActive,
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={() => handleSelectGoal(g.goal_id)}
+                  >
+                    <Text
+                      style={[
+                        styles.goalSelectorText,
+                        isSelected && styles.goalSelectorTextActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {g.title}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#174A62" />
             <Text style={styles.loadingText}>Cargando conocimientos y recursos...</Text>
           </View>
         ) : (
-          <>
+          <View style={[switchingGoal && { opacity: 0.6 }]}>
             {/* Tarjeta Azul Oscura del Objetivo Actual */}
             <View style={styles.goalCardDark}>
               <View style={styles.goalCardTop}>
@@ -185,7 +265,7 @@ export default function LearningScreen() {
             </View>
 
             <View style={styles.resourcesList}>
-              {resources.map((res) => {
+              {displayResources.map((res) => {
                 const iconName: any = res.icon_name || 'book-open';
                 return (
                   <TouchableOpacity
@@ -225,7 +305,7 @@ export default function LearningScreen() {
               onPress={() =>
                 router.push({
                   pathname: '/evaluation',
-                  params: { goalId: String(currentGoalId) },
+                  params: { goalId: String(currentGoalId), goalTitle },
                 } as any)
               }
             >
@@ -234,8 +314,8 @@ export default function LearningScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.evalTag}>COMPRUEBA LO APRENDIDO</Text>
-                <Text style={styles.evalTitle}>Evaluación diagnóstica adaptativa</Text>
-                <Text style={styles.evalSubtitle}>Preguntas clave · Refuerzo con IA</Text>
+                <Text style={styles.evalTitle}>Evaluación: {goalTitle}</Text>
+                <Text style={styles.evalSubtitle}>Preguntas diagnósticas · Refuerzo con IA</Text>
               </View>
               <Text style={styles.evalAction}>Empezar</Text>
             </TouchableOpacity>
@@ -253,11 +333,11 @@ export default function LearningScreen() {
             >
               <View style={{ flex: 1 }}>
                 <Text style={styles.planConnectedTitle}>Aprendizaje conectado a tu plan</Text>
-                <Text style={styles.planConnectedDesc}>Las actividades de refuerzo aparecerán programadas en tu plan.</Text>
+                <Text style={styles.planConnectedDesc}>Las actividades de refuerzo se incorporan directamente a las etapas de tu objetivo.</Text>
               </View>
               <Text style={styles.planConnectedAction}>Ver plan</Text>
             </TouchableOpacity>
-          </>
+          </View>
         )}
       </ScrollView>
     </Screen>
@@ -310,6 +390,42 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: '#627D98',
     fontWeight: '600',
+  },
+  goalSelectorContainer: {
+    gap: 6,
+    marginBottom: 4,
+  },
+  selectorLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#627D98',
+    letterSpacing: 1,
+  },
+  goalSelectorScroll: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  goalSelectorPill: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#D8ECF8',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    maxWidth: 220,
+  },
+  goalSelectorPillActive: {
+    backgroundColor: '#174A62',
+    borderColor: '#174A62',
+  },
+  goalSelectorText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#627D98',
+  },
+  goalSelectorTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '800',
   },
   goalCardDark: {
     backgroundColor: '#174A62',

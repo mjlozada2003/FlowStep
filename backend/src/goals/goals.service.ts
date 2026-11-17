@@ -992,8 +992,9 @@ export class GoalsService {
     const progressInfo = progressRows && progressRows.length > 0 ? progressRows[0] : null;
     const progressPct = progressInfo ? Number(progressInfo.progress_percentage) || 0 : 0;
     const completedRatio = Math.max(0, Math.min(progressPct / 100, 1));
+    const stageNames = goal.stages?.map((s) => s.name) || [];
 
-    return this.aiService.generateGoalKnowledge(goalId, goal.title, completedRatio);
+    return this.aiService.generateGoalKnowledge(goalId, goal.title, completedRatio, stageNames);
   }
 
   // HU-05, HU-38: Consultar recursos de aprendizaje del objetivo
@@ -1003,7 +1004,8 @@ export class GoalsService {
       throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
     }
 
-    return this.aiService.generateLearningResources(goalId, goal.title);
+    const stageNames = goal.stages?.map((s) => s.name) || [];
+    return this.aiService.generateLearningResources(goalId, goal.title, stageNames);
   }
 
   // HU-40: Cuestionario de evaluación diagnóstica
@@ -1013,7 +1015,8 @@ export class GoalsService {
       throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
     }
 
-    return this.aiService.generateEvaluationQuiz(goalId, goal.title);
+    const stageNames = goal.stages?.map((s) => s.name) || [];
+    return this.aiService.generateEvaluationQuiz(goalId, goal.title, stageNames);
   }
 
   // HU-40, HU-41, HU-42: Evaluar respuestas del cuestionario y sugerir refuerzo
@@ -1027,7 +1030,8 @@ export class GoalsService {
       throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
     }
 
-    const questions = await this.aiService.generateEvaluationQuiz(goalId, goal.title);
+    const stageNames = goal.stages?.map((s) => s.name) || [];
+    const questions = await this.aiService.generateEvaluationQuiz(goalId, goal.title, stageNames);
     return this.aiService.evaluateQuizAnswers(questions, dto.answers);
   }
 

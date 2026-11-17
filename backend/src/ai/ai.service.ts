@@ -72,6 +72,7 @@ export interface GoalTopicItem {
   id: string;
   name: string;
   is_mastered: boolean;
+  status?: 'completed' | 'current' | 'pending';
   stage_name?: string;
 }
 
@@ -82,6 +83,11 @@ export interface GoalKnowledgeResponse {
   total_concepts: number;
   progress_percentage: number;
   topics: GoalTopicItem[];
+  current_concept?: {
+    title: string;
+    description: string;
+    mastery_percentage: number;
+  };
 }
 
 export interface LearningResourceItem {
@@ -538,41 +544,69 @@ export class AiService {
     goalId: number,
     goalTitle: string,
     completedRatio = 0.33,
+    stageNames: string[] = [],
   ): Promise<GoalKnowledgeResponse> {
+    const stageContext =
+      stageNames && stageNames.length > 0
+        ? `Las etapas planificadas son: ${stageNames.map((s, i) => `${i + 1}. ${s}`).join(', ')}.`
+        : '';
+
     const prompt = `
-      Para el objetivo: "${goalTitle}", lista entre 4 y 6 temas o conocimientos técnicos/teóricos clave ordenados de lo básico a lo avanzado.
+      Para el objetivo: "${goalTitle}".
+      ${stageContext}
+      Lista entre 4 y 6 temas o conocimientos técnicos/teóricos clave ordenados de lo básico a lo avanzado, coherentes con este objetivo y sus etapas.
       Responde ESTRICTAMENTE con un array JSON de strings con los nombres cortos de los temas, por ejemplo:
-      ["Fundamentos", "Estructuras de datos", "Algoritmos", "Buenas prácticas"]
+      ["Fundamentos de ${goalTitle.split(' ')[0] || 'Objetivo'}", "Sintaxis básica", "Herramientas principales", "Práctica intermedia", "Dominio avanzado"]
     `;
 
     let topicNames: string[] = [];
     try {
       const parsed = await this.callGeminiJson<string[]>(prompt);
       if (Array.isArray(parsed) && parsed.length >= 3) {
-        topicNames = parsed;
+        topicNames = parsed.map((item) => String(item).trim()).filter(Boolean);
       }
     } catch {
       // Fallback
     }
 
     if (topicNames.length === 0) {
-      topicNames = [
-        `Fundamentos de ${goalTitle.split(' ')[0] || 'Objetivo'}`,
-        'Conceptos clave y configuración',
-        'Desarrollo de habilidades prácticas',
-        'Técnicas avanzadas y optimización',
-        'Evaluación e integración final',
-      ];
+      if (stageNames && stageNames.length >= 3) {
+        topicNames = stageNames;
+      } else {
+        topicNames = [
+          `Fundamentos de ${goalTitle}`,
+          `Conceptos clave y configuración`,
+          `Desarrollo de habilidades prácticas`,
+          `Técnicas avanzadas y optimización`,
+          `Evaluación e integración final`,
+        ];
+      }
     }
 
     const total = topicNames.length;
-    const dominantCount = Math.max(1, Math.min(Math.round(total * completedRatio), total));
+    const dominantCount = Math.max(0, Math.min(Math.round(total * completedRatio), total));
 
-    const topics: GoalTopicItem[] = topicNames.map((name, index) => ({
-      id: String(index + 1),
-      name,
-      is_mastered: index < dominantCount,
-    }));
+    const topics: GoalTopicItem[] = topicNames.map((name, index) => {
+      let status: 'completed' | 'current' | 'pending' = 'pending';
+      if (index < dominantCount) {
+        status = 'completed';
+      } else if (index === dominantCount) {
+        status = 'current';
+      } else {
+        status = 'pending';
+      }
+
+      return {
+        id: String(index + 1),
+        name,
+        is_mastered: index < dominantCount,
+        status,
+        stage_name: stageNames[index] || name,
+      };
+    });
+
+    const currentConceptIndex = Math.min(dominantCount, total - 1);
+    const currentTopicName = topicNames[currentConceptIndex] || topicNames[0] || goalTitle;
 
     return {
       goal_id: goalId,
@@ -581,6 +615,11 @@ export class AiService {
       total_concepts: total,
       progress_percentage: Math.round(completedRatio * 100),
       topics,
+      current_concept: {
+        title: currentTopicName,
+        description: `Conceptos clave en desarrollo para consolidar las actividades de "${goalTitle}".`,
+        mastery_percentage: Math.round(completedRatio * 100),
+      },
     };
   }
 
@@ -590,9 +629,17 @@ export class AiService {
   async generateLearningResources(
     goalId: number,
     goalTitle: string,
+    stageNames: string[] = [],
   ): Promise<LearningResourceItem[]> {
+    const stageContext =
+      stageNames && stageNames.length > 0
+        ? `Las etapas planificadas son: ${stageNames.map((s, i) => `${i + 1}. ${s}`).join(', ')}.`
+        : '';
+
     const prompt = `
-      Para el objetivo: "${goalTitle}", genera 3 o 4 recursos de aprendizaje recomendados.
+      Para el objetivo: "${goalTitle}".
+      ${stageContext}
+      Genera 3 o 4 recursos de aprendizaje recomendados específicos para este objetivo y sus temas.
       Devuelve ESTRICTAMENTE un array JSON con esta estructura:
       [
         {
@@ -642,13 +689,17 @@ export class AiService {
       // Fallback
     }
 
+    const t1 = stageNames[0] || `Fundamentos de ${goalTitle}`;
+    const t2 = stageNames[1] || `Guía práctica de ${goalTitle}`;
+    const t3 = stageNames[2] || `Ejercicios y proyectos de ${goalTitle}`;
+
     return [
       {
         id: '1',
         type: 'LECTURA',
         duration: '5 min',
-        title: `Guía esencial de ${goalTitle}`,
-        category: 'Fundamentos',
+        title: `Guía esencial: ${t1}`,
+        category: t1,
         badge_text: 'Esencial',
         icon_name: 'book-open',
       },
@@ -656,8 +707,8 @@ export class AiService {
         id: '2',
         type: 'VÍDEO',
         duration: '15 min',
-        title: 'Explicación conceptual paso a paso',
-        category: 'Conceptos clave',
+        title: `Tutorial práctico: ${t2}`,
+        category: t2,
         badge_text: 'Recomendado',
         icon_name: 'play',
       },
@@ -665,8 +716,8 @@ export class AiService {
         id: '3',
         type: 'PRÁCTICA',
         duration: '25 min',
-        title: 'Ejercicio guiado y resolución de problemas',
-        category: 'Práctica',
+        title: `Taller guiado: ${t3}`,
+        category: t3,
         badge_text: 'Intermedio',
         icon_name: 'code',
       },
@@ -679,9 +730,17 @@ export class AiService {
   async generateEvaluationQuiz(
     goalId: number,
     goalTitle: string,
+    stageNames: string[] = [],
   ): Promise<QuizQuestionItem[]> {
+    const stageContext =
+      stageNames && stageNames.length > 0
+        ? `Las etapas y conceptos del plan son: ${stageNames.join(', ')}.`
+        : '';
+
     const prompt = `
-      Para el objetivo: "${goalTitle}", crea 3 preguntas diagnósticas de opción múltiple (A, B, C) con una sola respuesta correcta y explicación.
+      Para el objetivo: "${goalTitle}".
+      ${stageContext}
+      Crea 3 preguntas diagnósticas de opción múltiple (A, B, C) con una sola respuesta correcta y explicación, específicas para evaluar los conceptos de este objetivo.
       Devuelve ESTRICTAMENTE un array JSON con:
       [
         {
@@ -707,11 +766,12 @@ export class AiService {
       // Fallback
     }
 
+    const firstTopic = stageNames[0] || goalTitle;
     return [
       {
         id: 1,
         category: 'CONCEPTOS BÁSICOS',
-        question: `¿Cuál es el primer principio fundamental para avanzar en "${goalTitle}"?`,
+        question: `¿Cuál es el primer principio fundamental para dominar "${firstTopic}"?`,
         options: [
           { key: 'A', text: 'Comprender los fundamentos y practicar de forma constante', isCorrect: true },
           { key: 'B', text: 'Memorizar todos los conceptos sin practicar', isCorrect: false },
@@ -733,7 +793,7 @@ export class AiService {
       {
         id: 3,
         category: 'APLICACIÓN PRÁCTICA',
-        question: '¿Cómo se consolida de mejor forma el aprendizaje adquirido?',
+        question: `¿Cómo se consolida de mejor forma el aprendizaje adquirido en "${goalTitle}"?`,
         options: [
           { key: 'A', text: 'Aplicándolo en un ejercicio práctico o proyecto real', isCorrect: true },
           { key: 'B', text: 'Leyendo la teoría una sola vez', isCorrect: false },
