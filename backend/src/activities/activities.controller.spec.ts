@@ -22,6 +22,8 @@ describe('ActivitiesController', () => {
     getActivityMisses: jest.fn(),
     getActivityTimeline: jest.fn(),
     getActivityHistoryById: jest.fn(),
+    getActivitySuggestions: jest.fn(),
+    getActivityResources: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -184,6 +186,30 @@ describe('ActivitiesController', () => {
       const result = await controller.getActivityHistory(req, 1);
       expect(result).toEqual(events);
       expect(mockActivitiesService.getActivityHistoryById).toHaveBeenCalledWith(7, 1);
+    });
+  });
+
+  describe('getActivitySuggestions (HU-26)', () => {
+    it('should retrieve suggestions for an activity', async () => {
+      const expected = { activity_id: 1, suggestion: 'Divide y vencerás' };
+      mockActivitiesService.getActivitySuggestions.mockResolvedValue(expected);
+
+      const req = { user: { userId: 7 } };
+      const result = await controller.getActivitySuggestions(req, 1);
+      expect(result).toEqual(expected);
+      expect(mockActivitiesService.getActivitySuggestions).toHaveBeenCalledWith(7, 1);
+    });
+  });
+
+  describe('getActivityResources (HU-38)', () => {
+    it('should retrieve learning resources for an activity', async () => {
+      const expected = { activity_id: 1, resources: [] };
+      mockActivitiesService.getActivityResources.mockResolvedValue(expected);
+
+      const req = { user: { userId: 7 } };
+      const result = await controller.getActivityResources(req, 1);
+      expect(result).toEqual(expected);
+      expect(mockActivitiesService.getActivityResources).toHaveBeenCalledWith(7, 1);
     });
   });
 });

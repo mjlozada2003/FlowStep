@@ -10,9 +10,15 @@ import { ScheduleMiss } from './entities/schedule-miss.entity';
 import { ActivityOrigin, ActivityStatus, ActivityType } from './enums/activity.enum';
 import { ScheduleReason } from './enums/schedule-reason.enum';
 import { BadRequestException } from '@nestjs/common';
+import { AiService } from '../ai/ai.service';
 
 describe('ActivitiesService', () => {
   let service: ActivitiesService;
+
+  const mockAiService = {
+    generateActivitySuggestion: jest.fn(),
+    generateLearningResources: jest.fn(),
+  };
 
   const mockActivityRepository: any = {
     create: jest.fn(),
@@ -94,6 +100,10 @@ describe('ActivitiesService', () => {
         {
           provide: getRepositoryToken(ScheduleMiss),
           useValue: mockScheduleMissRepository,
+        },
+        {
+          provide: AiService,
+          useValue: mockAiService,
         },
       ],
     }).compile();
@@ -456,6 +466,49 @@ describe('ActivitiesService', () => {
       const result = await service.getActivityHistoryById(7, 1);
       expect(result).toEqual([]);
       expect(mockActivityRepository.findOne).toHaveBeenCalled();
+    });
   });
-});
+
+  describe('getActivitySuggestions (HU-26)', () => {
+    it('should generate suggestions when difficulties are detected', async () => {
+      const mockActivity = {
+        activity_id: 1,
+        title: 'Práctica Docker',
+        stage: { goal: { goal_id: 10, title: 'Aprender DevOps', user_id: 1 } },
+        work_sessions: [{ difficulty_notes: 'Dificultad con volúmenes' }],
+        schedules: [],
+      };
+      mockActivityRepository.findOne.mockResolvedValue(mockActivity);
+      mockAiService.generateActivitySuggestion.mockResolvedValue({
+        suggestion: 'Dividir en partes más pequeñas.',
+        alternative_actions: ['Revisar tutorial'],
+      });
+
+      const result = await service.getActivitySuggestions(1, 1);
+      expect(result).toHaveProperty('suggestion', 'Dividir en partes más pequeñas.');
+      expect(result).toHaveProperty('difficulty_detected', 'Dificultad con volúmenes');
+      expect(mockAiService.generateActivitySuggestion).toHaveBeenCalledWith(
+        'Práctica Docker',
+        'Dificultad con volúmenes',
+      );
+    });
+  });
+
+  describe('getActivityResources (HU-38)', () => {
+    it('should return learning resources for an activity', async () => {
+      const mockActivity = {
+        activity_id: 1,
+        title: 'Práctica Docker',
+        stage: { goal: { goal_id: 10, title: 'Aprender DevOps', user_id: 1 } },
+      };
+      mockActivityRepository.findOne.mockResolvedValue(mockActivity);
+      mockAiService.generateLearningResources.mockResolvedValue([
+        { id: '1', title: 'Doc Docker', type: 'LECTURA', duration: '5 min' },
+      ]);
+
+      const result = await service.getActivityResources(1, 1);
+      expect(result).toHaveProperty('resources');
+      expect(result.resources).toHaveLength(1);
+    });
+  });
 });

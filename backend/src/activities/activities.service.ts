@@ -23,6 +23,7 @@ import { ActivityOrigin, ActivityStatus } from './enums/activity.enum';
 import { PriorityLevel } from '../goals/enums/goal.enum';
 import { ScheduleReason } from './enums/schedule-reason.enum';
 import { getAppDateString } from '../common/utils/date.utils';
+import { AiService } from '../ai/ai.service';
 
 @Injectable()
 export class ActivitiesService {
@@ -39,6 +40,7 @@ export class ActivitiesService {
     private missReasonsRepository: Repository<MissReason>,
     @InjectRepository(ScheduleMiss)
     private scheduleMissesRepository: Repository<ScheduleMiss>,
+    private aiService: AiService,
   ) {}
 
   private findOwnedActivity(
@@ -551,6 +553,86 @@ export class ActivitiesService {
     }
 
     return this.getActivityTimeline(userId, { activity_id: activityId });
+  }
+
+  async getActivitySuggestions(userId: number, activityId: number) {
+    const activity = await this.activitiesRepository.findOne({
+      where: {
+        activity_id: activityId,
+        stage: { goal: { user_id: userId } },
+      },
+      relations: {
+        stage: { goal: true },
+        work_sessions: true,
+        schedules: { miss: { reason: true } },
+      },
+    });
+
+    if (!activity) {
+      throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
+    }
+
+    const notes: string[] = [];
+    if (activity.work_sessions?.length) {
+      for (const s of activity.work_sessions) {
+        if (s.difficulty_notes) notes.push(s.difficulty_notes);
+      }
+    }
+    if (activity.schedules?.length) {
+      for (const sched of activity.schedules) {
+        if (sched.miss) {
+          const reason = sched.miss.reason?.name ? `[${sched.miss.reason.name}] ` : '';
+          if (sched.miss.details || reason) {
+            notes.push(`${reason}${sched.miss.details || ''}`.trim());
+          }
+        }
+      }
+    }
+
+    const difficultyText = notes.length ? notes.join('; ') : undefined;
+    const aiResult = await this.aiService.generateActivitySuggestion(
+      activity.title,
+      difficultyText,
+    );
+
+    return {
+      activity_id: activity.activity_id,
+      activity_title: activity.title,
+      goal_id: activity.stage.goal.goal_id,
+      goal_title: activity.stage.goal.title,
+      difficulty_detected: difficultyText || null,
+      suggestion: aiResult.suggestion,
+      alternative_actions: aiResult.alternative_actions,
+    };
+  }
+
+  async getActivityResources(userId: number, activityId: number) {
+    const activity = await this.activitiesRepository.findOne({
+      where: {
+        activity_id: activityId,
+        stage: { goal: { user_id: userId } },
+      },
+      relations: {
+        stage: { goal: true },
+      },
+    });
+
+    if (!activity) {
+      throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
+    }
+
+    const resources = await this.aiService.generateLearningResources(
+      activity.stage.goal.goal_id,
+      `${activity.title} (${activity.stage.goal.title})`,
+    );
+
+    return {
+      activity_id: activity.activity_id,
+      activity_title: activity.title,
+      goal_id: activity.stage.goal.goal_id,
+      goal_title: activity.stage.goal.title,
+      resources,
+    };
   }
 
   private timeToSeconds(time: string): number {
