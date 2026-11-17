@@ -244,7 +244,12 @@ export default function LearningScreen() {
             <TouchableOpacity
               style={styles.planConnectedCard}
               activeOpacity={0.8}
-              onPress={() => router.push('/(tabs)/goals' as any)}
+              onPress={() =>
+                router.push({
+                  pathname: '/goal-plan',
+                  params: { goalId: String(currentGoalId) },
+                } as any)
+              }
             >
               <View style={{ flex: 1 }}>
                 <Text style={styles.planConnectedTitle}>Aprendizaje conectado a tu plan</Text>
