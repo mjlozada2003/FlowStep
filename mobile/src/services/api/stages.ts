@@ -245,3 +245,16 @@ export async function getActivitySchedules(
   }
   return schedules;
 }
+
+// HU-12: Eliminar actividades que no sean relevantes para el objetivo
+export async function deleteActivity(
+  activityId: number,
+  token: string,
+  reason?: string,
+): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>(`/activities/${activityId}`, {
+    method: 'DELETE',
+    token,
+    body: reason ? JSON.stringify({ reason }) : undefined,
+  });
+}

@@ -12,7 +12,7 @@ export default function AppLayout() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="home" />
+      <Stack.Screen name="(tabs)" />
       <Stack.Screen name="schedule" />
       <Stack.Screen name="create-goal" />
       <Stack.Screen name="generating-plan" />
@@ -21,6 +21,9 @@ export default function AppLayout() {
       <Stack.Screen name="progress-analytics" />
       <Stack.Screen name="stage-detail" />
       <Stack.Screen name="activity-detail" />
+      <Stack.Screen name="activity-history" />
+      <Stack.Screen name="archived-goals" />
+      <Stack.Screen name="weekly-summary" />
     </Stack>
   );
 }

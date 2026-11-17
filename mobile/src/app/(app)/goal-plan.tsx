@@ -3,21 +3,28 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 
 import { Screen } from '@/components/ui/Screen';
 import { BackButton } from '@/components/ui/BackButton';
+import { AppModal } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/auth-context';
 import {
   getGoalById,
   getGoalProgress,
   updateGoalPriority,
+  pauseGoal,
+  resumeGoal,
+  archiveGoal,
+  updateGoalDueDate,
   type CreatedGoal,
   type GoalProgress,
 } from '@/services/api/goals';
@@ -50,6 +57,60 @@ export default function GoalPlanScreen() {
 
   // Estado para el menú flotante del Sprint 4 (Pausar, Cambiar fecha, Archivar)
   const [menuVisible, setMenuVisible] = useState(false);
+  const [dateModalVisible, setDateModalVisible] = useState(false);
+  const [newDueDate, setNewDueDate] = useState('');
+  const [isSavingDueDate, setIsSavingDueDate] = useState(false);
+
+  const handleTogglePause = async () => {
+    if (!goalId || !token) return;
+    setMenuVisible(false);
+    try {
+      if (progress?.goal_status === 'paused') {
+        await resumeGoal(goalId, token);
+      } else {
+        await pauseGoal(goalId, token);
+      }
+      const updatedProgress = await getGoalProgress(goalId, token);
+      if (updatedProgress) setProgress(updatedProgress);
+    } catch (error) {
+      Alert.alert(
+        'Error',
+        error instanceof Error ? error.message : 'No se pudo cambiar el estado del objetivo.',
+      );
+    }
+  };
+
+  const handleArchive = async () => {
+    if (!goalId || !token) return;
+    setMenuVisible(false);
+    try {
+      await archiveGoal(goalId, token);
+      router.replace('/archived-goals' as any);
+    } catch (error) {
+      Alert.alert(
+        'Error',
+        error instanceof Error ? error.message : 'No se pudo archivar el objetivo.',
+      );
+    }
+  };
+
+  const handleSaveDueDate = async () => {
+    if (!goalId || !token || !newDueDate.trim() || isSavingDueDate) return;
+    setIsSavingDueDate(true);
+    try {
+      await updateGoalDueDate(goalId, token, newDueDate.trim());
+      setDateModalVisible(false);
+      const serverGoal = await getGoalById(goalId, token);
+      setGoal(serverGoal);
+    } catch (error) {
+      Alert.alert(
+        'Error',
+        error instanceof Error ? error.message : 'No se pudo actualizar la fecha límite.',
+      );
+    } finally {
+      setIsSavingDueDate(false);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -211,20 +272,24 @@ export default function GoalPlanScreen() {
               <View style={styles.menuDropdown}>
                 <TouchableOpacity 
                   style={styles.menuItem} 
-                  onPress={() => {
-                    setMenuVisible(false);
-                    // Lógica mock o navegación para pausar (HU-32)
-                  }}
+                  onPress={handleTogglePause}
                 >
-                  <Feather name="pause-circle" size={16} color="#174A62" />
-                  <Text style={styles.menuItemText}>Pausar objetivo</Text>
+                  <Feather 
+                    name={progress?.goal_status === 'paused' ? 'play-circle' : 'pause-circle'} 
+                    size={16} 
+                    color="#174A62" 
+                  />
+                  <Text style={styles.menuItemText}>
+                    {progress?.goal_status === 'paused' ? 'Reanudar objetivo' : 'Pausar objetivo'}
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity 
                   style={styles.menuItem} 
                   onPress={() => {
                     setMenuVisible(false);
-                    // Lógica mock o navegación para cambiar fecha límite (HU-34)
+                    setNewDueDate(goal?.due_date ? goal.due_date.slice(0, 10) : '');
+                    setDateModalVisible(true);
                   }}
                 >
                   <Feather name="calendar" size={16} color="#174A62" />
@@ -233,11 +298,7 @@ export default function GoalPlanScreen() {
 
                 <TouchableOpacity 
                   style={[styles.menuItem, styles.menuItemDanger]} 
-                  onPress={() => {
-                    setMenuVisible(false);
-                    // Lógica mock o navegación para archivar (HU-46)
-                    router.push('/archived-goals' as any);
-                  }}
+                  onPress={handleArchive}
                 >
                   <Feather name="archive" size={16} color="#C53030" />
                   <Text style={[styles.menuItemText, styles.menuItemTextDanger]}>Archivar objetivo</Text>
@@ -245,6 +306,39 @@ export default function GoalPlanScreen() {
               </View>
             </TouchableOpacity>
           </Modal>
+
+          {/* Modal Cambiar Fecha Límite (HU-34) */}
+          <AppModal
+            visible={dateModalVisible}
+            onClose={() => setDateModalVisible(false)}
+            title="Cambiar fecha límite"
+            category="OBJETIVO"
+            primaryButtonText={isSavingDueDate ? 'Guardando...' : 'Guardar'}
+            onPrimaryAction={handleSaveDueDate}
+          >
+            <View style={{ gap: 10, paddingVertical: 8 }}>
+              <Text style={{ fontSize: 13, color: '#627D98' }}>
+                Ingresa la nueva fecha límite en formato AAAA-MM-DD:
+              </Text>
+              <TextInput
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: '#CBD5E1',
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  fontSize: 14,
+                  color: '#0F2C40',
+                }}
+                placeholder="2026-12-31"
+                placeholderTextColor="#94A3B8"
+                value={newDueDate}
+                onChangeText={setNewDueDate}
+                autoCapitalize="none"
+              />
+            </View>
+          </AppModal>
 
           {/* Tarjeta Principal del Objetivo */}
           <GoalOverviewCard
@@ -280,7 +374,7 @@ export default function GoalPlanScreen() {
               style={styles.miniMetricCard}
               activeOpacity={0.7}
               onPress={() =>
-                router.push({
+                router.navigate({
                   pathname: '/progress-analytics',
                   params: {
                     goalId: goalId ? String(goalId) : '',
@@ -319,7 +413,7 @@ export default function GoalPlanScreen() {
             style={styles.scheduleAccessCard}
             activeOpacity={0.85}
             onPress={() =>
-              router.push({
+              router.navigate({
                 pathname: '/schedule',
                 params: {
                   goalId: goalId ? String(goalId) : '',
@@ -343,7 +437,7 @@ export default function GoalPlanScreen() {
           <TouchableOpacity
             style={styles.scheduleAccessCard}
             activeOpacity={0.85}
-            onPress={() => router.push('/calendar' as any)}
+            onPress={() => router.navigate('/calendar' as any)}
           >
             <View style={styles.scheduleCardLeft}>
               <View style={[styles.calendarIconBox, { backgroundColor: '#E2EEF1' }]}>

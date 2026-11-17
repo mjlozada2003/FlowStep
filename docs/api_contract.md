@@ -480,3 +480,278 @@ El reemplazo de disponibilidad es transaccional e incluye todas las franjas sema
 #### Serie Semanal de Progreso (HU-21)
 - **Ruta:** `GET /goals/:id/weekly-progress`
 - **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+[
+  {
+    "week_start": "2026-11-02",
+    "minutes_spent": 45,
+    "completed_estimated_minutes": 60,
+    "planned_estimated_minutes": 60
+  }
+]
+```
+
+---
+
+### 3.5 Módulo: Sprint 4 (Gestión de Metas, Preferencias, Calendario y Sesión)
+
+#### Cerrar Sesión (HU-55)
+- **Ruta:** `POST /auth/logout`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+{
+  "message": "Sesión cerrada exitosamente"
+}
+```
+
+#### Consultar Preferencias de Usuario (HU-49)
+- **Ruta:** `GET /users/preferences`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+{
+  "daily_reminder_enabled": true,
+  "daily_reminder_time": "18:00:00",
+  "weekly_digest_day": 1,
+  "difficulty_preference": "balanced",
+  "auto_reschedule": true,
+  "notifications_enabled": true
+}
+```
+
+#### Actualizar Preferencias de Usuario (HU-49)
+- **Ruta:** `PATCH /users/preferences`
+- **Autenticación:** Bearer Token
+- **Body:**
+```json
+{
+  "daily_reminder_enabled": true,
+  "daily_reminder_time": "19:00",
+  "weekly_digest_day": 1,
+  "difficulty_preference": "balanced",
+  "auto_reschedule": true,
+  "notifications_enabled": true
+}
+```
+- **Respuesta (`200 OK`):** Retorna la entidad de preferencias actualizada.
+
+#### Eliminar Actividad (HU-12)
+- **Ruta:** `DELETE /activities/:id`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+{
+  "message": "Actividad eliminada exitosamente"
+}
+```
+
+#### Consultar Planificación en Calendario (HU-50)
+- **Ruta:** `GET /activities/calendar?month=11&year=2026`
+- **Autenticación:** Bearer Token
+- **Parámetros Query:** `month` (1-12), `year` (número), `date` (opcional), `startDate` y `endDate` (opcionales).
+- **Respuesta (`200 OK`):**
+```json
+{
+  "days": [
+    {
+      "scheduled_date": "2026-11-15",
+      "total_activities": 1,
+      "completed_activities": 0,
+      "pending_activities": 1,
+      "day_status": "pending"
+    }
+  ],
+  "activities": [
+    {
+      "activity_id": 105,
+      "goal_id": 2,
+      "goal_title": "Docker y Despliegue",
+      "stage_title": "Fundamentos",
+      "title": "Leer documentación oficial de TypeORM y Migraciones",
+      "scheduled_date": "2026-11-15",
+      "start_time": "18:00:00",
+      "estimated_minutes": 45,
+      "status": "pending",
+      "priority": "high"
+    }
+  ]
+}
+```
+
+#### Visión General de Múltiples Objetivos (HU-44, HU-45, HU-48)
+- **Ruta:** `GET /goals/overview`
+- **Autenticación:** Bearer Token
+- **Parámetros Query:** `order_by` (`priority`, `created_at`, `target_date`), `priority_order` (`desc`, `asc`), `status` (`in_progress`, `paused`, `all`).
+- **Respuesta (`200 OK`):**
+```json
+{
+  "active_goals": 2,
+  "goals": [
+    {
+      "goal_id": 1,
+      "title": "Certificación AWS Solutions Architect",
+      "status": "in_progress",
+      "priority": "high",
+      "target_date": "2026-12-31",
+      "progress_percentage": "35.50",
+      "total_activities": 12,
+      "completed_activities": 4,
+      "total_minutes_spent": 180,
+      "is_delayed": false,
+      "pace_status": "on_track",
+      "alert_message": "Estás dentro del ritmo planificado."
+    }
+  ]
+}
+```
+
+#### Resumen Cuantitativo de Objetivos (HU-48)
+- **Ruta:** `GET /goals/summary`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+{
+  "total_goals": 3,
+  "active_goals": 2,
+  "completed_goals": 1,
+  "overall_progress_percentage": "45.00"
+}
+```
+
+#### Historial de Objetivos Anteriores (HU-46, HU-47)
+- **Ruta:** `GET /goals/history`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+[
+  {
+    "goal_id": 3,
+    "user_id": 2,
+    "title": "Aprender Conceptos de SQL",
+    "description": "Bases de datos relacionales",
+    "status": "archived",
+    "closed_at": "2026-11-10T14:30:00.000Z",
+    "total_activities": 6,
+    "completed_activities": 5,
+    "minutes_spent": 210,
+    "status_label": "Archivado"
+  }
+]
+```
+
+#### Resumen Semanal de Progreso (HU-23)
+- **Ruta:** `GET /goals/weekly-summary`
+- **Autenticación:** Bearer Token
+- **Parámetros Query:** `start_date` (opcional), `end_date` (opcional).
+- **Respuesta (`200 OK`):**
+```json
+{
+  "period_start": "2026-11-07",
+  "period_end": "2026-11-13",
+  "minutes_spent": 150,
+  "completion_rate": 75.0,
+  "daily": [
+    { "day_name": "Lunes", "date": "2026-11-09", "minutes": 45 },
+    { "day_name": "Miércoles", "date": "2026-11-11", "minutes": 60 }
+  ],
+  "goals": [
+    {
+      "goal_id": 2,
+      "goal_title": "Docker y Despliegue",
+      "minutes_spent": 105,
+      "completed_activities": 2
+    }
+  ]
+}
+```
+
+#### Alertas de Retraso de Objetivos (HU-25)
+- **Ruta:** `GET /goals/delay-alerts`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+[
+  {
+    "goal_id": 2,
+    "goal_title": "Docker y Despliegue",
+    "is_delayed": true,
+    "delay_minutes": 45,
+    "delay_percentage": 18.5,
+    "alert_message": "Tienes un posible retraso de 45 minutos respecto a tu plan."
+  }
+]
+```
+
+#### Pausar Objetivo (HU-32)
+- **Ruta:** `PATCH /goals/:id/pause`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+{
+  "message": "Objetivo pausado exitosamente",
+  "goal_id": 1,
+  "status": "paused"
+}
+```
+
+#### Reanudar Objetivo (HU-33)
+- **Ruta:** `PATCH /goals/:id/resume`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+{
+  "message": "Objetivo reanudado exitosamente",
+  "goal_id": 1,
+  "status": "in_progress"
+}
+```
+
+#### Archivar Objetivo (HU-46)
+- **Ruta:** `PATCH /goals/:id/archive`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+{
+  "message": "Objetivo archivado exitosamente",
+  "goal_id": 1,
+  "status": "archived"
+}
+```
+
+#### Modificar Fecha Límite (HU-34)
+- **Ruta:** `PATCH /goals/:id/due-date`
+- **Autenticación:** Bearer Token
+- **Body:**
+```json
+{
+  "target_completion_date": "2026-12-15"
+}
+```
+- **Respuesta (`200 OK`):**
+```json
+{
+  "message": "Fecha límite modificada exitosamente",
+  "goal_id": 1,
+  "target_completion_date": "2026-12-15"
+}
+```
+
+#### Modificar Prioridad de Objetivo (HU-45)
+- **Ruta:** `PATCH /goals/:id/priority`
+- **Autenticación:** Bearer Token
+- **Body:**
+```json
+{
+  "priority": "high"
+}
+```
+- **Respuesta (`200 OK`):**
+```json
+{
+  "message": "Prioridad actualizada exitosamente",
+  "goal_id": 1,
+  "priority": "high"
+}
+```

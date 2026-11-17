@@ -88,8 +88,8 @@ export default function ActivityDetailScreen() {
       // 2. Marcamos la actividad como completada
       await completeActivity(activityId, token);
 
-      // 3. Navegamos a la pantalla de éxito
-      router.push({
+      // 3. Navegamos a la pantalla de éxito reemplazando la vista para no volver al formulario
+      router.replace({
         pathname: '/goal-success',
         params: {
           activityId: String(activityId),

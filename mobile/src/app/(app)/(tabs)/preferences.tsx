@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Switch,
@@ -13,14 +14,75 @@ import {
 import { Screen } from '@/components/ui/Screen';
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { useAuth } from '@/contexts/auth-context';
+import { logoutUser } from '@/services/api/auth';
+import {
+  getUserPreferences,
+  updateUserPreferences,
+  type UserPreferences,
+} from '@/services/api/users';
 
 export default function PreferencesScreen() {
-  const { user, clearSession } = useAuth();
+  const { user, token, clearSession } = useAuth();
 
   // Estados locales para los switches de preferencias (HU-49)
   const [remindersEnabled, setRemindersEnabled] = useState(true);
   const [delayAlertsEnabled, setDelayAlertsEnabled] = useState(true);
   const [weeklyDigestEnabled, setWeeklyDigestEnabled] = useState(true);
+  const [reminderMinutes, setReminderMinutes] = useState(30);
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      if (!token) return;
+
+      getUserPreferences(token)
+        .then((pref) => {
+          if (!active || !pref) return;
+          if (typeof pref.reminders_enabled === 'boolean') {
+            setRemindersEnabled(pref.reminders_enabled);
+          }
+          if (typeof pref.delay_alerts_enabled === 'boolean') {
+            setDelayAlertsEnabled(pref.delay_alerts_enabled);
+          }
+          if (typeof pref.weekly_digest_enabled === 'boolean') {
+            setWeeklyDigestEnabled(pref.weekly_digest_enabled);
+          }
+          if (typeof pref.reminder_lead_minutes === 'number') {
+            setReminderMinutes(pref.reminder_lead_minutes);
+          }
+        })
+        .catch(() => {});
+
+      return () => {
+        active = false;
+      };
+    }, [token]),
+  );
+
+  const handleToggleReminders = async (val: boolean) => {
+    setRemindersEnabled(val);
+    if (!token) return;
+    try {
+      await updateUserPreferences(token, { reminders_enabled: val });
+    } catch {}
+  };
+
+  const handleToggleDelayAlerts = async (val: boolean) => {
+    setDelayAlertsEnabled(val);
+    if (!token) return;
+    try {
+      await updateUserPreferences(token, { delay_alerts_enabled: val });
+    } catch {}
+  };
+
+  const handleToggleWeeklyDigest = async (val: boolean) => {
+    setWeeklyDigestEnabled(val);
+    if (!token) return;
+    try {
+      await updateUserPreferences(token, { weekly_digest_enabled: val });
+    } catch {}
+  };
 
   const displayName = user?.name ?? 'Lucía Martínez';
   const displayEmail = user?.email ?? 'lucia@gmail.com';
@@ -31,7 +93,12 @@ export default function PreferencesScreen() {
     .toUpperCase()
     .slice(0, 2);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (token) {
+      try {
+        await logoutUser(token);
+      } catch {}
+    }
     clearSession();
     router.replace('/login');
   };
@@ -74,7 +141,7 @@ export default function PreferencesScreen() {
             </View>
             <Switch
               value={remindersEnabled}
-              onValueChange={setRemindersEnabled}
+              onValueChange={handleToggleReminders}
               trackColor={{ false: '#CBD5E1', true: '#174A62' }}
               thumbColor="#FFFFFF"
             />
@@ -88,7 +155,7 @@ export default function PreferencesScreen() {
             </View>
             <Switch
               value={delayAlertsEnabled}
-              onValueChange={setDelayAlertsEnabled}
+              onValueChange={handleToggleDelayAlerts}
               trackColor={{ false: '#CBD5E1', true: '#174A62' }}
               thumbColor="#FFFFFF"
             />
@@ -102,7 +169,7 @@ export default function PreferencesScreen() {
             </View>
             <Switch
               value={weeklyDigestEnabled}
-              onValueChange={setWeeklyDigestEnabled}
+              onValueChange={handleToggleWeeklyDigest}
               trackColor={{ false: '#CBD5E1', true: '#174A62' }}
               thumbColor="#FFFFFF"
             />
@@ -115,7 +182,7 @@ export default function PreferencesScreen() {
               <Text style={styles.preferenceSubtitle}>Antes de cada actividad</Text>
             </View>
             <View style={styles.rowValueContainer}>
-              <Text style={styles.valueText}>30 min</Text>
+              <Text style={styles.valueText}>{reminderMinutes} min</Text>
               <Feather name="chevron-right" size={16} color="#627D98" />
             </View>
           </TouchableOpacity>
