@@ -97,7 +97,7 @@ export interface LearningResourceItem {
   title: string;
   category: string;
   badge_text: string;
-  icon_name: 'book-open' | 'play' | 'code';
+  icon_name: 'book-open' | 'play' | 'code' | 'check-circle';
   url?: string;
   activity_id?: number;
   summary?: string;
@@ -105,6 +105,7 @@ export interface LearningResourceItem {
   video_timestamps?: { time: string; title: string }[];
   practice_steps?: string[];
   code_snippet?: string;
+  challenge_title?: string;
 }
 
 export interface QuizOption {
