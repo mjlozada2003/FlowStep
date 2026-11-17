@@ -8,6 +8,9 @@ import { GoalQueryDto } from './dto/goal-query.dto';
 import { GoalStatusTransitionDto } from './dto/goal-status-transition.dto';
 import { UpdateGoalDueDateDto } from './dto/update-goal-due-date.dto';
 import { WeeklySummaryQueryDto } from './dto/weekly-summary-query.dto';
+import { ApplyAlternativeDto } from './dto/apply-alternative.dto';
+import { SubmitEvaluationDto } from './dto/submit-evaluation.dto';
+import { AddReinforcementDto } from './dto/add-reinforcement.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('Objetivos')
@@ -195,6 +198,19 @@ export class GoalsController {
   })
   getAllPace(@Request() req: any) {
     return this.goalsService.getAllGoalsPace(req.user.userId);
+  }
+
+  @Get('personalized-recommendations')
+  @ApiOperation({
+    summary: 'Recibir recomendaciones personalizadas según el progreso del usuario (HU-43)',
+    description: 'Analiza el estado general, ritmo y posibles retrasos de todas las metas activas del usuario para generar recomendaciones adaptadas con IA.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Recomendaciones personalizadas generadas exitosamente.',
+  })
+  getPersonalizedRecommendations(@Request() req: any) {
+    return this.goalsService.getPersonalizedRecommendations(req.user.userId);
   }
 
   @Get(':id')
@@ -506,5 +522,125 @@ export class GoalsController {
     @Body() updateGoalDto: UpdateGoalDto,
   ) {
     return this.goalsService.update(req.user.userId, id, updateGoalDto);
+  }
+
+  @Get(':id/recommendations')
+  @ApiOperation({
+    summary: 'Recomendar ajustes por retraso o dificultad con explicación (HU-04, HU-26, HU-30)',
+    description: 'Identifica retrasos mediante v_goal_delay_alert y notas de dificultad para generar con IA un diagnóstico estructurado y explicaciones de ajuste.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  getRecommendations(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.goalsService.getGoalRecommendations(req.user.userId, id);
+  }
+
+  @Get(':id/alternatives')
+  @ApiOperation({
+    summary: 'Recibir alternativas de replanificación (HU-27, HU-28, HU-29, HU-30, HU-51)',
+    description: 'Genera múltiples escenarios de ajuste (balanceado, intensivo de aprendizaje, extensión de tiempo) respetando disponibilidad e historial.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  getAlternatives(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.goalsService.getReplanAlternatives(req.user.userId, id);
+  }
+
+  @Post(':id/alternatives/apply')
+  @ApiOperation({
+    summary: 'Seleccionar y aplicar una propuesta de replanificación (HU-31, HU-52, HU-08)',
+    description: 'Aplica el escenario seleccionado, actualiza fechas límite si corresponde y genera nuevas versiones de programación con motivo ai_adjustment.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  applyAlternative(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ApplyAlternativeDto,
+  ) {
+    return this.goalsService.applyReplanAlternative(req.user.userId, id, dto);
+  }
+
+  @Post(':id/alternatives/reject')
+  @ApiOperation({
+    summary: 'Rechazar cambios propuestos en la planificación (HU-31)',
+    description: 'Conserva el plan y cronograma original sin modificaciones cuando el usuario decide no aplicar ninguna propuesta.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  rejectAlternative(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.goalsService.rejectReplanAlternative(req.user.userId, id);
+  }
+
+  @Get(':id/knowledge')
+  @ApiOperation({
+    summary: 'Consultar conocimientos necesarios para el objetivo (HU-37)',
+    description: 'Retorna los conocimientos y temas organizados requeridos antes o durante la ejecución del objetivo.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  getKnowledge(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.goalsService.getGoalKnowledge(req.user.userId, id);
+  }
+
+  @Get(':id/resources')
+  @ApiOperation({
+    summary: 'Acceder a recursos de aprendizaje asociados al objetivo (HU-05, HU-38)',
+    description: 'Obtiene recursos de aprendizaje estructurados y clasificados por tema y tipo.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  getResources(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.goalsService.getGoalResources(req.user.userId, id);
+  }
+
+  @Get(':id/evaluation')
+  @ApiOperation({
+    summary: 'Generar evaluación diagnóstica de conocimientos (HU-40)',
+    description: 'Genera un quiz de preguntas de opción múltiple relacionadas con los conocimientos del objetivo.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  getEvaluation(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.goalsService.getGoalEvaluation(req.user.userId, id);
+  }
+
+  @Post(':id/evaluation/submit')
+  @ApiOperation({
+    summary: 'Evaluar conocimientos y detectar temas por mejorar (HU-40, HU-41, HU-42)',
+    description: 'Califica las respuestas de la evaluación, identifica debilidades y propone actividades de refuerzo.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  submitEvaluation(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SubmitEvaluationDto,
+  ) {
+    return this.goalsService.submitGoalEvaluation(req.user.userId, id, dto);
+  }
+
+  @Post(':id/reinforcement')
+  @ApiOperation({
+    summary: 'Agregar actividad de aprendizaje de refuerzo al plan (HU-42, HU-39)',
+    description: 'Crea una actividad de tipo learning o reinforcement vinculada al tema con dificultad y la programa en el plan.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  addReinforcement(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AddReinforcementDto,
+  ) {
+    return this.goalsService.addReinforcementActivity(req.user.userId, id, dto);
   }
 }

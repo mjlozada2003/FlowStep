@@ -19,6 +19,16 @@ describe('GoalsController', () => {
     getAllGoalsPace: jest.fn(),
     getGoalChartData: jest.fn(),
     getGoalWeeklyProgress: jest.fn(),
+    getGoalRecommendations: jest.fn(),
+    getPersonalizedRecommendations: jest.fn(),
+    getReplanAlternatives: jest.fn(),
+    applyReplanAlternative: jest.fn(),
+    rejectReplanAlternative: jest.fn(),
+    getGoalKnowledge: jest.fn(),
+    getGoalResources: jest.fn(),
+    getGoalEvaluation: jest.fn(),
+    submitGoalEvaluation: jest.fn(),
+    addReinforcementActivity: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -118,6 +128,93 @@ describe('GoalsController', () => {
       const result = await controller.getGoalChartData(req, 1);
       expect(result).toEqual(expectedCharts);
       expect(mockGoalsService.getGoalChartData).toHaveBeenCalledWith(1, 1);
+    });
+  });
+
+  describe('Sprint 5 Controller Endpoints', () => {
+    const req = { user: { userId: 1 } };
+
+    it('should return recommendations (HU-04, HU-26, HU-30)', async () => {
+      const expected = { goal_id: 1, urgency: 'medium' };
+      mockGoalsService.getGoalRecommendations.mockResolvedValue(expected);
+      const res = await controller.getRecommendations(req, 1);
+      expect(res).toEqual(expected);
+      expect(mockGoalsService.getGoalRecommendations).toHaveBeenCalledWith(1, 1);
+    });
+
+    it('should return personalized recommendations (HU-43)', async () => {
+      const expected = { goal_id: 1, root_cause: 'General' };
+      mockGoalsService.getPersonalizedRecommendations.mockResolvedValue(expected);
+      const res = await controller.getPersonalizedRecommendations(req);
+      expect(res).toEqual(expected);
+      expect(mockGoalsService.getPersonalizedRecommendations).toHaveBeenCalledWith(1);
+    });
+
+    it('should return replanning alternatives (HU-27, HU-51)', async () => {
+      const expected = { goal_id: 1, alternatives: [] };
+      mockGoalsService.getReplanAlternatives.mockResolvedValue(expected);
+      const res = await controller.getAlternatives(req, 1);
+      expect(res).toEqual(expected);
+      expect(mockGoalsService.getReplanAlternatives).toHaveBeenCalledWith(1, 1);
+    });
+
+    it('should apply an alternative (HU-31, HU-52, HU-08)', async () => {
+      const dto = { proposal_type: 'balanced' as const };
+      const expected = { message: 'Plan actualizado exitosamente' };
+      mockGoalsService.applyReplanAlternative.mockResolvedValue(expected);
+      const res = await controller.applyAlternative(req, 1, dto);
+      expect(res).toEqual(expected);
+      expect(mockGoalsService.applyReplanAlternative).toHaveBeenCalledWith(1, 1, dto);
+    });
+
+    it('should reject alternatives (HU-31)', async () => {
+      const expected = { message: 'Plan conservado sin cambios', status: 'rejected' };
+      mockGoalsService.rejectReplanAlternative.mockResolvedValue(expected);
+      const res = await controller.rejectAlternative(req, 1);
+      expect(res).toEqual(expected);
+      expect(mockGoalsService.rejectReplanAlternative).toHaveBeenCalledWith(1, 1);
+    });
+
+    it('should get knowledge topics (HU-37)', async () => {
+      const expected = { goal_id: 1, knowledge_topics: ['Tema 1'] };
+      mockGoalsService.getGoalKnowledge.mockResolvedValue(expected);
+      const res = await controller.getKnowledge(req, 1);
+      expect(res).toEqual(expected);
+      expect(mockGoalsService.getGoalKnowledge).toHaveBeenCalledWith(1, 1);
+    });
+
+    it('should get learning resources (HU-05, HU-38)', async () => {
+      const expected = { goal_id: 1, resources: [] };
+      mockGoalsService.getGoalResources.mockResolvedValue(expected);
+      const res = await controller.getResources(req, 1);
+      expect(res).toEqual(expected);
+      expect(mockGoalsService.getGoalResources).toHaveBeenCalledWith(1, 1);
+    });
+
+    it('should get evaluation quiz (HU-40)', async () => {
+      const expected = { goal_id: 1, questions: [] };
+      mockGoalsService.getGoalEvaluation.mockResolvedValue(expected);
+      const res = await controller.getEvaluation(req, 1);
+      expect(res).toEqual(expected);
+      expect(mockGoalsService.getGoalEvaluation).toHaveBeenCalledWith(1, 1);
+    });
+
+    it('should submit evaluation (HU-40, HU-41, HU-42)', async () => {
+      const dto = { answers: [{ question_id: 1, selected_option_id: 'a' }] };
+      const expected = { score: 1, weak_topics: [] };
+      mockGoalsService.submitGoalEvaluation.mockResolvedValue(expected);
+      const res = await controller.submitEvaluation(req, 1, dto);
+      expect(res).toEqual(expected);
+      expect(mockGoalsService.submitGoalEvaluation).toHaveBeenCalledWith(1, 1, dto);
+    });
+
+    it('should add reinforcement activity (HU-42, HU-39)', async () => {
+      const dto = { topic: 'Álgebra', estimated_minutes: 30 };
+      const expected = { message: 'Actividad de refuerzo añadida' };
+      mockGoalsService.addReinforcementActivity.mockResolvedValue(expected);
+      const res = await controller.addReinforcement(req, 1, dto);
+      expect(res).toEqual(expected);
+      expect(mockGoalsService.addReinforcementActivity).toHaveBeenCalledWith(1, 1, dto);
     });
   });
 });

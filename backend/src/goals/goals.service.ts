@@ -13,6 +13,17 @@ import { AiService, UserAvailabilitySlot } from '../ai/ai.service';
 import { ActivityOrigin, ActivityStatus, ActivityType } from '../activities/enums/activity.enum';
 import { GoalStatus, PriorityLevel } from './enums/goal.enum';
 import { ScheduleReason } from '../activities/enums/schedule-reason.enum';
+import { ApplyAlternativeDto } from './dto/apply-alternative.dto';
+import { SubmitEvaluationDto } from './dto/submit-evaluation.dto';
+import { AddReinforcementDto } from './dto/add-reinforcement.dto';
+import {
+  RecommendationDiagnostic,
+  ReplanAlternativesResponse,
+  GoalKnowledgeResponse,
+  LearningResourceItem,
+  QuizQuestionItem,
+  QuizEvaluationResult,
+} from '../ai/ai.service';
 
 const DAY_MAP: Record<string, number> = {
   sunday: 0,
@@ -682,5 +693,400 @@ export class GoalsService {
       }
       throw err;
     }
+  }
+
+  // HU-04, HU-26, HU-30: Diagnóstico y recomendación asistida por IA para un objetivo
+  async getGoalRecommendations(userId: number, goalId: number): Promise<RecommendationDiagnostic> {
+    const goal = await this.findOneByUser(userId, goalId);
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    // 1. Consultar alerta de retraso
+    const delayRows = await this.goalsRepository.query(
+      'SELECT * FROM v_goal_delay_alert WHERE goal_id = $1',
+      [goalId],
+    ).catch(() => []);
+    const delayInfo = delayRows && delayRows.length > 0 ? delayRows[0] : null;
+
+    // 2. Consultar notas de dificultad o razones de incumplimiento
+    const diffRows = await this.goalsRepository.query(
+      `SELECT t.details->>'difficulty_notes' as difficulty_notes,
+              t.details->>'difficulty_level' as difficulty_level,
+              a.title as activity_title
+       FROM v_activity_timeline t
+       JOIN "ACTIVITY" a ON a.activity_id = t.activity_id
+       JOIN "STAGE" s ON s.stage_id = a.stage_id
+       WHERE s.goal_id = $1 AND t.event_type = 'work_session' AND t.details->>'difficulty_notes' IS NOT NULL
+       ORDER BY t.event_date DESC LIMIT 1`,
+      [goalId],
+    ).catch(() => []);
+    const diffInfo = diffRows && diffRows.length > 0 ? diffRows[0] : null;
+
+    // 3. Consultar progreso y métricas de v_goal_progress
+    const progressRows = await this.goalsRepository.query(
+      'SELECT * FROM v_goal_progress WHERE goal_id = $1',
+      [goalId],
+    ).catch(() => []);
+    const progressInfo = progressRows && progressRows.length > 0 ? progressRows[0] : null;
+
+    const progressPercentage = progressInfo ? Number(progressInfo.progress_percentage) || 0 : 0;
+    const completedActivities = progressInfo ? Number(progressInfo.completed_activities) || 0 : 0;
+    const totalActivities = progressInfo ? Number(progressInfo.total_activities) || 0 : (goal.stages?.reduce((acc, s) => acc + (s.activities?.length || 0), 0) || 0);
+
+    // 4. Horas disponibles del usuario
+    let availableHours = 4;
+    try {
+      const avail = await this.availabilityService.findAllByUser(userId);
+      if (avail && avail.length > 0) {
+        let totalMinutes = 0;
+        for (const slot of avail) {
+          const [sh, sm] = slot.start_time.split(':').map(Number);
+          const [eh, em] = slot.end_time.split(':').map(Number);
+          totalMinutes += (eh * 60 + em) - (sh * 60 + sm);
+        }
+        if (totalMinutes > 0) {
+          availableHours = Math.round(totalMinutes / 60);
+        }
+      }
+    } catch {}
+
+    const overdueActivityTitle = delayInfo?.most_overdue_activity_title || diffInfo?.activity_title || goal.stages?.[0]?.activities?.[0]?.title;
+    const maxDaysLate = delayInfo ? Number(delayInfo.max_days_late) || 0 : 0;
+
+    return this.aiService.generateRecommendationDiagnostic(
+      goalId,
+      goal.title,
+      overdueActivityTitle,
+      maxDaysLate,
+      diffInfo?.difficulty_notes,
+      undefined,
+      progressPercentage,
+      completedActivities,
+      totalActivities,
+      availableHours,
+    );
+  }
+
+  // HU-43: Recomendaciones personalizadas para la pantalla de inicio
+  async getPersonalizedRecommendations(userId: number): Promise<RecommendationDiagnostic> {
+    const delayedGoals = await this.goalsRepository.query(
+      'SELECT * FROM v_goal_delay_alert WHERE user_id = $1 ORDER BY priority_rank, max_days_late DESC',
+      [userId],
+    ).catch(() => []);
+
+    if (delayedGoals && delayedGoals.length > 0) {
+      return this.getGoalRecommendations(userId, Number(delayedGoals[0].goal_id));
+    }
+
+    const activeGoals = await this.goalsRepository.find({
+      where: { user_id: userId, status: GoalStatus.ACTIVE },
+      relations: { stages: { activities: true } },
+      order: { created_at: 'DESC' },
+    });
+
+    if (activeGoals.length > 0) {
+      return this.getGoalRecommendations(userId, activeGoals[0].goal_id);
+    }
+
+    return {
+      goal_id: 0,
+      goal_title: 'Tu primer objetivo',
+      alert_level: 'info',
+      alert_message: 'Crea un objetivo para recibir recomendaciones adaptativas personalizadas.',
+      why_suggested: 'Las recomendaciones de FlowStep se activan automáticamente conforme registras tu progreso.',
+      solution_focus: 'Iniciar tu planificación',
+      solutions: [
+        'Define un objetivo con fecha límite.',
+        'Configura tu disponibilidad horaria.',
+        'Empieza con sesiones de 30 minutos.',
+      ],
+      metrics: {
+        progress_percentage: 0,
+        completed_activities: 0,
+        total_activities: 0,
+        available_hours: 4,
+      },
+    };
+  }
+
+  // HU-27, HU-28, HU-29, HU-30, HU-51: Obtener propuestas alternativas de replanificación
+  async getReplanAlternatives(userId: number, goalId: number): Promise<ReplanAlternativesResponse> {
+    const goal = await this.findOneByUser(userId, goalId);
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    const progressRows = await this.goalsRepository.query(
+      'SELECT * FROM v_goal_progress WHERE goal_id = $1',
+      [goalId],
+    ).catch(() => []);
+    const progressInfo = progressRows && progressRows.length > 0 ? progressRows[0] : null;
+
+    const progressPercentage = progressInfo ? Number(progressInfo.progress_percentage) || 0 : 0;
+    const completedCount = progressInfo ? Number(progressInfo.completed_activities) || 0 : 0;
+    const completedHours = progressInfo ? Math.round(((Number(progressInfo.completed_estimated_minutes) || 0) / 60) * 10) / 10 : 0;
+
+    const pendingActivitiesCount = await this.activitiesRepository
+      .createQueryBuilder('activity')
+      .innerJoin('activity.stage', 'stage')
+      .where('stage.goal_id = :goalId', { goalId })
+      .andWhere('activity.status != :completed', { completed: ActivityStatus.COMPLETED })
+      .andWhere('activity.status != :skipped', { skipped: ActivityStatus.SKIPPED })
+      .getCount();
+
+    return this.aiService.generateReplanAlternatives(
+      goalId,
+      goal.title,
+      progressPercentage,
+      completedCount,
+      completedHours,
+      pendingActivitiesCount,
+    );
+  }
+
+  // HU-31, HU-52, HU-08: Aplicar propuesta de replanificación seleccionada
+  async applyReplanAlternative(
+    userId: number,
+    goalId: number,
+    dto: ApplyAlternativeDto,
+  ): Promise<{ message: string; proposal_type: string; goal_id: number }> {
+    const goal = await this.findOneByUser(userId, goalId);
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    if (dto.proposal_type === 'balanced') {
+      const pendingActivities = await this.activitiesRepository
+        .createQueryBuilder('activity')
+        .innerJoin('activity.stage', 'stage')
+        .where('stage.goal_id = :goalId', { goalId })
+        .andWhere('activity.status != :completed', { completed: ActivityStatus.COMPLETED })
+        .andWhere('activity.status != :skipped', { skipped: ActivityStatus.SKIPPED })
+        .orderBy('activity.sort_order', 'ASC')
+        .getMany();
+
+      const availabilities = await this.availabilityService.findAllByUser(userId);
+      const newDates = this.calculateSequentialDates(
+        new Date(),
+        availabilities,
+        pendingActivities.length,
+      );
+
+      for (let i = 0; i < pendingActivities.length; i++) {
+        const act = pendingActivities[i];
+        const dateSlot = newDates[i];
+        if (dateSlot) {
+          const currentSchedule = await this.schedulesRepository.findOne({
+            where: { activity_id: act.activity_id },
+            order: { version_number: 'DESC' },
+          });
+          const nextVersion = (currentSchedule?.version_number || 0) + 1;
+
+          const sched = this.schedulesRepository.create({
+            activity_id: act.activity_id,
+            version_number: nextVersion,
+            scheduled_date: dateSlot.scheduled_date,
+            start_time: dateSlot.start_time || '18:00',
+            end_time: dateSlot.end_time || '19:00',
+            reason: ScheduleReason.AI_ADJUSTMENT,
+          });
+          await this.schedulesRepository.save(sched);
+        }
+      }
+    } else if (dto.proposal_type === 'learning') {
+      const stage = goal.stages?.[0] || await this.stagesRepository.findOne({ where: { goal_id: goalId }, order: { sort_order: 'ASC' } });
+      if (stage) {
+        const r1 = await this.activitiesRepository.save(
+          this.activitiesRepository.create({
+            stage_id: stage.stage_id,
+            title: `Refuerzo guiado: Conceptos clave de ${goal.title}`,
+            description: 'Lectura y síntesis recomendada por IA para afianzar conceptos.',
+            type: ActivityType.REINFORCEMENT,
+            origin: ActivityOrigin.AI_ADJUSTMENT,
+            estimated_minutes: 25,
+            sort_order: 1,
+            status: ActivityStatus.PENDING,
+          }),
+        );
+
+        const r2 = await this.activitiesRepository.save(
+          this.activitiesRepository.create({
+            stage_id: stage.stage_id,
+            title: `Práctica guiada: Ejercicio de refuerzo de ${goal.title}`,
+            description: 'Resolución de problemas asistida con ejemplos prácticos.',
+            type: ActivityType.REINFORCEMENT,
+            origin: ActivityOrigin.AI_ADJUSTMENT,
+            estimated_minutes: 30,
+            sort_order: 2,
+            status: ActivityStatus.PENDING,
+          }),
+        );
+
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+        const s1 = this.schedulesRepository.create({
+          activity_id: r1.activity_id,
+          version_number: 1,
+          scheduled_date: tomorrowStr,
+          start_time: '18:00',
+          end_time: '18:25',
+          reason: ScheduleReason.AI_ADJUSTMENT,
+        });
+        const s2 = this.schedulesRepository.create({
+          activity_id: r2.activity_id,
+          version_number: 1,
+          scheduled_date: tomorrowStr,
+          start_time: '18:30',
+          end_time: '19:00',
+          reason: ScheduleReason.AI_ADJUSTMENT,
+        });
+
+        await this.schedulesRepository.save([s1, s2]);
+      }
+    } else if (dto.proposal_type === 'time') {
+      const currentDue = goal.due_date ? new Date(goal.due_date) : new Date();
+      currentDue.setDate(currentDue.getDate() + 14);
+      await this.updateDueDate(
+        userId,
+        goalId,
+        currentDue.toISOString().split('T')[0],
+        'Ajuste por propuesta alternativa de menor carga',
+      );
+    }
+
+    return {
+      message: 'Propuesta de replanificación aplicada exitosamente',
+      proposal_type: dto.proposal_type,
+      goal_id: goalId,
+    };
+  }
+
+  // HU-31: Rechazar propuesta de replanificación (conservar plan original)
+  async rejectReplanAlternative(userId: number, goalId: number): Promise<{ message: string; status: string; goal_id: number }> {
+    const goal = await this.findOneByUser(userId, goalId);
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    return {
+      message: 'Propuesta rechazada. Se conserva la planificación original.',
+      status: 'rejected',
+      goal_id: goalId,
+    };
+  }
+
+  // HU-37: Consultar conocimientos y temas requeridos por el objetivo
+  async getGoalKnowledge(userId: number, goalId: number): Promise<GoalKnowledgeResponse> {
+    const goal = await this.findOneByUser(userId, goalId);
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    const progressRows = await this.goalsRepository.query(
+      'SELECT * FROM v_goal_progress WHERE goal_id = $1',
+      [goalId],
+    ).catch(() => []);
+    const progressInfo = progressRows && progressRows.length > 0 ? progressRows[0] : null;
+    const progressPct = progressInfo ? Number(progressInfo.progress_percentage) || 0 : 0;
+    const completedRatio = Math.max(0, Math.min(progressPct / 100, 1));
+
+    return this.aiService.generateGoalKnowledge(goalId, goal.title, completedRatio);
+  }
+
+  // HU-05, HU-38: Consultar recursos de aprendizaje del objetivo
+  async getGoalResources(userId: number, goalId: number): Promise<LearningResourceItem[]> {
+    const goal = await this.findOneByUser(userId, goalId);
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    return this.aiService.generateLearningResources(goalId, goal.title);
+  }
+
+  // HU-40: Cuestionario de evaluación diagnóstica
+  async getGoalEvaluation(userId: number, goalId: number): Promise<QuizQuestionItem[]> {
+    const goal = await this.findOneByUser(userId, goalId);
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    return this.aiService.generateEvaluationQuiz(goalId, goal.title);
+  }
+
+  // HU-40, HU-41, HU-42: Evaluar respuestas del cuestionario y sugerir refuerzo
+  async submitGoalEvaluation(
+    userId: number,
+    goalId: number,
+    dto: SubmitEvaluationDto,
+  ): Promise<QuizEvaluationResult> {
+    const goal = await this.findOneByUser(userId, goalId);
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    const questions = await this.aiService.generateEvaluationQuiz(goalId, goal.title);
+    return this.aiService.evaluateQuizAnswers(questions, dto.answers);
+  }
+
+  // HU-42, HU-39: Agregar actividad de aprendizaje de refuerzo
+  async addReinforcementActivity(
+    userId: number,
+    goalId: number,
+    dto: AddReinforcementDto,
+  ): Promise<{ message: string; activity: Activity }> {
+    const goal = await this.findOneByUser(userId, goalId);
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    let targetStageId = dto.stage_id;
+    if (!targetStageId && goal.stages && goal.stages.length > 0) {
+      targetStageId = goal.stages[0].stage_id;
+    } else if (!targetStageId) {
+      const firstStage = await this.stagesRepository.findOne({
+        where: { goal_id: goalId },
+        order: { sort_order: 'ASC' },
+      });
+      targetStageId = firstStage?.stage_id;
+    }
+
+    if (!targetStageId) {
+      throw new BadRequestException('El objetivo no tiene etapas para incorporar la actividad');
+    }
+
+    const activity = await this.activitiesRepository.save(
+      this.activitiesRepository.create({
+        stage_id: targetStageId,
+        title: dto.title || `Refuerzo guiado: ${dto.topic}`,
+        description: `Actividad de aprendizaje de refuerzo para superar dificultades en: ${dto.topic}`,
+        type: ActivityType.REINFORCEMENT,
+        origin: ActivityOrigin.AI_ADJUSTMENT,
+        estimated_minutes: dto.estimated_minutes || 30,
+        status: ActivityStatus.PENDING,
+        sort_order: 99,
+      }),
+    );
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+    const sched = this.schedulesRepository.create({
+      activity_id: activity.activity_id,
+      version_number: 1,
+      scheduled_date: tomorrowStr,
+      start_time: '18:00',
+      end_time: '18:30',
+      reason: ScheduleReason.AI_ADJUSTMENT,
+    });
+    await this.schedulesRepository.save(sched);
+
+    return {
+      message: 'Actividad de refuerzo añadida exitosamente al plan',
+      activity,
+    };
   }
 }
