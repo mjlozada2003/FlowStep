@@ -32,6 +32,8 @@ export interface LearningResourceItem {
   url?: string;
   summary?: string;
   key_points?: string[];
+  reading_content?: string;
+  practical_example?: string;
   video_timestamps?: { time: string; title: string }[];
   practice_steps?: string[];
   challenge_title?: string;

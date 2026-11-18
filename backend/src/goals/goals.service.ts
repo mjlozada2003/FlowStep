@@ -1120,4 +1120,18 @@ export class GoalsService {
       activity,
     };
   }
+
+  async remove(userId: number, goalId: number): Promise<{ message: string; goal_id: number }> {
+    const goal = await this.findOneByUser(userId, goalId);
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    await this.goalsRepository.softDelete({ goal_id: goalId, user_id: userId });
+
+    return {
+      message: 'Objetivo eliminado exitosamente',
+      goal_id: goalId,
+    };
+  }
 }

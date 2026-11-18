@@ -75,6 +75,8 @@ export default function EvaluationScreen() {
     resourceDuration?: string;
     resourceBadge?: string;
     resourceSummary?: string;
+    readingContent?: string;
+    practicalExample?: string;
     resourceKeyPoints?: string;
     videoTimestamps?: string;
     practiceSteps?: string;
@@ -110,6 +112,12 @@ export default function EvaluationScreen() {
   const resourceDuration = params.resourceDuration || '5 min';
   const resourceBadge = params.resourceBadge || 'Esencial';
   const resourceSummary = params.resourceSummary || '';
+  const readingContent =
+    params.readingContent ||
+    `Dominar los conceptos fundamentales de "${resourceTitle}" es un paso esencial para avanzar con paso firme en tu objetivo "${params.goalTitle || 'de aprendizaje'}".\n\nEl estudio reflexivo de este tema te permite comprender no solo las herramientas y técnicas requeridas, sino la lógica detrás de cada decisión que tomarás durante tus actividades prácticas.\n\nPara aprovechar esta lectura al máximo, te sugerimos relacionar cada punto con tus sesiones de trabajo previas e identificar qué aspectos puedes implementar de inmediato.`;
+  const practicalExample =
+    params.practicalExample ||
+    `Por ejemplo, al abordar "${resourceCategory}", estructurar primero tus materiales y revisar los requerimientos te ahorra hasta un 40% del tiempo de ejecución posterior.`;
   const challengeTitle = params.challengeTitle || `Reto práctico: ${resourceTitle}`;
 
   const [practiceNotes, setPracticeNotes] = useState('');
@@ -487,32 +495,47 @@ export default function EvaluationScreen() {
             {resourceType === 'LECTURA' && (
               <View style={styles.resourceContentCard}>
                 <View style={styles.contentHeaderRow}>
-                  <Feather name="book-open" size={16} color="#174A62" />
-                  <Text style={styles.contentSectionTitle}>Guía de lectura y estudio</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Feather name="book-open" size={18} color="#174A62" />
+                    <Text style={styles.contentSectionTitle}>Artículo formativo de lectura</Text>
+                  </View>
+                  <View style={styles.miniDurationBadge}>
+                    <Feather name="clock" size={12} color="#174A62" />
+                    <Text style={styles.miniDurationText}>{resourceDuration}</Text>
+                  </View>
                 </View>
 
-                <Text style={styles.contentSummaryText}>
-                  {resourceSummary ||
-                    `En esta lectura aprenderás los fundamentos esenciales de "${resourceTitle}". Te permitirá comprender los conceptos clave antes de avanzar a la práctica.`}
-                </Text>
-
-                {/* Secciones estructuradas del artículo */}
-                <View style={styles.articleSectionCard}>
-                  <Text style={styles.articleSectionSubtitle}>1. Fundamentos y conceptos esenciales</Text>
-                  <Text style={styles.articleSectionBody}>
-                    Comprender los principios teóricos básicos es el paso necesario para no depender de soluciones improvisadas y resolver problemas con criterio.
+                {/* Resumen pedagógico inicial */}
+                <View style={styles.readingIntroCard}>
+                  <Text style={styles.readingIntroLabel}>PROPÓSITO DE LA LECTURA</Text>
+                  <Text style={styles.contentSummaryText}>
+                    {resourceSummary ||
+                      `En esta lectura aprenderás los fundamentos esenciales de "${resourceTitle}". Te permitirá comprender los conceptos clave antes de avanzar a la práctica.`}
                   </Text>
                 </View>
 
-                <View style={styles.articleSectionCard}>
-                  <Text style={styles.articleSectionSubtitle}>2. Aplicación directa en tu objetivo</Text>
-                  <Text style={styles.articleSectionBody}>
-                    Aplica estos conceptos directamente en las actividades programadas en tu plan de trabajo para reducir el tiempo de ejecución y evitar bloqueos.
-                  </Text>
+                {/* Texto completo y desarrollado del artículo de lectura */}
+                <View style={styles.articleBodyContainer}>
+                  <Text style={styles.articleSectionSubtitle}>Contenido completo del tema</Text>
+                  {readingContent.split('\n\n').map((paragraph, pIdx) => (
+                    <Text key={pIdx} style={styles.articleParagraph}>
+                      {paragraph.trim()}
+                    </Text>
+                  ))}
                 </View>
 
+                {/* Recuadro de Ejemplo Práctico en la Vida Real */}
+                <View style={styles.exampleCard}>
+                  <View style={styles.exampleHeader}>
+                    <Feather name="zap" size={15} color="#D97706" />
+                    <Text style={styles.exampleTitle}>Caso de aplicación práctica</Text>
+                  </View>
+                  <Text style={styles.exampleText}>{practicalExample}</Text>
+                </View>
+
+                {/* Puntos clave y conclusiones destacadas */}
                 <View style={styles.keyPointsContainer}>
-                  <Text style={styles.keyPointsTitle}>Puntos clave a recordar:</Text>
+                  <Text style={styles.keyPointsTitle}>Conclusiones y puntos clave:</Text>
                   {keyPoints.map((pt, idx) => (
                     <View key={idx} style={styles.keyPointRow}>
                       <View style={styles.bulletCheck}>
@@ -522,6 +545,16 @@ export default function EvaluationScreen() {
                     </View>
                   ))}
                 </View>
+
+                {/* Botón directo de lectura completada */}
+                <TouchableOpacity
+                  style={styles.finishReadingBtn}
+                  activeOpacity={0.85}
+                  onPress={() => setShowResourceIntro(false)}
+                >
+                  <Feather name="check-circle" size={18} color="#FFFFFF" />
+                  <Text style={styles.finishReadingBtnText}>He terminado de leer · Ir al cuestionario</Text>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -1572,6 +1605,82 @@ const styles = StyleSheet.create({
   startQuizButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
+    fontWeight: '800',
+  },
+  miniDurationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EBF5FB',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  miniDurationText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#174A62',
+  },
+  readingIntroCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 14,
+    borderLeftWidth: 4,
+    borderLeftColor: '#174A62',
+    gap: 4,
+  },
+  readingIntroLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#627D98',
+    letterSpacing: 0.8,
+  },
+  articleBodyContainer: {
+    gap: 10,
+    paddingVertical: 4,
+  },
+  articleParagraph: {
+    fontSize: 13,
+    color: '#334155',
+    lineHeight: 20,
+  },
+  exampleCard: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    gap: 6,
+  },
+  exampleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  exampleTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#92400E',
+    letterSpacing: 0.3,
+  },
+  exampleText: {
+    fontSize: 12,
+    color: '#78350F',
+    lineHeight: 18,
+  },
+  finishReadingBtn: {
+    backgroundColor: '#174A62',
+    borderRadius: 16,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  finishReadingBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
     fontWeight: '800',
   },
 });

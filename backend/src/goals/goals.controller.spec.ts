@@ -29,6 +29,7 @@ describe('GoalsController', () => {
     getGoalEvaluation: jest.fn(),
     submitGoalEvaluation: jest.fn(),
     addReinforcementActivity: jest.fn(),
+    remove: jest.fn(),
   };
 
   beforeEach(async () => {

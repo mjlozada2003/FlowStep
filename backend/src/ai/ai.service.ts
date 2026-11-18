@@ -102,6 +102,8 @@ export interface LearningResourceItem {
   activity_id?: number;
   summary?: string;
   key_points?: string[];
+  reading_content?: string;
+  practical_example?: string;
   video_timestamps?: { time: string; title: string }[];
   practice_steps?: string[];
   code_snippet?: string;
@@ -659,6 +661,8 @@ export class AiService {
           "badge_text": "Esencial",
           "icon_name": "book-open",
           "summary": "Resumen claro y didáctico que proporciona la información esencial sobre este tema...",
+          "reading_content": "Texto formativo completo del artículo de lectura (3 o 4 párrafos claros y formativos explicando los conceptos, su justificación, buenas prácticas y errores frecuentes a evitar)...",
+          "practical_example": "Ejemplo o caso real concreto de cómo se aplica este concepto en una situación cotidiana o profesional...",
           "key_points": [
             "Punto clave o concepto fundamental 1",
             "Punto clave o aplicación práctica 2",
@@ -722,6 +726,12 @@ export class AiService {
           summary:
             item.summary ||
             `Información esencial sobre "${item.title || 'este tema'}" para fortalecer los conocimientos necesarios para tu objetivo.`,
+          reading_content:
+            item.reading_content ||
+            `Comprender a fondo los fundamentos de "${item.title || goalTitle}" es el pilar necesario para ejecutar con confianza las actividades planificadas.\n\nEn este módulo, el enfoque principal consiste en asimilar los principios operativos, la estructura conceptual y los criterios de calidad recomendados para no improvisar durante la práctica.\n\nDedica unos minutos a interiorizar los conceptos clave antes de responder el cuestionario diagnóstico para maximizar tu retención y desempeño.`,
+          practical_example:
+            item.practical_example ||
+            `Por ejemplo, al abordar "${item.category || goalTitle}", estructurar primero tus materiales y revisar los requerimientos te ahorra hasta un 40% del tiempo de ejecución posterior.`,
           key_points:
             Array.isArray(item.key_points) && item.key_points.length > 0
               ? item.key_points
@@ -767,6 +777,8 @@ export class AiService {
         badge_text: 'Esencial',
         icon_name: 'book-open',
         summary: `En esta guía se introducen los conceptos y fundamentos de "${t1}", explicando su importancia conceptual y cómo aplicarlo paso a paso.`,
+        reading_content: `Dominar los principios teóricos y el contexto operativo de "${t1}" es indispensable para avanzar sólidamente en el cumplimiento de tu objetivo "${goalTitle}".\n\nEl aprendizaje efectivo no consiste en memorizar términos aislados, sino en comprender las relaciones causa-efecto de cada concepto y cómo impactan en tus actividades diarias. Al establecer bases firmes, reduces la fricción mental y la probabilidad de frustración.\n\nTe recomendamos leer con atención cada sección, relacionar las ideas con tu experiencia previa y reflexionar sobre cómo vas a implementar este conocimiento en tu próxima sesión de trabajo.`,
+        practical_example: `Al poner en práctica "${t1}", comienza delimitando un alcance pequeño y comprobable antes de añadir complejidad. Esto te permitirá detectar errores tempranamente con mínimo esfuerzo.`,
         key_points: [
           `Comprender los principios base de ${t1}.`,
           'Identificar las herramientas y flujo de trabajo recomendados.',

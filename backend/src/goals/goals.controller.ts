@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, Body, Param, ParseIntPipe, UseGuards, Request, Query } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Delete, Body, Param, ParseIntPipe, UseGuards, Request, Query } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { GoalsService } from './goals.service';
 import { CreateGoalDto } from './dto/create-goal.dto';
@@ -642,5 +642,22 @@ export class GoalsController {
     @Body() dto: AddReinforcementDto,
   ) {
     return this.goalsService.addReinforcementActivity(req.user.userId, id, dto);
+  }
+
+  @Delete(':id')
+  @ApiOperation({
+    summary: 'Eliminar un objetivo con borrado lógico',
+    description: 'Elimina de forma suave (soft delete) el objetivo del usuario.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Objetivo eliminado exitosamente.',
+  })
+  remove(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.goalsService.remove(req.user.userId, id);
   }
 }

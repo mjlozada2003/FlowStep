@@ -25,6 +25,7 @@ import {
   pauseGoal,
   resumeGoal,
   archiveGoal,
+  deleteGoal,
   updateGoalDueDate,
   type CreatedGoal,
   type GoalProgress,
@@ -39,6 +40,7 @@ export default function GoalPlanScreen() {
   const params = useLocalSearchParams<{
     goalId?: string;
     isNew?: string;
+    fromSuccess?: string;
   }>();
 
   const { token } = useAuth();
@@ -96,6 +98,33 @@ export default function GoalPlanScreen() {
         error instanceof Error ? error.message : 'No se pudo archivar el objetivo.',
       );
     }
+  };
+
+  const handleConfirmDelete = () => {
+    setMenuVisible(false);
+    Alert.alert(
+      'Eliminar objetivo',
+      '¿Estás seguro de que deseas eliminar este objetivo? Esta acción lo borrará de tu lista y agenda.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            if (!goalId || !token) return;
+            try {
+              await deleteGoal(goalId, token);
+              router.replace('/(tabs)/home' as any);
+            } catch (error) {
+              Alert.alert(
+                'Error',
+                error instanceof Error ? error.message : 'No se pudo eliminar el objetivo.',
+              );
+            }
+          },
+        },
+      ],
+    );
   };
 
   const handleSaveDueDate = async () => {
@@ -182,14 +211,14 @@ export default function GoalPlanScreen() {
   );
 
   const handleBack = useCallback(() => {
-    if (params.isNew === '1') {
-      router.navigate('/(tabs)/home' as any);
+    if (params.isNew === '1' || params.fromSuccess === '1') {
+      router.replace('/(tabs)/home' as any);
     } else if (router.canGoBack()) {
       router.back();
     } else {
       router.replace('/(tabs)/home' as any);
     }
-  }, [params.isNew]);
+  }, [params.fromSuccess, params.isNew]);
 
   useFocusEffect(
     useCallback(() => {
@@ -346,6 +375,14 @@ export default function GoalPlanScreen() {
                 >
                   <Feather name="archive" size={16} color="#C53030" />
                   <Text style={[styles.menuItemText, styles.menuItemTextDanger]}>Archivar objetivo</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.menuItem, styles.menuItemDanger]} 
+                  onPress={handleConfirmDelete}
+                >
+                  <Feather name="trash-2" size={16} color="#DC2626" />
+                  <Text style={[styles.menuItemText, styles.menuItemTextDanger]}>Eliminar objetivo</Text>
                 </TouchableOpacity>
               </View>
             </TouchableOpacity>

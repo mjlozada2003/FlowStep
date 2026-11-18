@@ -368,6 +368,8 @@ export default function LearningScreen() {
                           resourceDuration: res.duration,
                           resourceBadge: res.badge_text,
                           resourceSummary: res.summary || '',
+                          readingContent: res.reading_content || '',
+                          practicalExample: res.practical_example || '',
                           resourceKeyPoints: res.key_points ? JSON.stringify(res.key_points) : '',
                           videoTimestamps: res.video_timestamps ? JSON.stringify(res.video_timestamps) : '',
                           practiceSteps: res.practice_steps ? JSON.stringify(res.practice_steps) : '',

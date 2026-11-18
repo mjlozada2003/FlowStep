@@ -454,3 +454,13 @@ export async function updateGoalDueDate(
     body: JSON.stringify({ due_date: dueDate, reason }),
   });
 }
+
+export async function deleteGoal(
+  goalId: number,
+  token: string,
+): Promise<{ message: string; goal_id: number }> {
+  return apiRequest<{ message: string; goal_id: number }>(`/goals/${goalId}`, {
+    method: 'DELETE',
+    token,
+  });
+}
