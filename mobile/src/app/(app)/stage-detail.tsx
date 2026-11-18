@@ -65,6 +65,7 @@ async function loadStageActivities(stageId: number, token: string) {
         rawDate: schedule?.scheduled_date,
         rawTime: schedule?.start_time ? schedule.start_time.slice(0, 5) : undefined,
         completed: activity.status === 'completed',
+        description: activity.description ?? undefined,
       };
     }),
   );

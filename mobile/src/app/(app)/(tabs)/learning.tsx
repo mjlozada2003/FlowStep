@@ -59,8 +59,16 @@ export default function LearningScreen() {
         }
         try {
           setLoading(true);
-          const goals = await getGoalsOverview(token).catch(() => []);
+          const allGoals = await getGoalsOverview(token).catch(() => []);
           if (!isMounted) return;
+
+          // Excluir objetivos archivados de la vista de aprendizaje
+          // y priorizar los objetivos activos sobre los completados
+          const nonArchivedGoals = allGoals.filter((g) => g.status !== 'archived');
+          const activeOnlyGoals = nonArchivedGoals.filter(
+            (g) => g.status !== 'completed' && Number(g.progress_percentage || 0) < 100,
+          );
+          const goals = activeOnlyGoals.length > 0 ? activeOnlyGoals : nonArchivedGoals;
 
           let targetId = 0;
           const paramId = params.goalId ? Number(params.goalId) : null;
@@ -167,6 +175,8 @@ export default function LearningScreen() {
             badge_text: 'Esencial',
             icon_name: 'book-open',
             summary: `Conceptos introductorios y fundamentos clave para estructurar y dominar "${goalTitle}".`,
+            reading_content: `📖 1. Fundamentos y Principios Clave\nComprender los principios conceptuales y el contexto operativo de "${goalTitle}" es indispensable para avanzar con solvencia en tu objetivo. Al abordar este conocimiento, la clave reside en entender la arquitectura conceptual: qué problema resuelve, cómo se organiza y qué papel juega dentro de la ejecución general.\n\n🛠️ 2. Flujo de Trabajo y Buenas Prácticas\nPara asimilar este contenido sin abrumarte, adopta un enfoque iterativo: primero analiza el modelo conceptual y familiarízate con la terminología clave; luego, asocia cada concepto con un ejemplo tangible. Trabajar con pequeños bloques verificables previene bloqueos cognitivos y consolida la retención a largo plazo.\n\n⚠️ 3. Errores Frecuentes y Cómo Prevenirlos\nEl error más habitual es memorizar definiciones superficiales sin comprender su aplicación operativa o saltarse los fundamentos para ir directamente a casos complejos. Si experimentas fricción, descompón el tema en partes elementales y valida cada paso antes de continuar.`,
+            practical_example: `Al poner en práctica los fundamentos de "${goalTitle}", delimita primero un alcance mínimo comprobable antes de añadir complejidad. Esto te permitirá detectar errores tempranamente con mínimo esfuerzo.`,
             key_points: [
               'Comprender los principios teóricos básicos.',
               'Configurar el flujo de trabajo inicial.',

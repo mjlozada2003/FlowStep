@@ -81,7 +81,9 @@ export default function HomeScreen() {
 
   // Filtrar objetivos activos (excluir archivados y completados de la lista principal)
   const activeGoals = useMemo(() => {
-    return goals.filter((g) => g.status !== 'archived' && g.status !== 'completed');
+    return goals.filter(
+      (g) => g.status !== 'archived' && g.status !== 'completed' && Number(g.progress_percentage || 0) < 100,
+    );
   }, [goals]);
 
   const displayedGoals = useMemo(() => {

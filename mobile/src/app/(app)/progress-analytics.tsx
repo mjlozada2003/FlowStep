@@ -74,32 +74,27 @@ export default function ProgressAnalyticsScreen() {
   }, [params.goalId]);
 
   const handleBack = useCallback(() => {
-    if (params.fromSuccess === '1') {
-      if (activeGoalId) {
-        router.navigate({
-          pathname: '/goal-plan',
-          params: { goalId: String(activeGoalId) },
-        } as any);
-      } else {
-        router.navigate('/(tabs)/home' as any);
-      }
-    } else if (router.canGoBack()) {
+    if (router.canGoBack()) {
       router.back();
+    } else if (activeGoalId) {
+      router.replace({
+        pathname: '/goal-plan',
+        params: { goalId: String(activeGoalId) },
+      } as any);
     } else {
       router.replace('/(tabs)/home' as any);
     }
-  }, [params.fromSuccess, activeGoalId]);
+  }, [activeGoalId]);
 
   useFocusEffect(
     useCallback(() => {
-      if (params.fromSuccess !== '1') return undefined;
       const onBackPress = () => {
         handleBack();
         return true;
       };
       const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
       return () => sub.remove();
-    }, [params.fromSuccess, handleBack]),
+    }, [handleBack]),
   );
 
   const loadData = useCallback(async () => {

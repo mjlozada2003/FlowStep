@@ -6,6 +6,7 @@ import {
   Alert,
   BackHandler,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -90,41 +91,58 @@ export default function GoalPlanScreen() {
     if (!goalId || !token) return;
     setMenuVisible(false);
     try {
-      await archiveGoal(goalId, token);
-      router.replace('/archived-goals' as any);
+      if (progress?.goal_status === 'archived') {
+        await resumeGoal(goalId, token);
+        const updatedProgress = await getGoalProgress(goalId, token);
+        if (updatedProgress) setProgress(updatedProgress);
+        Alert.alert('Éxito', 'Objetivo reactivado correctamente.');
+      } else {
+        await archiveGoal(goalId, token);
+        router.replace('/archived-goals' as any);
+      }
     } catch (error) {
       Alert.alert(
         'Error',
-        error instanceof Error ? error.message : 'No se pudo archivar el objetivo.',
+        error instanceof Error ? error.message : 'No se pudo cambiar el estado del objetivo.',
       );
     }
   };
 
   const handleConfirmDelete = () => {
     setMenuVisible(false);
-    Alert.alert(
-      'Eliminar objetivo',
-      '¿Estás seguro de que deseas eliminar este objetivo? Esta acción lo borrará de tu lista y agenda.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: async () => {
-            if (!goalId || !token) return;
-            try {
-              await deleteGoal(goalId, token);
-              router.replace('/(tabs)/home' as any);
-            } catch (error) {
-              Alert.alert(
-                'Error',
-                error instanceof Error ? error.message : 'No se pudo eliminar el objetivo.',
-              );
-            }
+    const executeDelete = async () => {
+      if (!goalId || !token) return;
+      try {
+        await deleteGoal(goalId, token);
+        router.replace('/(tabs)/home' as any);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'No se pudo eliminar el objetivo.';
+        if (Platform.OS === 'web') {
+          window.alert(msg);
+        } else {
+          Alert.alert('Error', msg);
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm('¿Estás seguro de que deseas eliminar este objetivo? Esta acción lo borrará de tu lista y agenda.')) {
+        executeDelete();
+      }
+    } else {
+      Alert.alert(
+        'Eliminar objetivo',
+        '¿Estás seguro de que deseas eliminar este objetivo? Esta acción lo borrará de tu lista y agenda.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Eliminar',
+            style: 'destructive',
+            onPress: executeDelete,
           },
-        },
-      ],
-    );
+        ],
+      );
+    }
   };
 
   const handleSaveDueDate = async () => {
@@ -211,14 +229,10 @@ export default function GoalPlanScreen() {
   );
 
   const handleBack = useCallback(() => {
-    if (params.isNew === '1' || params.fromSuccess === '1') {
-      router.replace('/(tabs)/home' as any);
-    } else if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/(tabs)/home' as any);
-    }
-  }, [params.fromSuccess, params.isNew]);
+    // Volver atrás desde el plan del objetivo siempre regresa de forma segura a Home
+    // evitando bucles con pantallas hijas como seguimiento, métricas o éxito
+    router.replace('/(tabs)/home' as any);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -370,11 +384,17 @@ export default function GoalPlanScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity 
-                  style={[styles.menuItem, styles.menuItemDanger]} 
+                  style={[styles.menuItem, progress?.goal_status === 'archived' ? null : styles.menuItemDanger]} 
                   onPress={handleArchive}
                 >
-                  <Feather name="archive" size={16} color="#C53030" />
-                  <Text style={[styles.menuItemText, styles.menuItemTextDanger]}>Archivar objetivo</Text>
+                  <Feather 
+                    name={progress?.goal_status === 'archived' ? 'rotate-ccw' : 'archive'} 
+                    size={16} 
+                    color={progress?.goal_status === 'archived' ? '#174A62' : '#C53030'} 
+                  />
+                  <Text style={[styles.menuItemText, progress?.goal_status === 'archived' ? null : styles.menuItemTextDanger]}>
+                    {progress?.goal_status === 'archived' ? 'Reactivar objetivo' : 'Archivar objetivo'}
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity 

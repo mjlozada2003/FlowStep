@@ -137,7 +137,7 @@ export async function submitGoalEvaluation(
  */
 export async function addReinforcementActivity(
   goalId: number,
-  dto: { topic: string; title?: string; estimated_minutes?: number },
+  dto: { topic: string; title?: string; estimated_minutes?: number; description?: string },
   token: string,
 ): Promise<{ message: string; activity: any }> {
   return apiRequest<{ message: string; activity: any }>(`/goals/${goalId}/reinforcement`, {

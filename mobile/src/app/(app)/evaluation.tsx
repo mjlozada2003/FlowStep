@@ -114,7 +114,7 @@ export default function EvaluationScreen() {
   const resourceSummary = params.resourceSummary || '';
   const readingContent =
     params.readingContent ||
-    `Dominar los conceptos fundamentales de "${resourceTitle}" es un paso esencial para avanzar con paso firme en tu objetivo "${params.goalTitle || 'de aprendizaje'}".\n\nEl estudio reflexivo de este tema te permite comprender no solo las herramientas y técnicas requeridas, sino la lógica detrás de cada decisión que tomarás durante tus actividades prácticas.\n\nPara aprovechar esta lectura al máximo, te sugerimos relacionar cada punto con tus sesiones de trabajo previas e identificar qué aspectos puedes implementar de inmediato.`;
+    `📖 1. Fundamentos y Principios Clave\nComprender los principios conceptuales y el contexto operativo de "${resourceTitle}" es indispensable para avanzar con solvencia en tu objetivo "${params.goalTitle || 'de aprendizaje'}". Al abordar este conocimiento, la clave reside en entender la arquitectura conceptual: qué problema resuelve, cómo se organiza y qué papel juega dentro de la ejecución general.\n\n🛠️ 2. Flujo de Trabajo y Buenas Prácticas\nPara asimilar este contenido sin abrumarte, adopta un enfoque iterativo: primero analiza el modelo conceptual y familiarízate con la terminología clave; luego, asocia cada concepto con un ejemplo tangible. Trabajar con pequeños bloques verificables previene bloqueos cognitivos y consolida la retención a largo plazo.\n\n⚠️ 3. Errores Frecuentes y Cómo Prevenirlos\nEl error más habitual es memorizar definiciones superficiales sin comprender su aplicación operativa o saltarse los fundamentos para ir directamente a casos complejos. Si experimentas fricción, descompón el tema en partes elementales y valida cada paso antes de continuar.`;
   const practicalExample =
     params.practicalExample ||
     `Por ejemplo, al abordar "${resourceCategory}", estructurar primero tus materiales y revisar los requerimientos te ahorra hasta un 40% del tiempo de ejecución posterior.`;
@@ -267,7 +267,16 @@ export default function EvaluationScreen() {
       const topic = evaluationResult.weak_topics[0];
       await addReinforcementActivity(
         goalIdNum,
-        { topic, title: `Refuerzo: ${topic}`, estimated_minutes: 30 },
+        {
+          topic,
+          title: `Refuerzo guiado: ${topic}`,
+          estimated_minutes: 30,
+          description:
+            `🎯 Objetivo: Superar dudas y consolidar conocimientos en "${topic}".\n` +
+            `• Paso 1 (10 min): Repaso conceptual y revisión de notas de ${topic}.\n` +
+            `• Paso 2 (15 min): Práctica guiada con ejercicio paso a paso enfocado en las dudas detectadas.\n` +
+            `• Paso 3 (5 min): Verificación de asimilación y autoevaluación de resultados.`,
+        },
         token,
       );
       setReinforcementAdded(true);
@@ -438,15 +447,6 @@ export default function EvaluationScreen() {
             {/* Botones de acción final */}
             <TouchableOpacity
               style={styles.primaryResultsBtn}
-              onPress={() => router.replace('/(tabs)/learning' as any)}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.primaryResultsBtnText}>Volver a Aprender</Text>
-              <Feather name="arrow-right" size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.secondaryResultsBtn}
               onPress={() =>
                 router.navigate({
                   pathname: '/goal-plan',
@@ -455,8 +455,17 @@ export default function EvaluationScreen() {
               }
               activeOpacity={0.85}
             >
-              <Text style={styles.secondaryResultsBtnText}>Ver mi plan de estudio</Text>
-              <Feather name="target" size={16} color="#174A62" style={{ marginLeft: 6 }} />
+              <Text style={styles.primaryResultsBtnText}>Ir a mi plan de actividades</Text>
+              <Feather name="arrow-right" size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.secondaryResultsBtn}
+              onPress={() => router.replace('/(tabs)/learning' as any)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.secondaryResultsBtnText}>Volver a recursos de Aprender</Text>
+              <Feather name="book-open" size={16} color="#174A62" style={{ marginLeft: 6 }} />
             </TouchableOpacity>
           </View>
         ) : showResourceIntro ? (
@@ -545,16 +554,6 @@ export default function EvaluationScreen() {
                     </View>
                   ))}
                 </View>
-
-                {/* Botón directo de lectura completada */}
-                <TouchableOpacity
-                  style={styles.finishReadingBtn}
-                  activeOpacity={0.85}
-                  onPress={() => setShowResourceIntro(false)}
-                >
-                  <Feather name="check-circle" size={18} color="#FFFFFF" />
-                  <Text style={styles.finishReadingBtnText}>He terminado de leer · Ir al cuestionario</Text>
-                </TouchableOpacity>
               </View>
             )}
 
@@ -730,10 +729,10 @@ export default function EvaluationScreen() {
                 </Text>
                 <Text style={styles.evalPromptDesc}>
                   {resourceType === 'LECTURA'
-                    ? 'Pon a prueba tu retención de lo leído con 3 preguntas clave y refuerzo con IA.'
+                    ? 'Pon a prueba tu retención de lo leído con preguntas diagnósticas adaptativas y refuerzo con IA.'
                     : resourceType === 'VÍDEO'
-                    ? 'Verifica los conceptos vistos en el tutorial con 3 preguntas clave.'
-                    : 'Comprueba los conocimientos operativos adquiridos con 3 preguntas clave.'}
+                    ? 'Verifica los conceptos vistos en el tutorial con preguntas diagnósticas adaptativas.'
+                    : 'Comprueba los conocimientos operativos adquiridos con preguntas diagnósticas adaptativas.'}
                 </Text>
               </View>
             </View>

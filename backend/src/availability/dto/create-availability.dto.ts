@@ -1,8 +1,22 @@
-import { IsEnum, IsNotEmpty, Matches } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsEnum, IsNotEmpty, IsOptional, Matches } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DayOfWeek } from '../enums/day-of-week.enum';
 
 export class CreateAvailabilityDto {
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'ID de la disponibilidad existente (ignorado al crear o actualizar)',
+  })
+  @IsOptional()
+  availability_id?: number;
+
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'ID del usuario (ignorado, se usa el token de autenticación)',
+  })
+  @IsOptional()
+  user_id?: number;
+
   @ApiProperty({
     example: 'monday',
     enum: DayOfWeek,

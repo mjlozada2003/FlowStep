@@ -239,6 +239,7 @@ export class GoalsService {
   }
 
   async getProgress(goalId: number, userId: number): Promise<any> {
+    await this.syncCompletedGoals(userId);
     const result = await this.goalsRepository.query(
       'SELECT * FROM v_goal_progress WHERE goal_id = $1 AND user_id = $2',
       [goalId, userId],
@@ -492,8 +493,49 @@ export class GoalsService {
     return this.goalsRepository.save(goal);
   }
 
+  // Sincronizar automáticamente objetivos que alcanzaron el 100% o que fueron reabiertos
+  async syncCompletedGoals(userId: number): Promise<void> {
+    try {
+      await this.goalsRepository.query(
+        `UPDATE "GOAL" g
+         SET status = 'completed'
+         WHERE g.user_id = $1
+           AND g.status = 'active'
+           AND g.deleted_at IS NULL
+           AND EXISTS (
+             SELECT 1 FROM "STAGE" s
+             JOIN "ACTIVITY" a ON a.stage_id = s.stage_id AND a.deleted_at IS NULL
+             WHERE s.goal_id = g.goal_id
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM "STAGE" s
+             JOIN "ACTIVITY" a ON a.stage_id = s.stage_id AND a.deleted_at IS NULL
+             WHERE s.goal_id = g.goal_id AND a.status != 'completed'
+           )`,
+        [userId],
+      );
+
+      await this.goalsRepository.query(
+        `UPDATE "GOAL" g
+         SET status = 'active'
+         WHERE g.user_id = $1
+           AND g.status = 'completed'
+           AND g.deleted_at IS NULL
+           AND EXISTS (
+             SELECT 1 FROM "STAGE" s
+             JOIN "ACTIVITY" a ON a.stage_id = s.stage_id AND a.deleted_at IS NULL
+             WHERE s.goal_id = g.goal_id AND a.status != 'completed'
+           )`,
+        [userId],
+      );
+    } catch {
+      // Ignorar para no bloquear la consulta si la BD no permite la actualización
+    }
+  }
+
   // HU-44, HU-45, HU-48: Visión general de objetivos con ritmo y ordenamiento por prioridad
   async getOverview(userId: number, query?: GoalQueryDto): Promise<any[]> {
+    await this.syncCompletedGoals(userId);
     let sql = 'SELECT * FROM v_goal_overview WHERE user_id = $1';
     const params: any[] = [userId];
 
@@ -502,9 +544,22 @@ export class GoalsService {
       params.push(query.status);
     }
 
-    if (query?.sortBy === 'due_date') {
+    let sortBy = query?.sortBy;
+    if (!sortBy) {
+      try {
+        const prefRows = await this.goalsRepository.query(
+          'SELECT goals_sort_by FROM v_user_preferences WHERE user_id = $1',
+          [userId],
+        );
+        if (prefRows.length > 0 && prefRows[0].goals_sort_by) {
+          sortBy = prefRows[0].goals_sort_by;
+        }
+      } catch {}
+    }
+
+    if (sortBy === 'due_date') {
       sql += ' ORDER BY due_date ASC NULLS LAST';
-    } else if (query?.sortBy === 'created_at') {
+    } else if (sortBy === 'created_at') {
       sql += ' ORDER BY created_at DESC';
     } else {
       sql += ' ORDER BY sort_position ASC';
@@ -524,6 +579,7 @@ export class GoalsService {
 
   // HU-47: Historial de objetivos anteriores (archivados y completados)
   async getGoalHistory(userId: number, status?: string): Promise<any[]> {
+    await this.syncCompletedGoals(userId);
     let sql = 'SELECT * FROM v_goal_history WHERE user_id = $1';
     const params: any[] = [userId];
 
@@ -536,8 +592,18 @@ export class GoalsService {
     return this.goalsRepository.query(sql, params);
   }
 
-  // HU-25: Alertas activas de retraso
+  // HU-25: Alertas activas de retraso respetando preferencia del usuario
   async getDelayAlerts(userId: number): Promise<any[]> {
+    try {
+      const prefRows = await this.goalsRepository.query(
+        'SELECT delay_alerts_enabled FROM v_user_preferences WHERE user_id = $1',
+        [userId],
+      );
+      if (prefRows.length > 0 && prefRows[0].delay_alerts_enabled === false) {
+        return [];
+      }
+    } catch {}
+
     return this.goalsRepository.query(
       'SELECT *, most_overdue_activity_id AS activity_id, most_overdue_activity_title AS activity_title, max_days_late AS days_delayed FROM v_goal_delay_alert WHERE user_id = $1 ORDER BY priority_rank, max_days_late DESC',
       [userId],
@@ -546,6 +612,16 @@ export class GoalsService {
 
   // HU-23: Resumen periódico / semanal de progreso (agrega barras L-D y desglose por meta)
   async getWeeklySummary(userId: number, startDate?: string, endDate?: string): Promise<any> {
+    try {
+      const prefRows = await this.goalsRepository.query(
+        'SELECT periodic_summary_enabled FROM v_user_preferences WHERE user_id = $1',
+        [userId],
+      );
+      if (prefRows.length > 0 && prefRows[0].periodic_summary_enabled === false) {
+        return null;
+      }
+    } catch {}
+
     let sql: string;
     let params: any[];
 
@@ -1088,11 +1164,18 @@ export class GoalsService {
       throw new BadRequestException('El objetivo no tiene etapas para incorporar la actividad');
     }
 
+    const structuredDescription =
+      dto.description ||
+      `🎯 Objetivo: Afianzar conceptos y resolver dudas en "${dto.topic}".\n` +
+      `• Paso 1 (10 min): Repaso conceptual y revisión de fundamentos clave de ${dto.topic}.\n` +
+      `• Paso 2 (15 min): Práctica guiada con ejercicio paso a paso enfocado en las dudas detectadas.\n` +
+      `• Paso 3 (5 min): Verificación de resultados y comprobación de asimilación.`;
+
     const activity = await this.activitiesRepository.save(
       this.activitiesRepository.create({
         stage_id: targetStageId,
         title: dto.title || `Refuerzo guiado: ${dto.topic}`,
-        description: `Actividad de aprendizaje de refuerzo para superar dificultades en: ${dto.topic}`,
+        description: structuredDescription,
         type: ActivityType.REINFORCEMENT,
         origin: ActivityOrigin.AI_ADJUSTMENT,
         estimated_minutes: dto.estimated_minutes || 30,

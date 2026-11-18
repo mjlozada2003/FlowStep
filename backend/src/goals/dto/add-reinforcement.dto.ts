@@ -19,6 +19,14 @@ export class AddReinforcementDto {
   title?: string;
 
   @ApiPropertyOptional({
+    description: 'Guía detallada, pasos o instrucciones de la actividad',
+    example: 'Paso 1: Repaso conceptual. Paso 2: Ejercicio práctico.',
+  })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional({
     description: 'ID de la etapa donde se incorporará la actividad',
     example: 1,
   })

@@ -776,8 +776,8 @@ export class AiService {
         category: t1,
         badge_text: 'Esencial',
         icon_name: 'book-open',
-        summary: `En esta guía se introducen los conceptos y fundamentos de "${t1}", explicando su importancia conceptual y cómo aplicarlo paso a paso.`,
-        reading_content: `Dominar los principios teóricos y el contexto operativo de "${t1}" es indispensable para avanzar sólidamente en el cumplimiento de tu objetivo "${goalTitle}".\n\nEl aprendizaje efectivo no consiste en memorizar términos aislados, sino en comprender las relaciones causa-efecto de cada concepto y cómo impactan en tus actividades diarias. Al establecer bases firmes, reduces la fricción mental y la probabilidad de frustración.\n\nTe recomendamos leer con atención cada sección, relacionar las ideas con tu experiencia previa y reflexionar sobre cómo vas a implementar este conocimiento en tu próxima sesión de trabajo.`,
+        summary: `En esta guía se introducen los conceptos y fundamentos esenciales de "${t1}", explicando su importancia conceptual y cómo aplicarlo paso a paso.`,
+        reading_content: `📖 1. Fundamentos y Principios Clave\nComprender los principios teóricos y el contexto operativo de "${t1}" es indispensable para avanzar con solvencia en tu objetivo "${goalTitle}". Al abordar este conocimiento, la clave reside en entender la arquitectura conceptual: qué problema resuelve, cómo se organiza y qué papel juega dentro de la ejecución general.\n\n🛠️ 2. Flujo de Trabajo y Buenas Prácticas\nPara asimilar este contenido sin abrumarte, adopta un enfoque iterativo: primero analiza el modelo conceptual y familiarízate con la terminología clave; luego, asocia cada concepto con un ejemplo tangible. Trabajar con pequeños bloques verificables previene bloqueos cognitivos y consolida la retención a largo plazo.\n\n⚠️ 3. Errores Frecuentes y Cómo Prevenirlos\nEl error más habitual es memorizar definiciones superficiales sin comprender su aplicación operativa o saltarse los fundamentos para ir directamente a casos complejos. Si experimentas fricción, descompón el tema en partes elementales y valida cada paso antes de continuar.`,
         practical_example: `Al poner en práctica "${t1}", comienza delimitando un alcance pequeño y comprobable antes de añadir complejidad. Esto te permitirá detectar errores tempranamente con mínimo esfuerzo.`,
         key_points: [
           `Comprender los principios base de ${t1}.`,
@@ -846,7 +846,7 @@ export class AiService {
     const prompt = `
       Para el objetivo: "${goalTitle}".
       ${stageContext}
-      Crea 3 preguntas diagnósticas de opción múltiple (A, B, C) con una sola respuesta correcta y explicación, específicas para evaluar los conceptos de este objetivo.
+      Crea 5 preguntas diagnósticas de opción múltiple (A, B, C) con una sola respuesta correcta y explicación, específicas para evaluar progresivamente los conceptos de este objetivo (conceptos fundamentales, metodología, resolución de errores, buenas prácticas y aplicación práctica).
       Devuelve ESTRICTAMENTE un array JSON con:
       [
         {
@@ -887,6 +887,7 @@ export class AiService {
     }
 
     const firstTopic = stageNames[0] || goalTitle;
+    const secondTopic = stageNames[1] || `Desarrollo de ${goalTitle}`;
     return [
       {
         id: 1,
@@ -912,6 +913,28 @@ export class AiService {
       },
       {
         id: 3,
+        category: 'RESOLUCIÓN DE PROBLEMAS',
+        question: `Al enfrentar un bloqueo o error durante "${secondTopic}", ¿cuál es el paso inicial más efectivo?`,
+        options: [
+          { key: 'A', text: 'Aislar el problema reproduciendo el caso mínimo y comprobar supuestos', isCorrect: true, is_correct: true },
+          { key: 'B', text: 'Reescribir todo el trabajo desde cero al primer fallo', isCorrect: false, is_correct: false },
+          { key: 'C', text: 'Probar cambios aleatorios hasta que funcione', isCorrect: false, is_correct: false },
+        ],
+        explanation: 'Aislar las variables y comprobar supuestos permite localizar la causa raíz de manera sistemática.',
+      },
+      {
+        id: 4,
+        category: 'BUENAS PRÁCTICAS',
+        question: '¿Cuál es la mejor estrategia para mantener un ritmo de estudio y ejecución sostenible?',
+        options: [
+          { key: 'A', text: 'Sesiones de estudio enfocadas y regulares con descansos programados', isCorrect: true, is_correct: true },
+          { key: 'B', text: 'Estudiar 8 horas seguidas un solo día al mes', isCorrect: false, is_correct: false },
+          { key: 'C', text: 'Avanzar sin registrar dificultades ni reflexionar sobre el progreso', isCorrect: false, is_correct: false },
+        ],
+        explanation: 'La constancia distribuida en el tiempo supera con creces a los atracones esporádicos en aprendizaje activo.',
+      },
+      {
+        id: 5,
         category: 'APLICACIÓN PRÁCTICA',
         question: `¿Cómo se consolida de mejor forma el aprendizaje adquirido en "${goalTitle}"?`,
         options: [
