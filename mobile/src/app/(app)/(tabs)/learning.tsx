@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -13,7 +13,7 @@ import {
 import { Screen } from '@/components/ui/Screen';
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { useAuth } from '@/contexts/auth-context';
-import { getGoalsOverview, GoalOverviewItem } from '@/services/api/goals';
+import { getGoalsOverview, GoalOverviewItem, getGoalById } from '@/services/api/goals';
 import {
   getGoalKnowledge,
   getGoalResources,
@@ -27,7 +27,7 @@ export default function LearningScreen() {
   const [loading, setLoading] = useState<boolean>(true);
   const [switchingGoal, setSwitchingGoal] = useState<boolean>(false);
   const [goalsList, setGoalsList] = useState<GoalOverviewItem[]>([]);
-  const [currentGoalId, setCurrentGoalId] = useState<number>(1);
+  const [currentGoalId, setCurrentGoalId] = useState<number>(0);
   const [knowledge, setKnowledge] = useState<GoalKnowledgeResponse | null>(null);
   const [resources, setResources] = useState<LearningResourceItem[]>([]);
 
@@ -38,55 +38,91 @@ export default function LearningScreen() {
           getGoalKnowledge(goalId, userToken).catch(() => null),
           getGoalResources(goalId, userToken).catch(() => null),
         ]);
-        if (knowRes) setKnowledge(knowRes);
-        if (resRes && resRes.length > 0) setResources(resRes);
+        setKnowledge(knowRes);
+        setResources(resRes && resRes.length > 0 ? resRes : []);
       } catch (err) {
         console.warn('Error al cargar datos de aprendizaje:', err);
+        setKnowledge(null);
+        setResources([]);
       }
     },
     [],
   );
 
-  useEffect(() => {
-    let isMounted = true;
-    async function loadInitial() {
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-      try {
-        setLoading(true);
-        const goals = await getGoalsOverview(token).catch(() => []);
-        if (!isMounted) return;
-        setGoalsList(goals);
-
-        let targetId = 1;
-        if (params.goalId && goals.some((g) => g.goal_id === Number(params.goalId))) {
-          targetId = Number(params.goalId);
-        } else if (goals && goals.length > 0) {
-          targetId = Number(goals[0].goal_id);
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+      async function loadInitial() {
+        if (!token) {
+          setLoading(false);
+          return;
         }
+        try {
+          setLoading(true);
+          const goals = await getGoalsOverview(token).catch(() => []);
+          if (!isMounted) return;
 
-        setCurrentGoalId(targetId);
-        await fetchGoalData(targetId, token);
-      } catch (err) {
-        console.warn('Error al inicializar pantalla de aprendizaje:', err);
-      } finally {
-        if (isMounted) setLoading(false);
+          let targetId = 0;
+          const paramId = params.goalId ? Number(params.goalId) : null;
+          const hasValidParam = Boolean(paramId && !isNaN(paramId) && paramId > 0);
+
+          if (hasValidParam && paramId) {
+            targetId = paramId;
+          } else if (currentGoalId > 0 && goals.some((g) => g.goal_id === currentGoalId)) {
+            targetId = currentGoalId;
+          } else if (goals && goals.length > 0) {
+            targetId = Number(goals[0].goal_id);
+          }
+
+          let updatedGoals = [...goals];
+          if (targetId > 0 && !updatedGoals.some((g) => g.goal_id === targetId)) {
+            const specificGoal = await getGoalById(targetId, token).catch(() => null);
+            if (specificGoal && isMounted) {
+              updatedGoals.unshift({
+                goal_id: specificGoal.goal_id,
+                title: specificGoal.title,
+                priority: specificGoal.priority || 'medium',
+                status: 'in_progress',
+                total_activities: 0,
+                completed_activities: 0,
+                progress_percentage: 0,
+                due_date: specificGoal.due_date,
+              });
+            }
+          }
+
+          if (isMounted) {
+            setGoalsList(updatedGoals);
+            setCurrentGoalId(targetId);
+          }
+
+          if (targetId > 0) {
+            await fetchGoalData(targetId, token);
+          } else {
+            setKnowledge(null);
+            setResources([]);
+          }
+        } catch (err) {
+          console.warn('Error al inicializar pantalla de aprendizaje:', err);
+        } finally {
+          if (isMounted) setLoading(false);
+        }
       }
-    }
 
-    loadInitial();
-    return () => {
-      isMounted = false;
-    };
-  }, [token, params.goalId, fetchGoalData]);
+      loadInitial();
+      return () => {
+        isMounted = false;
+      };
+    }, [token, params.goalId, currentGoalId, fetchGoalData]),
+  );
 
   const handleSelectGoal = async (goalId: number) => {
     if (goalId === currentGoalId || !token) return;
     try {
       setSwitchingGoal(true);
       setCurrentGoalId(goalId);
+      setKnowledge(null);
+      setResources([]);
       await fetchGoalData(goalId, token);
     } finally {
       setSwitchingGoal(false);
@@ -240,6 +276,23 @@ export default function LearningScreen() {
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#174A62" />
             <Text style={styles.loadingText}>Cargando conocimientos y recursos...</Text>
+          </View>
+        ) : goalsList.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconBox}>
+              <Feather name="book-open" size={32} color="#174A62" />
+            </View>
+            <Text style={styles.emptyTitle}>Sin objetivos activos</Text>
+            <Text style={styles.emptyDesc}>
+              Crea tu primer objetivo para acceder a conocimientos guiados, recursos formativos y evaluaciones adaptativas.
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyButton}
+              activeOpacity={0.85}
+              onPress={() => router.push('/create-goal')}
+            >
+              <Text style={styles.emptyButtonText}>Crear mi primer objetivo</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <View style={[switchingGoal && { opacity: 0.6 }]}>
@@ -700,5 +753,48 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#627D98',
     fontWeight: '600',
+  },
+  emptyContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 12,
+    marginVertical: 20,
+  },
+  emptyIconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#EBF5FB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F2C40',
+  },
+  emptyDesc: {
+    fontSize: 13,
+    color: '#627D98',
+    textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: 12,
+  },
+  emptyButton: {
+    backgroundColor: '#174A62',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 14,
+    marginTop: 8,
+  },
+  emptyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

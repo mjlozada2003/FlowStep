@@ -29,6 +29,7 @@ import {
   type CreatedGoal,
   type GoalProgress,
 } from '@/services/api/goals';
+import { getGoalKnowledge, GoalKnowledgeResponse } from '@/services/api/learning';
 import { getAvailability, getWeeklyAvailabilityMinutes } from '@/services/api/availability';
 import { GoalOverviewCard } from '@/components/features/GoalOverviewCard';
 import { GoalStageTimelineCard } from '@/components/features/GoalStageTimelineCard';
@@ -49,6 +50,7 @@ export default function GoalPlanScreen() {
 
   const [goal, setGoal] = useState<CreatedGoal | null>(null);
   const [progress, setProgress] = useState<GoalProgress | null>(null);
+  const [knowledge, setKnowledge] = useState<GoalKnowledgeResponse | null>(null);
   const [priority, setPriority] = useState<string>('');
   const [isUpdatingPriority, setIsUpdatingPriority] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -167,6 +169,12 @@ export default function GoalPlanScreen() {
           );
         });
 
+      getGoalKnowledge(goalId, token)
+        .then((k) => {
+          if (active && k) setKnowledge(k);
+        })
+        .catch(() => {});
+
       return () => {
         active = false;
       };
@@ -247,6 +255,19 @@ export default function GoalPlanScreen() {
     weeklyHours === null
       ? '—'
       : `${Number(weeklyHours.toFixed(2))} H`;
+
+  const knowledgeTopicsTitle =
+    knowledge?.topics && knowledge.topics.length > 0
+      ? knowledge.topics.map((t) => t.name).slice(0, 3).join(', ')
+      : stages && stages.length > 0
+      ? stages.map((s) => s.name).slice(0, 3).join(', ')
+      : `Fundamentos y habilidades de ${goal?.title || 'tu objetivo'}`;
+
+  const dominantCount =
+    knowledge?.dominant_count ??
+    (progress ? Math.round((stages.length || 3) * ((progress.progress_percentage || 0) / 100)) : 0);
+  const totalConcepts = knowledge?.total_concepts ?? (stages.length || 3);
+  const knowledgeSubText = `${dominantCount} de ${totalConcepts} temas dominados`;
 
   return (
     <Screen style={styles.screen}>
@@ -431,8 +452,8 @@ export default function GoalPlanScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.scheduleCardTag}>CONOCIMIENTOS PARA TU OBJETIVO</Text>
-                <Text style={styles.scheduleCardTitle}>React, componentes, hooks y APIs</Text>
-                <Text style={styles.scheduleCardSub}>2 de 5 temas dominados</Text>
+                <Text style={styles.scheduleCardTitle} numberOfLines={1}>{knowledgeTopicsTitle}</Text>
+                <Text style={styles.scheduleCardSub}>{knowledgeSubText}</Text>
               </View>
             </View>
             <Feather name="arrow-right" size={18} color="#174A62" />

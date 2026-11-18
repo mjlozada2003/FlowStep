@@ -168,7 +168,7 @@ export class AiService {
   }
 
   private async callGeminiJson<T>(prompt: string): Promise<T | null> {
-    const candidateModels = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest'];
+    const candidateModels = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-flash-lite-latest'];
     for (const model of candidateModels) {
       try {
         const response = await this.ai.models.generateContent({
