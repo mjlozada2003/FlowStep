@@ -318,6 +318,9 @@ export interface GoalHistoryItem {
   completed_activities: number;
   progress_percentage: number;
   total_minutes_invested?: number;
+  minutes_spent?: number;
+  completed_estimated_minutes?: number;
+  closed_at?: string;
   last_reason?: string;
 }
 

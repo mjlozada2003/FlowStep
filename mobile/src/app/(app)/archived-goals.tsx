@@ -30,6 +30,24 @@ function formatDisplayDate(dateStr?: string): string {
   }
 }
 
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round((minutes / 60) * 10) / 10;
+  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} h`;
+}
+
+// Usa los minutos de sesiones registradas; si no hay, cae a los minutos
+// estimados de las actividades completadas para no mostrar 0 con avance real.
+function formatTimeText(item: GoalHistoryItem): string {
+  const logged = Math.round(Number(item.minutes_spent || item.total_minutes_invested || 0));
+  if (logged > 0) return `${formatDuration(logged)} registradas`;
+
+  const estimated = Math.round(Number(item.completed_estimated_minutes || 0));
+  if (estimated > 0) return `~${formatDuration(estimated)} estimadas`;
+
+  return 'Sin tiempo registrado';
+}
+
 export default function ArchivedGoalsScreen() {
   const { token } = useAuth();
   const [activeTab, setActiveTab] = useState<'archived' | 'completed'>('archived');
@@ -158,10 +176,12 @@ export default function ArchivedGoalsScreen() {
     }
   };
 
-  const archivedGoals = history.filter((g) => g.status === 'archived');
-  const completedGoals = history.filter(
-    (g) => g.status === 'completed' || Number(g.progress_percentage || 0) >= 100,
-  );
+  // Pestañas excluyentes: un objetivo al 100 % siempre cuenta como completado,
+  // aunque se haya archivado.
+  const isFinished = (g: GoalHistoryItem) =>
+    g.status === 'completed' || Number(g.progress_percentage || 0) >= 100;
+  const completedGoals = history.filter(isFinished);
+  const archivedGoals = history.filter((g) => g.status === 'archived' && !isFinished(g));
 
   // Si no hay archivados pero sí completados, mostrar la pestaña de completados por defecto
   useEffect(() => {
@@ -174,11 +194,10 @@ export default function ArchivedGoalsScreen() {
 
   const currentGoals = rawGoals.map((item) => {
     const isCompleted = activeTab === 'completed';
-    const statusLabel = `${isCompleted ? 'COMPLETADO' : 'ARCHIVADO'} · ${formatDisplayDate((item as any).closed_at || item.status_changed_at || item.end_date)}`;
+    const statusLabel = `${isCompleted ? 'COMPLETADO' : 'ARCHIVADO'} · ${formatDisplayDate(item.closed_at || item.status_changed_at || item.end_date)}`;
     const progress = Math.round(Number(item.progress_percentage || 0));
     const completedActivities = Number(item.completed_activities || 0);
     const totalActivities = Number(item.total_activities || 0);
-    const hours = Math.round(Number((item as any).minutes_spent || item.total_minutes_invested || 0) / 60);
 
     return {
       id: item.goal_id,
@@ -186,7 +205,7 @@ export default function ArchivedGoalsScreen() {
       title: item.title,
       progress,
       activitiesText: `${completedActivities} de ${totalActivities} actividades`,
-      timeText: `${hours} h registradas`,
+      timeText: formatTimeText(item),
       actionText: isCompleted ? 'Consultar planificación' : 'Consultar progreso',
     };
   });

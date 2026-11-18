@@ -698,9 +698,45 @@ export class GoalsService {
     return this.changeGoalStatus(userId, goalId, GoalStatus.ACTIVE, reason);
   }
 
-  // HU-46: Archivar objetivo
+  // HU-46: Archivar objetivo.
+  // Si todas sus actividades ya están completadas, el objetivo se cierra como
+  // 'completed' en lugar de 'archived' para que aparezca entre los completados.
   async archiveGoal(userId: number, goalId: number, reason?: string): Promise<Goal> {
+    const goal = await this.goalsRepository.findOne({
+      where: { goal_id: goalId, user_id: userId },
+    });
+
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+
+    if (await this.isGoalFullyCompleted(goalId)) {
+      if (goal.status === GoalStatus.COMPLETED) {
+        return this.findOneByUser(userId, goalId);
+      }
+      // El trigger no permite paused -> completed: se reanuda primero.
+      if (goal.status === GoalStatus.PAUSED) {
+        await this.changeGoalStatus(userId, goalId, GoalStatus.ACTIVE, reason);
+      }
+      return this.changeGoalStatus(userId, goalId, GoalStatus.COMPLETED, reason);
+    }
+
     return this.changeGoalStatus(userId, goalId, GoalStatus.ARCHIVED, reason);
+  }
+
+  // Un objetivo está completo si tiene actividades y todas están en 'completed'
+  private async isGoalFullyCompleted(goalId: number): Promise<boolean> {
+    const rows = await this.goalsRepository.query(
+      `SELECT COUNT(a.activity_id)::integer AS total,
+              COUNT(a.activity_id) FILTER (WHERE a.status = 'completed')::integer AS completed
+       FROM "STAGE" s
+       JOIN "ACTIVITY" a ON a.stage_id = s.stage_id AND a.deleted_at IS NULL
+       WHERE s.goal_id = $1`,
+      [goalId],
+    );
+    const total = Number(rows?.[0]?.total || 0);
+    const completed = Number(rows?.[0]?.completed || 0);
+    return total > 0 && completed === total;
   }
 
   // Transición de estado con trazabilidad (trigger trg_goal_status_before / history)
