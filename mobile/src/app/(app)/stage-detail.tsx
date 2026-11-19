@@ -640,7 +640,7 @@ const styles = StyleSheet.create({
     maxWidth: 440,
     alignSelf: 'center',
     gap: 16,
-    paddingHorizontal: 16,
+  
   },
   topBar: {
     flexDirection: 'row',

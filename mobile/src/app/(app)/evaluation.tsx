@@ -390,7 +390,7 @@ export default function EvaluationScreen() {
               <View style={styles.weakTopicsCard}>
                 <View style={styles.weakTopicsHeader}>
                   <Feather name="alert-circle" size={18} color="#D97706" />
-                  <Text style={styles.weakTopicsTitle}>Temas detectados por mejorar (HU-41)</Text>
+                  <Text style={styles.weakTopicsTitle}>Temas detectados por mejorar</Text>
                 </View>
                 <Text style={styles.weakTopicsDesc}>
                   El sistema detectó que los siguientes conceptos presentan oportunidad de refuerzo:
@@ -409,7 +409,7 @@ export default function EvaluationScreen() {
               <View style={styles.reinforcementCard}>
                 <View style={styles.reinforcementHeader}>
                   <Feather name="book-open" size={18} color="#174A62" />
-                  <Text style={styles.reinforcementTitle}>Refuerzo adaptativo recomendado (HU-42)</Text>
+                  <Text style={styles.reinforcementTitle}>Refuerzo adaptativo recomendado</Text>
                 </View>
                 <Text style={styles.reinforcementDesc}>
                   La IA propone añadir una sesión de aprendizaje focalizada en "{evaluationResult.weak_topics[0]}".

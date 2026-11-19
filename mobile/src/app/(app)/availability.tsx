@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     alignSelf: 'center',
     gap: 16,
-    paddingHorizontal: 16,
+  
   },
   topRow: {
     flexDirection: 'row',
