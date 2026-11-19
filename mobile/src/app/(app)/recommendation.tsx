@@ -1,6 +1,9 @@
 import { Feather } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  BackHandler,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,22 +14,101 @@ import {
 import { Screen } from '@/components/ui/Screen';
 import { BackButton } from '@/components/ui/BackButton';
 import { FlowMascotAvatar } from '@/components/features/FlowMascotAvatar';
+import { useAuth } from '@/contexts/auth-context';
+import {
+  getGoalRecommendations,
+  RecommendationDiagnostic,
+} from '@/services/api/recommendations';
 
 export default function RecommendationScreen() {
+  const { token } = useAuth();
   const params = useLocalSearchParams<{ goalId?: string; activityTitle?: string; goalTitle?: string }>();
-  const goalTitle = params.goalTitle ?? 'Crear una aplicación web';
-  const activityTitle = params.activityTitle ?? 'Consumo de APIs';
+  const [loading, setLoading] = useState<boolean>(true);
+  const [diagnostic, setDiagnostic] = useState<RecommendationDiagnostic | null>(null);
+
+  const goalIdNum = params.goalId ? Number(params.goalId) : 1;
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadData() {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+      try {
+        setLoading(true);
+        const data = await getGoalRecommendations(goalIdNum, token);
+        if (isMounted && data) {
+          setDiagnostic(data);
+        }
+      } catch (err) {
+        console.warn('No se pudo cargar diagnóstico del backend:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, [goalIdNum, token]);
+
+  const goalTitle = diagnostic?.goal_title || params.goalTitle || 'Objetivo actual';
+  const activityTitle = diagnostic?.activity_title || params.activityTitle || 'Actividad pendiente';
+  const progressPercent = diagnostic?.metrics?.progress_percentage ?? 25;
+  const completedCount = diagnostic?.metrics?.completed_activities ?? 3;
+  const availableHours =
+    diagnostic?.metrics?.available_hours ??
+    diagnostic?.metrics?.available_hours_weekly ??
+    4;
+  const solutionTitle = diagnostic?.solution_focus || 'Dar más espacio al aprendizaje';
+  const solutions = diagnostic?.solutions?.length
+    ? diagnostic.solutions
+    : [
+        `Conservar las ${completedCount} actividades ya completadas.`,
+        'Añadir un recurso breve sobre conceptos clave.',
+        `Reprogramar "${activityTitle}" a tu horario de mayor concentración.`,
+      ];
+  const benefitText =
+    diagnostic?.expected_benefit ||
+    diagnostic?.recommended_actions?.[0] ||
+    'Recuperar el ritmo manteniendo sesiones adaptadas a tu disponibilidad.';
+
+  const handleBack = useCallback(() => {
+    if (params.goalId && router.canGoBack()) {
+      router.back();
+    } else if (params.goalId) {
+      router.navigate({
+        pathname: '/goal-plan',
+        params: { goalId: String(goalIdNum) },
+      } as any);
+    } else if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.navigate('/(tabs)/home' as any);
+    }
+  }, [params.goalId, goalIdNum]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleBack]),
+  );
 
   const handleKeepCurrentPlan = () => {
-    // Si decide mantener su plan actual sin cambios
-    router.replace('/home' as any);
+    handleBack();
   };
 
   const handleCompareProposals = () => {
-    // Navegar a la pantalla de alternativas de planificación (Pantalla 18)
     router.push({
       pathname: '/alternatives',
-      params: { goalId: params.goalId ?? '' },
+      params: { goalId: String(goalIdNum) },
     } as any);
   };
 
@@ -38,7 +120,7 @@ export default function RecommendationScreen() {
       >
         {/* Cabecera superior */}
         <View style={styles.topHeader}>
-          <BackButton />
+          <BackButton onPress={handleBack} />
           <Text style={styles.headerTag}>RECOMENDACIÓN</Text>
           <View style={styles.brandContainer}>
             <Feather name="bar-chart-2" size={16} color="#174A62" />
@@ -46,94 +128,104 @@ export default function RecommendationScreen() {
           </View>
         </View>
 
-        {/* Tarjeta Destacada de Mascota / Título */}
-        <View style={styles.highlightCard}>
-          <View style={styles.mascotContainer}>
-            <FlowMascotAvatar />
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#174A62" />
+            <Text style={styles.loadingText}>Analizando tu progreso con Flow AI...</Text>
           </View>
-          <Text style={styles.highlightSubTag}>RECOMENDACIÓN DE FLOW</Text>
-          <Text style={styles.highlightTitle}>Recupera el ritmo sin sobrecargarte</Text>
-          <Text style={styles.highlightDesc}>
-            Detectamos una oportunidad para ajustar tu plan de "{goalTitle}".
-          </Text>
-        </View>
-
-        {/* Alerta de Retraso */}
-        <View style={styles.alertCard}>
-          <View style={styles.alertIconBox}>
-            <Feather name="alert-circle" size={20} color="#C53030" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.alertCategory}>¿POR QUÉ TE LA SUGERIMOS?</Text>
-            <Text style={styles.alertTitle}>Una actividad lleva 2 días de retraso</Text>
-            <Text style={styles.alertDesc}>
-              "{activityTitle}" no pudo completarse por falta de tiempo y registraste dificultad para comprender los componentes.
-            </Text>
-          </View>
-        </View>
-
-        {/* Mini Métricas del Estado */}
-        <View style={styles.metricsRow}>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>25%</Text>
-            <Text style={styles.metricLabel}>progreso actual</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>3</Text>
-            <Text style={styles.metricLabel}>completadas</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>4 h</Text>
-            <Text style={styles.metricLabel}>disponibles</Text>
-          </View>
-        </View>
-
-        {/* Caja de lo que busca solucionar */}
-        <View style={styles.solutionCard}>
-          <Text style={styles.solutionCategory}>QUÉ BUSCA SOLUCIONAR</Text>
-          <Text style={styles.solutionTitle}>Dar más espacio al aprendizaje</Text>
-          
-          <View style={styles.checkList}>
-            <View style={styles.checkRow}>
-              <Feather name="check" size={14} color="#2F855A" />
-              <Text style={styles.checkText}>Conservar las 3 actividades ya completadas.</Text>
+        ) : (
+          <>
+            {/* Tarjeta Destacada de Mascota / Título */}
+            <View style={styles.highlightCard}>
+              <View style={styles.mascotContainer}>
+                <FlowMascotAvatar />
+              </View>
+              <Text style={styles.highlightSubTag}>RECOMENDACIÓN DE FLOW</Text>
+              <Text style={styles.highlightTitle}>Recupera el ritmo sin sobrecargarte</Text>
+              <Text style={styles.highlightDesc}>
+                Detectamos una oportunidad para ajustar tu plan de "{goalTitle}".
+              </Text>
             </View>
-            <View style={styles.checkRow}>
-              <Feather name="check" size={14} color="#2F855A" />
-              <Text style={styles.checkText}>Añadir un recurso breve sobre componentes.</Text>
+
+            {/* Alerta de Retraso / Diagnóstico */}
+            <View style={styles.alertCard}>
+              <View style={styles.alertIconBox}>
+                <Feather
+                  name={diagnostic?.alert_level === 'critical' ? 'alert-triangle' : 'alert-circle'}
+                  size={20}
+                  color={diagnostic?.alert_level === 'critical' ? '#E53E3E' : '#C53030'}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.alertCategory}>¿POR QUÉ TE LA SUGERIMOS?</Text>
+                <Text style={styles.alertTitle}>
+                  {diagnostic?.alert_message || `Una actividad lleva ${diagnostic?.max_days_late ?? 2} días de retraso`}
+                </Text>
+                <Text style={styles.alertDesc}>
+                  {diagnostic?.why_suggested ||
+                    `"${activityTitle}" no pudo completarse en la fecha estimada y registraste notas de dificultad.`}
+                </Text>
+              </View>
             </View>
-            <View style={styles.checkRow}>
-              <Feather name="check" size={14} color="#2F855A" />
-              <Text style={styles.checkText}>Mover "{activityTitle}" al sábado.</Text>
+
+            {/* Mini Métricas del Estado */}
+            <View style={styles.metricsRow}>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricValue}>{progressPercent}%</Text>
+                <Text style={styles.metricLabel}>progreso actual</Text>
+              </View>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricValue}>{completedCount}</Text>
+                <Text style={styles.metricLabel}>completadas</Text>
+              </View>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricValue}>{availableHours} h</Text>
+                <Text style={styles.metricLabel}>disponibles</Text>
+              </View>
             </View>
-          </View>
 
-          <View style={styles.benefitBox}>
-            <Feather name="zap" size={14} color="#174A62" />
-            <Text style={styles.benefitText}>
-              Beneficio esperado: Recuperar el ritmo manteniendo sesiones de máximo 60 minutos.
-            </Text>
-          </View>
-        </View>
+            {/* Caja de lo que busca solucionar */}
+            <View style={styles.solutionCard}>
+              <Text style={styles.solutionCategory}>QUÉ BUSCA SOLUCIONAR</Text>
+              <Text style={styles.solutionTitle}>{solutionTitle}</Text>
 
-        {/* Botón principal: Comparar propuestas */}
-        <TouchableOpacity
-          style={styles.primaryButton}
-          activeOpacity={0.85}
-          onPress={handleCompareProposals}
-        >
-          <Text style={styles.primaryButtonText}>Comparar propuestas</Text>
-          <Feather name="arrow-right" size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
-        </TouchableOpacity>
+              <View style={styles.checkList}>
+                {solutions.map((item, idx) => (
+                  <View key={idx} style={styles.checkRow}>
+                    <Feather name="check" size={14} color="#2F855A" />
+                    <Text style={styles.checkText}>{item}</Text>
+                  </View>
+                ))}
+              </View>
 
-        {/* Botón secundario: Mantener plan actual */}
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          activeOpacity={0.7}
-          onPress={handleKeepCurrentPlan}
-        >
-          <Text style={styles.secondaryButtonText}>Mantener mi plan actual</Text>
-        </TouchableOpacity>
+              <View style={styles.benefitBox}>
+                <Feather name="zap" size={14} color="#174A62" />
+                <Text style={styles.benefitText}>
+                  Beneficio esperado: {benefitText}
+                </Text>
+              </View>
+            </View>
+
+            {/* Botón principal: Comparar propuestas */}
+            <TouchableOpacity
+              style={styles.primaryButton}
+              activeOpacity={0.85}
+              onPress={handleCompareProposals}
+            >
+              <Text style={styles.primaryButtonText}>Comparar propuestas</Text>
+              <Feather name="arrow-right" size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
+            </TouchableOpacity>
+
+            {/* Botón secundario: Mantener plan actual */}
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              activeOpacity={0.7}
+              onPress={handleKeepCurrentPlan}
+            >
+              <Text style={styles.secondaryButtonText}>Mantener mi plan actual</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </Screen>
   );
@@ -334,5 +426,16 @@ const styles = StyleSheet.create({
     color: '#627D98',
     fontSize: 13,
     fontWeight: '700',
+  },
+  loadingContainer: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#627D98',
+    fontWeight: '600',
   },
 });

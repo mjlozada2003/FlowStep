@@ -4,7 +4,9 @@ import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,10 +26,12 @@ import {
   pauseGoal,
   resumeGoal,
   archiveGoal,
+  deleteGoal,
   updateGoalDueDate,
   type CreatedGoal,
   type GoalProgress,
 } from '@/services/api/goals';
+import { getGoalKnowledge, GoalKnowledgeResponse } from '@/services/api/learning';
 import { getAvailability, getWeeklyAvailabilityMinutes } from '@/services/api/availability';
 import { GoalOverviewCard } from '@/components/features/GoalOverviewCard';
 import { GoalStageTimelineCard } from '@/components/features/GoalStageTimelineCard';
@@ -36,6 +40,8 @@ import { FlowMascotAvatar } from '@/components/features/FlowMascotAvatar';
 export default function GoalPlanScreen() {
   const params = useLocalSearchParams<{
     goalId?: string;
+    isNew?: string;
+    fromSuccess?: string;
   }>();
 
   const { token } = useAuth();
@@ -47,6 +53,7 @@ export default function GoalPlanScreen() {
 
   const [goal, setGoal] = useState<CreatedGoal | null>(null);
   const [progress, setProgress] = useState<GoalProgress | null>(null);
+  const [knowledge, setKnowledge] = useState<GoalKnowledgeResponse | null>(null);
   const [priority, setPriority] = useState<string>('');
   const [isUpdatingPriority, setIsUpdatingPriority] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -84,12 +91,56 @@ export default function GoalPlanScreen() {
     if (!goalId || !token) return;
     setMenuVisible(false);
     try {
-      await archiveGoal(goalId, token);
-      router.replace('/archived-goals' as any);
+      if (progress?.goal_status === 'archived') {
+        await resumeGoal(goalId, token);
+        const updatedProgress = await getGoalProgress(goalId, token);
+        if (updatedProgress) setProgress(updatedProgress);
+        Alert.alert('Éxito', 'Objetivo reactivado correctamente.');
+      } else {
+        await archiveGoal(goalId, token);
+        router.replace('/archived-goals' as any);
+      }
     } catch (error) {
       Alert.alert(
         'Error',
-        error instanceof Error ? error.message : 'No se pudo archivar el objetivo.',
+        error instanceof Error ? error.message : 'No se pudo cambiar el estado del objetivo.',
+      );
+    }
+  };
+
+  const handleConfirmDelete = () => {
+    setMenuVisible(false);
+    const executeDelete = async () => {
+      if (!goalId || !token) return;
+      try {
+        await deleteGoal(goalId, token);
+        router.replace('/(tabs)/home' as any);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'No se pudo eliminar el objetivo.';
+        if (Platform.OS === 'web') {
+          window.alert(msg);
+        } else {
+          Alert.alert('Error', msg);
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm('¿Estás seguro de que deseas eliminar este objetivo? Esta acción lo borrará de tu lista y agenda.')) {
+        executeDelete();
+      }
+    } else {
+      Alert.alert(
+        'Eliminar objetivo',
+        '¿Estás seguro de que deseas eliminar este objetivo? Esta acción lo borrará de tu lista y agenda.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Eliminar',
+            style: 'destructive',
+            onPress: executeDelete,
+          },
+        ],
       );
     }
   };
@@ -165,10 +216,33 @@ export default function GoalPlanScreen() {
           );
         });
 
+      getGoalKnowledge(goalId, token)
+        .then((k) => {
+          if (active && k) setKnowledge(k);
+        })
+        .catch(() => {});
+
       return () => {
         active = false;
       };
     }, [goalId, token]),
+  );
+
+  const handleBack = useCallback(() => {
+    // Volver atrás desde el plan del objetivo siempre regresa de forma segura a Home
+    // evitando bucles con pantallas hijas como seguimiento, métricas o éxito
+    router.replace('/(tabs)/home' as any);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleBack]),
   );
 
   const handleCyclePriority = async () => {
@@ -225,6 +299,19 @@ export default function GoalPlanScreen() {
       ? '—'
       : `${Number(weeklyHours.toFixed(2))} H`;
 
+  const knowledgeTopicsTitle =
+    knowledge?.topics && knowledge.topics.length > 0
+      ? knowledge.topics.map((t) => t.name).slice(0, 3).join(', ')
+      : stages && stages.length > 0
+      ? stages.map((s) => s.name).slice(0, 3).join(', ')
+      : `Fundamentos y habilidades de ${goal?.title || 'tu objetivo'}`;
+
+  const dominantCount =
+    knowledge?.dominant_count ??
+    (progress ? Math.round((stages.length || 3) * ((progress.progress_percentage || 0) / 100)) : 0);
+  const totalConcepts = knowledge?.total_concepts ?? (stages.length || 3);
+  const knowledgeSubText = `${dominantCount} de ${totalConcepts} temas dominados`;
+
   return (
     <Screen style={styles.screen}>
       <ScrollView
@@ -235,7 +322,7 @@ export default function GoalPlanScreen() {
           {/* Header Superior con BackButton y Menú de Opciones (Sprint 4) */}
           <View style={styles.topRow}>
             <View style={styles.headerLeftContainer}>
-              <BackButton />
+              <BackButton onPress={handleBack} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.badge}>TU PLAN PERSONALIZADO</Text>
                 <Text style={styles.mainTitle} numberOfLines={1}>Tu Plan Personalizado</Text>
@@ -297,11 +384,25 @@ export default function GoalPlanScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity 
-                  style={[styles.menuItem, styles.menuItemDanger]} 
+                  style={[styles.menuItem, progress?.goal_status === 'archived' ? null : styles.menuItemDanger]} 
                   onPress={handleArchive}
                 >
-                  <Feather name="archive" size={16} color="#C53030" />
-                  <Text style={[styles.menuItemText, styles.menuItemTextDanger]}>Archivar objetivo</Text>
+                  <Feather 
+                    name={progress?.goal_status === 'archived' ? 'rotate-ccw' : 'archive'} 
+                    size={16} 
+                    color={progress?.goal_status === 'archived' ? '#174A62' : '#C53030'} 
+                  />
+                  <Text style={[styles.menuItemText, progress?.goal_status === 'archived' ? null : styles.menuItemTextDanger]}>
+                    {progress?.goal_status === 'archived' ? 'Reactivar objetivo' : 'Archivar objetivo'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.menuItem, styles.menuItemDanger]} 
+                  onPress={handleConfirmDelete}
+                >
+                  <Feather name="trash-2" size={16} color="#DC2626" />
+                  <Text style={[styles.menuItemText, styles.menuItemTextDanger]}>Eliminar objetivo</Text>
                 </TouchableOpacity>
               </View>
             </TouchableOpacity>
@@ -396,8 +497,8 @@ export default function GoalPlanScreen() {
             style={styles.scheduleAccessCard}
             activeOpacity={0.85}
             onPress={() =>
-              router.push({
-                pathname: '/learning',
+              router.navigate({
+                pathname: '/(tabs)/learning',
                 params: { goalId: goalId ? String(goalId) : '' },
               } as any)
             }
@@ -408,8 +509,8 @@ export default function GoalPlanScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.scheduleCardTag}>CONOCIMIENTOS PARA TU OBJETIVO</Text>
-                <Text style={styles.scheduleCardTitle}>React, componentes, hooks y APIs</Text>
-                <Text style={styles.scheduleCardSub}>2 de 5 temas dominados</Text>
+                <Text style={styles.scheduleCardTitle} numberOfLines={1}>{knowledgeTopicsTitle}</Text>
+                <Text style={styles.scheduleCardSub}>{knowledgeSubText}</Text>
               </View>
             </View>
             <Feather name="arrow-right" size={18} color="#174A62" />
@@ -461,7 +562,7 @@ export default function GoalPlanScreen() {
           <TouchableOpacity
             style={styles.scheduleAccessCard}
             activeOpacity={0.85}
-            onPress={() => router.navigate('/calendar' as any)}
+            onPress={() => router.navigate('/(tabs)/calendar' as any)}
           >
             <View style={styles.scheduleCardLeft}>
               <View style={[styles.calendarIconBox, { backgroundColor: '#E2EEF1' }]}>

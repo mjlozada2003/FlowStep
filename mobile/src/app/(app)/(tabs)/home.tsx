@@ -23,6 +23,10 @@ import {
   type DelayAlert,
   type WeeklySummaryData,
 } from '@/services/api/goals';
+import {
+  getPersonalizedRecommendations,
+  type RecommendationDiagnostic,
+} from '@/services/api/recommendations';
 
 export default function HomeScreen() {
   const { user, token } = useAuth();
@@ -30,20 +34,23 @@ export default function HomeScreen() {
   const [goals, setGoals] = useState<GoalOverviewItem[]>([]);
   const [alerts, setAlerts] = useState<DelayAlert[]>([]);
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummaryData | null>(null);
+  const [personalizedRec, setPersonalizedRec] = useState<RecommendationDiagnostic | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [prioritySort, setPrioritySort] = useState<'default' | 'high_first' | 'low_first'>('default');
 
   const loadData = useCallback(async () => {
     if (!token) return;
     try {
-      const [overviewData, alertData, weeklyData] = await Promise.all([
+      const [overviewData, alertData, weeklyData, recData] = await Promise.all([
         getGoalsOverview(token).catch(() => []),
         getDelayAlerts(token).catch(() => []),
         getWeeklySummary(token).catch(() => null),
+        getPersonalizedRecommendations(token).catch(() => null),
       ]);
       setGoals(overviewData);
       setAlerts(alertData);
       if (weeklyData) setWeeklySummary(weeklyData);
+      if (recData) setPersonalizedRec(recData);
     } catch {
       // Ignorar fallos de red en polling de home
     } finally {
@@ -74,7 +81,9 @@ export default function HomeScreen() {
 
   // Filtrar objetivos activos (excluir archivados y completados de la lista principal)
   const activeGoals = useMemo(() => {
-    return goals.filter((g) => g.status !== 'archived' && g.status !== 'completed');
+    return goals.filter(
+      (g) => g.status !== 'archived' && g.status !== 'completed' && Number(g.progress_percentage || 0) < 100,
+    );
   }, [goals]);
 
   const displayedGoals = useMemo(() => {
@@ -126,7 +135,7 @@ export default function HomeScreen() {
           <TouchableOpacity 
             style={styles.profileBadge}
             activeOpacity={0.8}
-            onPress={() => router.push('/preferences' as any)}
+            onPress={() => router.navigate('/(tabs)/preferences' as any)}
           >
             <Text style={styles.profileInitials}>{initials}</Text>
           </TouchableOpacity>
@@ -273,7 +282,15 @@ export default function HomeScreen() {
           onPress={() =>
             router.push({
               pathname: '/recommendation',
-              params: { goalId: alerts[0] ? String(alerts[0].goal_id) : '1' },
+              params: {
+                goalId: personalizedRec?.goal_id
+                  ? String(personalizedRec.goal_id)
+                  : alerts[0]
+                    ? String(alerts[0].goal_id)
+                    : '1',
+                goalTitle: personalizedRec?.goal_title,
+                activityTitle: personalizedRec?.activity_title,
+              },
             } as any)
           }
         >
@@ -283,8 +300,14 @@ export default function HomeScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.recommendationTag}>RECOMENDACIÓN PERSONALIZADA</Text>
-              <Text style={styles.recommendationTitle}>Ajusta una sesión para recuperar el ritmo</Text>
-              <Text style={styles.recommendationSubtitle}>Basada en tu progreso y dificultad registrada.</Text>
+              <Text style={styles.recommendationTitle}>
+                {personalizedRec?.alert_message || 'Ajusta una sesión para recuperar el ritmo'}
+              </Text>
+              <Text style={styles.recommendationSubtitle}>
+                {personalizedRec?.solution_focus
+                  ? `Solución sugerida: ${personalizedRec.solution_focus}`
+                  : 'Basada en tu progreso y dificultad registrada.'}
+              </Text>
             </View>
             <Feather name="chevron-right" size={20} color="#174A62" />
           </View>

@@ -1,7 +1,11 @@
 import { Feather } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
-export function GoalSuccessMascotCard() {
+interface GoalSuccessMascotCardProps {
+  quote?: string;
+}
+
+export function GoalSuccessMascotCard({ quote }: GoalSuccessMascotCardProps) {
   return (
     <View style={styles.mascotCard}>
       <View style={styles.mascotAvatar}>
@@ -10,7 +14,7 @@ export function GoalSuccessMascotCard() {
       <View style={styles.mascotTextContainer}>
         <Text style={styles.mascotTitle}>Flow dice:</Text>
         <Text style={styles.mascotSubtitle}>
-          &ldquo;El progreso se construye paso a paso. Ya diste el primero.&rdquo;
+          &ldquo;{quote || 'El progreso se construye paso a paso. Ya diste el primero.'}&rdquo;
         </Text>
       </View>
     </View>

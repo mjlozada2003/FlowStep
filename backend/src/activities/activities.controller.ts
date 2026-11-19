@@ -445,4 +445,46 @@ export class ActivitiesController {
   ) {
     return this.activitiesService.getActivityHistoryById(req.user.userId, id);
   }
+
+  @Get(':id/suggestions')
+  @ApiOperation({
+    summary: 'Recibir sugerencias ante dificultades en una actividad (HU-26)',
+    description: 'Analiza las dificultades reportadas en sesiones de trabajo o faltas de la actividad y genera mediante IA sugerencias y enfoques alternativos.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la actividad', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Sugerencias de IA recuperadas exitosamente.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Actividad no encontrada.',
+  })
+  getActivitySuggestions(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.activitiesService.getActivitySuggestions(req.user.userId, id);
+  }
+
+  @Get(':id/resources')
+  @ApiOperation({
+    summary: 'Recibir recursos asociados a una actividad de aprendizaje (HU-38)',
+    description: 'Retorna recursos de aprendizaje específicos (artículos, videos, documentación, ejercicios) vinculados a la actividad.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la actividad', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Recursos de aprendizaje recuperados exitosamente.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Actividad no encontrada.',
+  })
+  getActivityResources(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.activitiesService.getActivityResources(req.user.userId, id);
+  }
 }

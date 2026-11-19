@@ -20,13 +20,15 @@ import {
   updateUserPreferences,
 } from '@/services/api/users';
 
+const REMINDER_OPTIONS = [15, 30, 60, 120];
+
 export default function PreferencesScreen() {
   const { user, token, clearSession } = useAuth();
 
   // Estados locales para las preferencias (HU-49)
   const [remindersEnabled, setRemindersEnabled] = useState(true);
   const [delayAlertsEnabled, setDelayAlertsEnabled] = useState(true);
-  const [weeklyDigestEnabled, setWeeklyDigestEnabled] = useState(true);
+  const [periodicSummaryEnabled, setPeriodicSummaryEnabled] = useState(true);
   const [reminderMinutes, setReminderMinutes] = useState(30);
 
   useFocusEffect(
@@ -43,11 +45,11 @@ export default function PreferencesScreen() {
           if (typeof pref.delay_alerts_enabled === 'boolean') {
             setDelayAlertsEnabled(pref.delay_alerts_enabled);
           }
-          if (typeof pref.weekly_digest_enabled === 'boolean') {
-            setWeeklyDigestEnabled(pref.weekly_digest_enabled);
+          if (typeof pref.periodic_summary_enabled === 'boolean') {
+            setPeriodicSummaryEnabled(pref.periodic_summary_enabled);
           }
-          if (typeof pref.reminder_lead_minutes === 'number') {
-            setReminderMinutes(pref.reminder_lead_minutes);
+          if (typeof pref.reminder_minutes_before === 'number') {
+            setReminderMinutes(pref.reminder_minutes_before);
           }
         })
         .catch(() => {});
@@ -59,42 +61,53 @@ export default function PreferencesScreen() {
   );
 
   const handleToggleReminders = async (val: boolean) => {
+    const prev = remindersEnabled;
     setRemindersEnabled(val);
     if (!token) return;
     try {
       await updateUserPreferences(token, { reminders_enabled: val });
-    } catch {}
+    } catch {
+      setRemindersEnabled(prev);
+    }
   };
 
   const handleToggleDelayAlerts = async (val: boolean) => {
+    const prev = delayAlertsEnabled;
     setDelayAlertsEnabled(val);
     if (!token) return;
     try {
       await updateUserPreferences(token, { delay_alerts_enabled: val });
-    } catch {}
+    } catch {
+      setDelayAlertsEnabled(prev);
+    }
   };
 
-  const handleToggleWeeklyDigest = async (val: boolean) => {
-    setWeeklyDigestEnabled(val);
+  const handleTogglePeriodicSummary = async (val: boolean) => {
+    const prev = periodicSummaryEnabled;
+    setPeriodicSummaryEnabled(val);
     if (!token) return;
     try {
-      await updateUserPreferences(token, { weekly_digest_enabled: val });
-    } catch {}
+      await updateUserPreferences(token, { periodic_summary_enabled: val });
+    } catch {
+      setPeriodicSummaryEnabled(prev);
+    }
   };
 
-  // Ciclar entre opciones de minutos de anticipación (15, 30, 45, 60)
+  // Ciclar entre opciones permitidas por UpdatePreferencesDto: [15, 30, 60, 120]
   const handleCycleReminderMinutes = async () => {
-    const options = [15, 30, 45, 60];
-    const currentIndex = options.indexOf(reminderMinutes);
-    const nextMinutes = options[(currentIndex + 1) % options.length];
-    
+    const prevMinutes = reminderMinutes;
+    const currentIndex = REMINDER_OPTIONS.indexOf(prevMinutes);
+    const nextMinutes =
+      REMINDER_OPTIONS[(currentIndex + 1) % REMINDER_OPTIONS.length];
+
     setReminderMinutes(nextMinutes);
     if (!token) return;
     try {
-      await updateUserPreferences(token, { reminder_lead_minutes: nextMinutes });
+      await updateUserPreferences(token, {
+        reminder_minutes_before: nextMinutes,
+      });
     } catch {
-      // Revertir en caso de error de red
-      setReminderMinutes(reminderMinutes);
+      setReminderMinutes(prevMinutes);
     }
   };
 
@@ -182,16 +195,16 @@ export default function PreferencesScreen() {
               <Text style={styles.preferenceSubtitle}>Cada domingo por la tarde</Text>
             </View>
             <Switch
-              value={weeklyDigestEnabled}
-              onValueChange={handleToggleWeeklyDigest}
+              value={periodicSummaryEnabled}
+              onValueChange={handleTogglePeriodicSummary}
               trackColor={{ false: '#CBD5E1', true: '#174A62' }}
               thumbColor="#FFFFFF"
             />
           </View>
 
-          {/* Opción 4: Hora de recordatorio (Conectada para cambiar minutos) */}
-          <TouchableOpacity 
-            style={styles.preferenceItemClickable} 
+          {/* Opción 4: Hora de recordatorio */}
+          <TouchableOpacity
+            style={styles.preferenceItemClickable}
             activeOpacity={0.7}
             onPress={handleCycleReminderMinutes}
           >
@@ -213,8 +226,8 @@ export default function PreferencesScreen() {
           <View style={styles.preferenceDivider} />
 
           {/* Objetivos anteriores (Conecta con archivados HU-46/47) */}
-          <TouchableOpacity 
-            style={styles.menuRowButton} 
+          <TouchableOpacity
+            style={styles.menuRowButton}
             activeOpacity={0.7}
             onPress={() => router.push('/archived-goals' as any)}
           >
@@ -228,14 +241,16 @@ export default function PreferencesScreen() {
             <Feather name="chevron-right" size={16} color="#627D98" />
           </TouchableOpacity>
 
-          {/* Privacidad y datos (Conectado con alerta informativa) */}
-          <TouchableOpacity 
-            style={styles.menuRowButton} 
+          {/* Privacidad y datos */}
+          <TouchableOpacity
+            style={styles.menuRowButton}
             activeOpacity={0.7}
-            onPress={() => Alert.alert(
-              'Privacidad y datos', 
-              'Tus datos están protegidos y sincronizados de manera segura con tu cuenta académica de FlowStep.'
-            )}
+            onPress={() =>
+              Alert.alert(
+                'Privacidad y datos',
+                'Tus datos están protegidos y sincronizados de manera segura con tu cuenta académica de FlowStep.',
+              )
+            }
           >
             <View style={styles.menuIconBox}>
               <Feather name="lock" size={16} color="#174A62" />
@@ -267,7 +282,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 16,
+
     paddingTop: 16,
     paddingBottom: 40,
     gap: 16,

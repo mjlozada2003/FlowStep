@@ -755,3 +755,285 @@ El reemplazo de disponibilidad es transaccional e incluye todas las franjas sema
   "priority": "high"
 }
 ```
+
+---
+
+### Sprint 5: Diagnóstico, Replanificación Adaptativa y Aprendizaje
+
+#### Recomendaciones Personalizadas de Inicio (HU-43)
+- **Ruta:** `GET /goals/personalized-recommendations`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+{
+  "goal_id": 11,
+  "goal_title": "Docker y Despliegue",
+  "activity_title": "Leer documentación oficial de TypeORM y Migraciones",
+  "max_days_late": 2,
+  "alert_level": "warning",
+  "alert_message": "Una actividad lleva 2 días de retraso",
+  "why_suggested": "La actividad no pudo completarse en la fecha estimada.",
+  "solution_focus": "Dar más espacio al aprendizaje",
+  "solutions": [
+    "Conservar las actividades completadas.",
+    "Añadir un recurso breve sobre migraciones.",
+    "Reprogramar para el fin de semana."
+  ],
+  "metrics": {
+    "progress_percentage": 25,
+    "completed_activities": 3,
+    "total_activities": 8,
+    "available_hours_weekly": 4
+  },
+  "recommended_actions": [
+    "Recuperar el ritmo manteniendo sesiones de máximo 60 minutos."
+  ]
+}
+```
+
+#### Diagnóstico y Recomendación de Objetivo (HU-04, HU-26, HU-30)
+- **Ruta:** `GET /goals/:id/recommendations`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):** Mismo esquema detallado de `RecommendationDiagnostic`.
+
+#### Comparar Propuestas de Replanificación (HU-27, HU-28, HU-29, HU-51)
+- **Ruta:** `GET /goals/:id/alternatives`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+{
+  "goal_id": 11,
+  "goal_title": "Docker y Despliegue",
+  "completed_count": 3,
+  "recorded_hours": 3,
+  "progress_percentage": 25,
+  "alternatives": [
+    {
+      "proposal_type": "balanced",
+      "title": "Equilibrada",
+      "tagline": "Redistribuir esta semana",
+      "recommended": true,
+      "description": "Mueve 2 actividades y mantiene la fecha límite.",
+      "session_info": "3 sesiones · máx. 60 min",
+      "changes": ["Ajustar próxima sesión", "Mantener fecha"],
+      "impact": "Aprovecha tu disponibilidad sin cambiar fecha de cierre."
+    },
+    {
+      "proposal_type": "learning",
+      "title": "Más aprendizaje",
+      "tagline": "Añadir refuerzo guiado",
+      "recommended": false,
+      "description": "Agrega 2 recursos y desplaza la práctica 3 días.",
+      "session_info": "4 sesiones · Incluye refuerzo",
+      "changes": ["+ 2 recursos", "Refuerzo"],
+      "impact": "Ideal para afianzar conceptos clave."
+    },
+    {
+      "proposal_type": "time",
+      "title": "Más tiempo",
+      "tagline": "Extender fecha límite",
+      "recommended": false,
+      "description": "Reduce la carga semanal y extiende el plazo 2 semanas.",
+      "session_info": "2 sesiones · máx. 45 min",
+      "changes": ["Extensión +14 días", "- 1 sesión/sem"],
+      "impact": "Distribuye mejor el esfuerzo diario."
+    }
+  ]
+}
+```
+
+#### Aplicar Propuesta de Replanificación (HU-08, HU-31, HU-52)
+- **Ruta:** `POST /goals/:id/alternatives/apply`
+- **Autenticación:** Bearer Token
+- **Body:**
+```json
+{
+  "proposal_type": "balanced"
+}
+```
+- **Respuesta (`200 OK`):**
+```json
+{
+  "message": "Propuesta de replanificación aplicada exitosamente",
+  "proposal_type": "balanced",
+  "goal_id": 11
+}
+```
+
+#### Rechazar Propuesta de Replanificación (HU-31)
+- **Ruta:** `POST /goals/:id/alternatives/reject`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+{
+  "message": "Propuesta rechazada. Se conserva la planificación original.",
+  "status": "rejected",
+  "goal_id": 11
+}
+```
+
+#### Consultar Conocimientos Requeridos (HU-37)
+- **Ruta:** `GET /goals/:id/knowledge`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+{
+  "goal_id": 11,
+  "goal_title": "Docker y Despliegue",
+  "dominant_count": 2,
+  "total_concepts": 5,
+  "progress_percentage": 40,
+  "topics": [
+    { "name": "Contenedores vs VMs", "status": "completed" },
+    { "name": "Dockerfile e Imágenes", "status": "completed" },
+    { "name": "Docker Compose", "status": "current" },
+    { "name": "Volúmenes y Redes", "status": "pending" },
+    { "name": "Despliegue Cloud", "status": "pending" }
+  ],
+  "current_concept": {
+    "title": "Docker Compose",
+    "description": "Orquestación de servicios locales multicontenedor.",
+    "mastery_percentage": 50
+  }
+}
+```
+
+#### Recursos de Aprendizaje del Objetivo (HU-05, HU-38)
+- **Ruta:** `GET /goals/:id/resources`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+[
+  {
+    "id": "1",
+    "type": "LECTURA",
+    "duration": "3 min",
+    "title": "Guía básica de Docker Compose",
+    "category": "Orquestación",
+    "badge_text": "Esencial",
+    "icon_name": "book-open"
+  },
+  {
+    "id": "2",
+    "type": "VÍDEO",
+    "duration": "12 min",
+    "title": "Cómo enlazar contenedores y volúmenes",
+    "category": "Práctica",
+    "badge_text": "Recomendado",
+    "icon_name": "play"
+  }
+]
+```
+
+#### Obtener Cuestionario de Evaluación Diagnóstica (HU-40)
+- **Ruta:** `GET /goals/:id/evaluation`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+[
+  {
+    "id": 1,
+    "category": "DOCKER",
+    "question": "¿Para qué sirve un volumen en Docker?",
+    "options": [
+      { "key": "A", "text": "Para persistir datos fuera del ciclo de vida del contenedor", "is_correct": true },
+      { "key": "B", "text": "Para aumentar la memoria RAM", "is_correct": false },
+      { "key": "C", "text": "Para compilar el código fuente", "is_correct": false }
+    ],
+    "explanation": "Los volúmenes permiten almacenar y persistir información de manera independiente al contenedor."
+  }
+]
+```
+
+#### Calificar Evaluación y Detectar Debilidades (HU-40, HU-41)
+- **Ruta:** `POST /goals/:id/evaluation/submit`
+- **Autenticación:** Bearer Token
+- **Body:**
+```json
+{
+  "answers": [
+    { "question_id": 1, "selected_option_id": "A" }
+  ]
+}
+```
+- **Respuesta (`200 OK`):**
+```json
+{
+  "goal_id": 11,
+  "score": 1,
+  "total_questions": 1,
+  "percentage": 100,
+  "weak_topics": [],
+  "reinforcement_recommendations": []
+}
+```
+
+#### Agregar Actividad de Aprendizaje de Refuerzo (HU-42, HU-39)
+- **Ruta:** `POST /goals/:id/reinforcement`
+- **Autenticación:** Bearer Token
+- **Body:**
+```json
+{
+  "topic": "Volúmenes y persistencia",
+  "title": "Refuerzo guiado: Volúmenes en Docker",
+  "estimated_minutes": 30
+}
+```
+- **Respuesta (`201 Created`):**
+```json
+{
+  "message": "Actividad de refuerzo añadida exitosamente al plan",
+  "activity": {
+    "activity_id": 201,
+    "title": "Refuerzo guiado: Volúmenes en Docker",
+    "type": "reinforcement",
+    "origin": "ai_adjustment",
+    "estimated_minutes": 30,
+    "status": "pending"
+  }
+}
+```
+
+#### Sugerencias ante Dificultad en Actividad (HU-26)
+- **Ruta:** `GET /activities/:id/suggestions`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+{
+  "activity_id": 105,
+  "activity_title": "Leer documentación oficial de TypeORM",
+  "goal_id": 11,
+  "goal_title": "Docker y Despliegue",
+  "difficulty_detected": "[Dificultad con la actividad] Me costó entender la configuración",
+  "suggestion": "Divide la sesión en dos bloques de 20 minutos y apóyate en el tutorial introductorio.",
+  "alternative_actions": [
+    "Consultar lectura o video introductorio de 5 minutos.",
+    "Reducir la complejidad del ejercicio inicial.",
+    "Reprogramar la sesión para tu franja de mayor concentración."
+  ]
+}
+```
+
+#### Recursos de Aprendizaje Asociados a una Actividad (HU-38)
+- **Ruta:** `GET /activities/:id/resources`
+- **Autenticación:** Bearer Token
+- **Respuesta (`200 OK`):**
+```json
+{
+  "activity_id": 105,
+  "activity_title": "Leer documentación oficial de TypeORM",
+  "goal_id": 11,
+  "goal_title": "Docker y Despliegue",
+  "resources": [
+    {
+      "id": "1",
+      "type": "LECTURA",
+      "duration": "5 min",
+      "title": "Configuración paso a paso de TypeORM",
+      "category": "Documentación",
+      "badge_text": "Esencial",
+      "icon_name": "book-open"
+    }
+  ]
+}
+```

@@ -6,6 +6,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   Platform,
   ScrollView,
   StyleSheet,
@@ -64,6 +65,7 @@ async function loadStageActivities(stageId: number, token: string) {
         rawDate: schedule?.scheduled_date,
         rawTime: schedule?.start_time ? schedule.start_time.slice(0, 5) : undefined,
         completed: activity.status === 'completed',
+        description: activity.description ?? undefined,
       };
     }),
   );
@@ -126,6 +128,30 @@ export default function StageDetailScreen() {
     (!stageId || !token
       ? 'Inicia sesión y abre una etapa válida para consultar sus actividades.'
       : null);
+
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else if (goalId) {
+      router.navigate({
+        pathname: '/goal-plan',
+        params: { goalId: String(goalId) },
+      } as any);
+    } else {
+      router.replace('/(tabs)/home' as any);
+    }
+  }, [goalId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleBack]),
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -349,7 +375,7 @@ export default function StageDetailScreen() {
         <View style={styles.container}>
           {/* Top Bar con BackButton unificado */}
           <View style={styles.topBar}>
-            <BackButton />
+            <BackButton onPress={handleBack} />
             <Text style={styles.headerStepTag}>ETAPA ACTIVA</Text>
             <BrandHeader showTagline={false} />
           </View>
@@ -432,6 +458,20 @@ export default function StageDetailScreen() {
                   isBusy={busyActivityId !== null}
                   onToggle={() => toggleActivity(activity.id)}
                   onEdit={() => openEditModal(activity)}
+                  onOpenDetail={() =>
+                    router.push({
+                      pathname: '/activity-detail',
+                      params: {
+                        activityId: String(activity.id),
+                        stageId: stageId ? String(stageId) : '',
+                        goalId: goalId ? String(goalId) : '',
+                        title: activity.title,
+                        duration: activity.duration ? String(activity.duration) : '45',
+                        stageTitle,
+                        description: activity.description ?? '',
+                      },
+                    } as any)
+                  }
                 />
               ))}
             </View>
@@ -600,7 +640,7 @@ const styles = StyleSheet.create({
     maxWidth: 440,
     alignSelf: 'center',
     gap: 16,
-    paddingHorizontal: 16,
+  
   },
   topBar: {
     flexDirection: 'row',

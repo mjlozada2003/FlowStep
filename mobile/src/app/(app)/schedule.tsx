@@ -52,15 +52,17 @@ export default function ScheduleScreen() {
   const handleBack = useCallback(() => {
     if (params.fromSuccess === '1') {
       if (activeGoalId) {
-        router.dismissTo({
+        router.navigate({
           pathname: '/goal-plan',
           params: { goalId: String(activeGoalId) },
-        });
+        } as any);
       } else {
-        router.dismissAll();
+        router.navigate('/(tabs)/home' as any);
       }
-    } else {
+    } else if (router.canGoBack()) {
       router.back();
+    } else {
+      router.replace('/(tabs)/home' as any);
     }
   }, [params.fromSuccess, activeGoalId]);
 
@@ -219,13 +221,13 @@ export default function ScheduleScreen() {
   const handleNavigateToStage = (stageId?: number) => {
     const finalStageId = stageId || targetStageId;
     if (!finalStageId || !activeGoalId) return;
-    router.push({
+    router.navigate({
       pathname: '/stage-detail',
       params: {
         stageId: String(finalStageId),
         goalId: String(activeGoalId),
       },
-    });
+    } as any);
   };
 
   return (

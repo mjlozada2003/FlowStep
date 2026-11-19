@@ -37,6 +37,7 @@ export interface CreatedGoal {
   goal_id: number;
   title: string;
   user_description: string;
+  status?: string;
   priority?: 'high' | 'medium' | 'low';
   start_date?: string;
   due_date?: string | null;
@@ -295,7 +296,7 @@ export interface GoalOverviewItem {
   title: string;
   description?: string;
   priority: 'high' | 'medium' | 'low';
-  status: 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'archived';
+  status: 'active' | 'paused' | 'completed' | 'archived' | 'in_progress' | 'cancelled';
   due_date?: string | null;
   start_date?: string;
   total_stages?: number;
@@ -318,6 +319,9 @@ export interface GoalHistoryItem {
   completed_activities: number;
   progress_percentage: number;
   total_minutes_invested?: number;
+  minutes_spent?: number;
+  completed_estimated_minutes?: number;
+  closed_at?: string;
   last_reason?: string;
 }
 
@@ -452,5 +456,15 @@ export async function updateGoalDueDate(
     method: 'PATCH',
     token,
     body: JSON.stringify({ due_date: dueDate, reason }),
+  });
+}
+
+export async function deleteGoal(
+  goalId: number,
+  token: string,
+): Promise<{ message: string; goal_id: number }> {
+  return apiRequest<{ message: string; goal_id: number }>(`/goals/${goalId}`, {
+    method: 'DELETE',
+    token,
   });
 }

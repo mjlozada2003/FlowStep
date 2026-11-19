@@ -27,9 +27,19 @@ describe('GoalsService', () => {
     save: jest.fn(),
   };
 
+  const mockQueryBuilder: any = {
+    innerJoin: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    getCount: jest.fn().mockResolvedValue(2),
+    orderBy: jest.fn().mockReturnThis(),
+    getMany: jest.fn().mockResolvedValue([]),
+  };
+
   const mockActivityRepository = {
-    create: jest.fn(),
+    create: jest.fn((dto) => dto),
     save: jest.fn(),
+    createQueryBuilder: jest.fn(() => mockQueryBuilder),
   };
 
   const mockScheduleRepository = {
@@ -44,6 +54,12 @@ describe('GoalsService', () => {
 
   const mockAiService = {
     generateInitialPlan: jest.fn(),
+    generateRecommendationDiagnostic: jest.fn(),
+    generateReplanAlternatives: jest.fn(),
+    generateGoalKnowledge: jest.fn(),
+    generateLearningResources: jest.fn(),
+    generateEvaluationQuiz: jest.fn(),
+    evaluateQuizAnswers: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -243,6 +259,103 @@ describe('GoalsService', () => {
       expect(result).toHaveProperty('stage_progress');
       expect(result).toHaveProperty('status_distribution');
       expect(result.status_distribution.completed).toBe(5);
+    });
+  });
+
+  describe('Sprint 5: getGoalRecommendations (HU-04, HU-26, HU-30)', () => {
+    it('should generate diagnostic and recommendations based on delay and progress', async () => {
+      mockGoalRepository.findOne.mockResolvedValue({
+        goal_id: 1,
+        user_id: 1,
+        title: 'Meta con retraso',
+        stages: [{ activities: [{ title: 'Actividad 1' }] }],
+      });
+      mockGoalRepository.query
+        .mockResolvedValueOnce([{ goal_id: 1, max_days_late: 3, most_overdue_activity_title: 'Actividad 1' }])
+        .mockResolvedValueOnce([{ progress_percentage: 20, completed_activities: 1, total_activities: 5 }])
+        .mockResolvedValueOnce([]);
+
+      mockAiService.generateRecommendationDiagnostic.mockResolvedValue({
+        goal_id: 1,
+        goal_title: 'Meta con retraso',
+        root_cause: 'Retraso acumulado',
+        recommended_actions: ['Replanificar actividades'],
+        urgency: 'high',
+      });
+
+      const result = await service.getGoalRecommendations(1, 1);
+      expect(result).toHaveProperty('urgency', 'high');
+      expect(mockAiService.generateRecommendationDiagnostic).toHaveBeenCalled();
+    });
+  });
+
+  describe('Sprint 5: getReplanAlternatives & apply (HU-27, HU-28, HU-29, HU-30, HU-31, HU-51, HU-52)', () => {
+    it('should return replanning alternatives and allow applying an alternative', async () => {
+      mockGoalRepository.findOne.mockResolvedValue({
+        goal_id: 1,
+        user_id: 1,
+        title: 'Meta a replanificar',
+        stages: [{ stage_id: 1, activities: [{ activity_id: 1, status: 'pending' }] }],
+      });
+      mockGoalRepository.query.mockResolvedValue([]);
+      mockAiService.generateReplanAlternatives.mockResolvedValue({
+        alternatives: [
+          { proposal_type: 'balanced', title: 'Equilibrada', summary: 'Ajuste balanceado' },
+        ],
+      });
+
+      const alternatives = await service.getReplanAlternatives(1, 1);
+      expect(alternatives).toHaveProperty('alternatives');
+
+      // Test reject
+      const rejectResult = await service.rejectReplanAlternative(1, 1);
+      expect(rejectResult.status).toBe('rejected');
+    });
+  });
+
+  describe('Sprint 5: Knowledge, Resources & Evaluation (HU-05, HU-37, HU-38, HU-40, HU-41, HU-42)', () => {
+    it('should retrieve knowledge topics and learning resources', async () => {
+      mockGoalRepository.findOne.mockResolvedValue({
+        goal_id: 1,
+        user_id: 1,
+        title: 'Meta de estudio',
+        stages: [{ activities: [{ title: 'Lectura' }] }],
+      });
+      mockAiService.generateGoalKnowledge.mockResolvedValue({
+        goal_id: 1,
+        knowledge_topics: ['Tema 1', 'Tema 2'],
+      });
+      mockAiService.generateLearningResources.mockResolvedValue([
+        { id: '1', title: 'Recurso A', type: 'LECTURA', duration: '5 min' },
+      ]);
+
+      const knowledge = await service.getGoalKnowledge(1, 1);
+      expect(knowledge.knowledge_topics).toContain('Tema 1');
+
+      const resources = await service.getGoalResources(1, 1);
+      expect(resources).toHaveLength(1);
+    });
+
+    it('should evaluate quiz answers and identify weak topics (HU-40, HU-41)', async () => {
+      mockGoalRepository.findOne.mockResolvedValue({
+        goal_id: 1,
+        user_id: 1,
+        title: 'Meta de estudio',
+      });
+      mockAiService.evaluateQuizAnswers.mockResolvedValue({
+        goal_id: 1,
+        score: 3,
+        total_questions: 4,
+        percentage: 75,
+        weak_topics: ['Tema B'],
+        reinforcement_recommendations: ['Reforzar Tema B'],
+      });
+
+      const result = await service.submitGoalEvaluation(1, 1, {
+        answers: [{ question_id: 1, selected_option_id: 'a' }],
+      });
+      expect(result.score).toBe(3);
+      expect(result.weak_topics).toContain('Tema B');
     });
   });
 });

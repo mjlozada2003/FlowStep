@@ -4,9 +4,10 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsRelations, Repository } from 'typeorm';
+import { FindOptionsRelations, Repository, IsNull, Not } from 'typeorm';
 import { Activity } from './entities/activity.entity';
 import { Stage } from '../stages/entities/stage.entity';
+import { Goal } from '../goals/entities/goal.entity';
 import { ActivitySchedule } from './entities/activity-schedule.entity';
 import { ActivityStatusHistory } from './entities/activity-status-history.entity';
 import { WorkSession } from './entities/work-session.entity';
@@ -20,9 +21,10 @@ import { RecordActivityMissDto } from './dto/record-activity-miss.dto';
 import { ActivityHistoryFilterDto } from './dto/activity-history-filter.dto';
 import { CalendarQueryDto } from './dto/calendar-query.dto';
 import { ActivityOrigin, ActivityStatus } from './enums/activity.enum';
-import { PriorityLevel } from '../goals/enums/goal.enum';
+import { PriorityLevel, GoalStatus } from '../goals/enums/goal.enum';
 import { ScheduleReason } from './enums/schedule-reason.enum';
 import { getAppDateString } from '../common/utils/date.utils';
+import { AiService } from '../ai/ai.service';
 
 @Injectable()
 export class ActivitiesService {
@@ -39,6 +41,7 @@ export class ActivitiesService {
     private missReasonsRepository: Repository<MissReason>,
     @InjectRepository(ScheduleMiss)
     private scheduleMissesRepository: Repository<ScheduleMiss>,
+    private aiService: AiService,
   ) {}
 
   private findOwnedActivity(
@@ -209,6 +212,7 @@ export class ActivitiesService {
           activity_id: activityId,
           stage: { goal: { user_id: userId } },
         },
+        relations: { stage: { goal: true } },
       });
 
       if (!activity) {
@@ -234,7 +238,39 @@ export class ActivitiesService {
       activity.completed_at =
         newStatus === ActivityStatus.COMPLETED ? new Date() : null;
 
-      return activityRepository.save(activity);
+      const savedActivity = await activityRepository.save(activity);
+
+      // Sincronizar automáticamente el estado del objetivo (completado o reactivado)
+      if (activity.stage?.goal) {
+        const goalId = activity.stage.goal.goal_id;
+        const counts = await manager.query(
+          `SELECT 
+             COUNT(a.activity_id)::integer AS total_count,
+             COUNT(CASE WHEN a.status != 'completed' THEN 1 END)::integer AS pending_count
+           FROM "ACTIVITY" a
+           JOIN "STAGE" s ON s.stage_id = a.stage_id
+           WHERE s.goal_id = $1
+             AND a.deleted_at IS NULL`,
+          [goalId],
+        );
+
+        const totalCount = Number(counts[0]?.total_count || 0);
+        const pendingCount = Number(counts[0]?.pending_count || 0);
+
+        if (totalCount > 0 && pendingCount === 0) {
+          await manager.query(
+            `UPDATE "GOAL" SET status = 'completed' WHERE goal_id = $1 AND status = 'active'`,
+            [goalId],
+          );
+        } else if (pendingCount > 0) {
+          await manager.query(
+            `UPDATE "GOAL" SET status = 'active' WHERE goal_id = $1 AND status = 'completed'`,
+            [goalId],
+          );
+        }
+      }
+
+      return savedActivity;
     });
   }
 
@@ -551,6 +587,86 @@ export class ActivitiesService {
     }
 
     return this.getActivityTimeline(userId, { activity_id: activityId });
+  }
+
+  async getActivitySuggestions(userId: number, activityId: number) {
+    const activity = await this.activitiesRepository.findOne({
+      where: {
+        activity_id: activityId,
+        stage: { goal: { user_id: userId } },
+      },
+      relations: {
+        stage: { goal: true },
+        work_sessions: true,
+        schedules: { miss: { reason: true } },
+      },
+    });
+
+    if (!activity) {
+      throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
+    }
+
+    const notes: string[] = [];
+    if (activity.work_sessions?.length) {
+      for (const s of activity.work_sessions) {
+        if (s.difficulty_notes) notes.push(s.difficulty_notes);
+      }
+    }
+    if (activity.schedules?.length) {
+      for (const sched of activity.schedules) {
+        if (sched.miss) {
+          const reason = sched.miss.reason?.name ? `[${sched.miss.reason.name}] ` : '';
+          if (sched.miss.details || reason) {
+            notes.push(`${reason}${sched.miss.details || ''}`.trim());
+          }
+        }
+      }
+    }
+
+    const difficultyText = notes.length ? notes.join('; ') : undefined;
+    const aiResult = await this.aiService.generateActivitySuggestion(
+      activity.title,
+      difficultyText,
+    );
+
+    return {
+      activity_id: activity.activity_id,
+      activity_title: activity.title,
+      goal_id: activity.stage.goal.goal_id,
+      goal_title: activity.stage.goal.title,
+      difficulty_detected: difficultyText || null,
+      suggestion: aiResult.suggestion,
+      alternative_actions: aiResult.alternative_actions,
+    };
+  }
+
+  async getActivityResources(userId: number, activityId: number) {
+    const activity = await this.activitiesRepository.findOne({
+      where: {
+        activity_id: activityId,
+        stage: { goal: { user_id: userId } },
+      },
+      relations: {
+        stage: { goal: true },
+      },
+    });
+
+    if (!activity) {
+      throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
+    }
+
+    const resources = await this.aiService.generateLearningResources(
+      activity.stage.goal.goal_id,
+      `${activity.title} (${activity.stage.goal.title})`,
+    );
+
+    return {
+      activity_id: activity.activity_id,
+      activity_title: activity.title,
+      goal_id: activity.stage.goal.goal_id,
+      goal_title: activity.stage.goal.title,
+      resources,
+    };
   }
 
   private timeToSeconds(time: string): number {

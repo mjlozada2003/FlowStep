@@ -3,6 +3,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   ScrollView,
   StyleSheet,
   Text,
@@ -103,6 +104,30 @@ export default function ActivityHistoryScreen() {
     return true;
   });
 
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else if (params.goalId) {
+      router.navigate({
+        pathname: '/goal-plan',
+        params: { goalId: String(params.goalId) },
+      } as any);
+    } else {
+      router.replace('/(tabs)/home' as any);
+    }
+  }, [params.goalId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleBack]),
+  );
+
   return (
     <Screen style={styles.screenBg}>
       <ScrollView
@@ -111,7 +136,7 @@ export default function ActivityHistoryScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.topBar}>
-          <BackButton />
+          <BackButton onPress={handleBack} />
           <Text style={styles.topBarTitle} numberOfLines={1}>
             SEGUIMIENTO
           </Text>

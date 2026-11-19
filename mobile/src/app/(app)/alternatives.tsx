@@ -1,7 +1,10 @@
 import { Feather } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  BackHandler,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,25 +14,135 @@ import {
 
 import { Screen } from '@/components/ui/Screen';
 import { BackButton } from '@/components/ui/BackButton';
+import { useAuth } from '@/contexts/auth-context';
+import {
+  applyReplanAlternative,
+  getReplanAlternatives,
+  rejectReplanAlternative,
+  ReplanAlternativesResponse,
+} from '@/services/api/recommendations';
 
 type ProposalType = 'balanced' | 'learning' | 'time';
 
 export default function AlternativesScreen() {
+  const { token } = useAuth();
   const params = useLocalSearchParams<{ goalId?: string }>();
   const [selectedProposal, setSelectedProposal] = useState<ProposalType>('balanced');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [alternativesData, setAlternativesData] = useState<ReplanAlternativesResponse | null>(null);
 
-  const handleApplyProposal = () => {
-    // Navegar a la pantalla de confirmación de planificación o éxito (Pantalla 14 / Success)
-    router.push({
-      pathname: '/goal-success',
-      params: { goalId: params.goalId ?? '', fromSuccess: '1' },
-    } as any);
+  const goalIdNum = params.goalId ? Number(params.goalId) : 1;
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadData() {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+      try {
+        setLoading(true);
+        const res = await getReplanAlternatives(goalIdNum, token);
+        if (isMounted && res) {
+          setAlternativesData(res);
+          const list = res.proposals ?? res.alternatives ?? [];
+          const recommendedItem = list.find((item) => item.recommended);
+          const recType = recommendedItem?.type ?? recommendedItem?.proposal_type;
+          if (recType === 'balanced' || recType === 'learning' || recType === 'time') {
+            setSelectedProposal(recType);
+          }
+        }
+      } catch (err) {
+        console.warn('No se pudieron obtener alternativas del backend:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, [goalIdNum, token]);
+
+  const handleApplyProposal = async () => {
+    if (!token) {
+      router.replace({
+        pathname: '/goal-success',
+        params: { goalId: String(goalIdNum), fromSuccess: '1', isReplan: '1' },
+      } as any);
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await applyReplanAlternative(goalIdNum, selectedProposal, token);
+      router.replace({
+        pathname: '/goal-success',
+        params: { goalId: String(goalIdNum), fromSuccess: '1', isReplan: '1' },
+      } as any);
+    } catch (err: any) {
+      Alert.alert(
+        'Aviso',
+        err?.message || 'No se pudo aplicar la propuesta. Intenta nuevamente.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleRejectChanges = () => {
-    // Rechazar cambios y conservar plan actual
-    router.replace('/home' as any);
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else if (params.goalId) {
+      router.navigate({
+        pathname: '/goal-plan',
+        params: { goalId: String(goalIdNum) },
+      } as any);
+    } else {
+      router.navigate('/(tabs)/home' as any);
+    }
+  }, [params.goalId, goalIdNum]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleBack]),
+  );
+
+  const handleRejectChanges = async () => {
+    if (token) {
+      try {
+        await rejectReplanAlternative(goalIdNum, token);
+      } catch {}
+    }
+    if (params.goalId) {
+      router.navigate({
+        pathname: '/goal-plan',
+        params: { goalId: String(goalIdNum) },
+      } as any);
+    } else {
+      router.navigate('/(tabs)/home' as any);
+    }
   };
+
+  const completedCount = alternativesData?.completed_count ?? 3;
+  const recordedHours = alternativesData?.recorded_hours ?? 3;
+  const progressPct = alternativesData?.progress_percentage ?? 25;
+
+  const proposalList = alternativesData?.proposals ?? alternativesData?.alternatives ?? [];
+  const findProposal = (kind: ProposalType) =>
+    proposalList.find((a) => (a.type ?? a.proposal_type) === kind);
+
+  const balancedAlt = findProposal('balanced');
+  const learningAlt = findProposal('learning');
+  const timeAlt = findProposal('time');
 
   return (
     <Screen style={styles.screen}>
@@ -39,7 +152,7 @@ export default function AlternativesScreen() {
       >
         {/* Cabecera superior */}
         <View style={styles.topHeader}>
-          <BackButton />
+          <BackButton onPress={handleBack} />
           <Text style={styles.headerTag}>COMPARAR PROPUESTAS</Text>
           <View style={styles.brandContainer}>
             <Feather name="bar-chart-2" size={16} color="#174A62" />
@@ -47,162 +160,227 @@ export default function AlternativesScreen() {
           </View>
         </View>
 
-        {/* Título de la sección */}
-        <View style={styles.titleSection}>
-          <Text style={styles.sectionCategory}>ADAPTAR PLAN</Text>
-          <Text style={styles.mainTitle}>Elige cómo continuar</Text>
-          <Text style={styles.subtitle}>
-            Todas las opciones conservan tus actividades realizadas y el 25% de progreso.
-          </Text>
-        </View>
-
-        {/* Tarjeta de Protección de Progreso */}
-        <View style={styles.protectedCard}>
-          <Feather name="check-circle" size={16} color="#2F855A" />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.protectedTitle}>Tu trabajo está protegido</Text>
-            <Text style={styles.protectedDesc}>3 completadas · 3 h registradas · dificultades guardadas</Text>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#174A62" />
+            <Text style={styles.loadingText}>Calculando escenarios de ajuste adaptativo...</Text>
           </View>
-        </View>
+        ) : (
+          <>
+            {/* Título de la sección */}
+            <View style={styles.titleSection}>
+              <Text style={styles.sectionCategory}>ADAPTAR PLAN</Text>
+              <Text style={styles.mainTitle}>Elige cómo continuar</Text>
+              <Text style={styles.subtitle}>
+                Todas las opciones conservan tus actividades realizadas y el {progressPct}% de progreso.
+              </Text>
+            </View>
 
-        {/* Opciones de Propuestas */}
-        <View style={styles.proposalsList}>
-          {/* Opción 1: Equilibrada (Recomendada) */}
-          <TouchableOpacity
-            style={[
-              styles.proposalCard,
-              selectedProposal === 'balanced' && styles.proposalCardActive,
-            ]}
-            activeOpacity={0.85}
-            onPress={() => setSelectedProposal('balanced')}
-          >
-            <View style={styles.proposalHeaderRow}>
-              <View style={styles.radioContainer}>
-                <View style={[styles.radioOuter, selectedProposal === 'balanced' && styles.radioOuterActive]}>
-                  {selectedProposal === 'balanced' && <View style={styles.radioInner} />}
-                </View>
-                <View>
-                  <Text style={styles.proposalTypeLabel}>Equilibrada</Text>
-                  <Text style={styles.proposalTitle}>Redistribuir esta semana</Text>
-                </View>
-              </View>
-              <View style={styles.badgeRecommended}>
-                <Text style={styles.badgeRecommendedText}>RECOMENDADA</Text>
+            {/* Tarjeta de Protección de Progreso */}
+            <View style={styles.protectedCard}>
+              <Feather name="check-circle" size={16} color="#2F855A" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.protectedTitle}>Tu trabajo está protegido</Text>
+                <Text style={styles.protectedDesc}>
+                  {completedCount} completadas · {recordedHours} h registradas · dificultades guardadas
+                </Text>
               </View>
             </View>
 
-            <Text style={styles.proposalDesc}>Mueva 2 actividades y mantiene la fecha límite.</Text>
-
-            <View style={styles.proposalStatsRow}>
-              <View style={styles.miniTag}><Text style={styles.miniTagText}>3 sesiones · máx. 60 min</Text></View>
-            </View>
-
-            <View style={styles.proposalPillsRow}>
-              <View style={styles.actionPill}><Text style={styles.actionPillText}>Aptc: sáb. 21</Text></View>
-              <View style={styles.actionPill}><Text style={styles.actionPillText}>Hookc: lun. 23</Text></View>
-            </View>
-          </TouchableOpacity>
-
-          {/* Opción 2: Más aprendizaje */}
-          <TouchableOpacity
-            style={[
-              styles.proposalCard,
-              selectedProposal === 'learning' && styles.proposalCardActive,
-            ]}
-            activeOpacity={0.85}
-            onPress={() => setSelectedProposal('learning')}
-          >
-            <View style={styles.proposalHeaderRow}>
-              <View style={styles.radioContainer}>
-                <View style={[styles.radioOuter, selectedProposal === 'learning' && styles.radioOuterActive]}>
-                  {selectedProposal === 'learning' && <View style={styles.radioInner} />}
+            {/* Opciones de Propuestas */}
+            <View style={styles.proposalsList}>
+              {/* Opción 1: Equilibrada (Recomendada) */}
+              <TouchableOpacity
+                style={[
+                  styles.proposalCard,
+                  selectedProposal === 'balanced' && styles.proposalCardActive,
+                ]}
+                activeOpacity={0.85}
+                onPress={() => setSelectedProposal('balanced')}
+              >
+                <View style={styles.proposalHeaderRow}>
+                  <View style={styles.radioContainer}>
+                    <View style={[styles.radioOuter, selectedProposal === 'balanced' && styles.radioOuterActive]}>
+                      {selectedProposal === 'balanced' && <View style={styles.radioInner} />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.proposalTypeLabel}>
+                        {balancedAlt?.type_label || 'Equilibrada'}
+                      </Text>
+                      <Text style={styles.proposalTitle}>
+                        {balancedAlt?.title || balancedAlt?.tagline || 'Redistribuir esta semana'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.badgeRecommended}>
+                    <Text style={styles.badgeRecommendedText}>RECOMENDADA</Text>
+                  </View>
                 </View>
-                <View>
-                  <Text style={styles.proposalTypeLabel}>Más aprendizaje</Text>
-                  <Text style={styles.proposalTitle}>Añadir refuerzo guiado</Text>
+
+                <Text style={styles.proposalDesc}>
+                  {balancedAlt?.description || 'Mueve 2 actividades y mantiene la fecha límite.'}
+                </Text>
+
+                <View style={styles.proposalStatsRow}>
+                  <View style={styles.miniTag}>
+                    <Text style={styles.miniTagText}>
+                      {balancedAlt?.stats_summary || balancedAlt?.session_info || '3 sesiones · máx. 60 min'}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-              <View style={styles.badgeSupport}>
-                <Text style={styles.badgeSupportText}>MÁS APOYO</Text>
-              </View>
-            </View>
 
-            <Text style={styles.proposalDesc}>Agrega 2 recursos y desplaza la práctica 3 días.</Text>
-
-            <View style={styles.proposalStatsRow}>
-              <View style={styles.miniTag}><Text style={styles.miniTagText}>4 sesiones · Incluye refuerzo</Text></View>
-            </View>
-
-            <View style={styles.proposalPillsRow}>
-              <View style={styles.actionPill}><Text style={styles.actionPillText}>+ 2 recursos</Text></View>
-              <View style={styles.actionPill}><Text style={styles.actionPillText}>Aptc: lun. 23</Text></View>
-            </View>
-          </TouchableOpacity>
-
-          {/* Opción 3: Más tiempo */}
-          <TouchableOpacity
-            style={[
-              styles.proposalCard,
-              selectedProposal === 'time' && styles.proposalCardActive,
-            ]}
-            activeOpacity={0.85}
-            onPress={() => setSelectedProposal('time')}
-          >
-            <View style={styles.proposalHeaderRow}>
-              <View style={styles.radioContainer}>
-                <View style={[styles.radioOuter, selectedProposal === 'time' && styles.radioOuterActive]}>
-                  {selectedProposal === 'time' && <View style={styles.radioInner} />}
+                <View style={styles.proposalPillsRow}>
+                  {(balancedAlt?.pills || balancedAlt?.changes || ['Redistribuir próximas sesiones', 'Mantener fecha']).map((ch, idx) => (
+                    <View key={idx} style={styles.actionPill}>
+                      <Text style={styles.actionPillText}>{ch}</Text>
+                    </View>
+                  ))}
                 </View>
-                <View>
-                  <Text style={styles.proposalTypeLabel}>Más tiempo</Text>
-                  <Text style={styles.proposalTitle}>Extender fecha límite</Text>
+              </TouchableOpacity>
+
+              {/* Opción 2: Más aprendizaje */}
+              <TouchableOpacity
+                style={[
+                  styles.proposalCard,
+                  selectedProposal === 'learning' && styles.proposalCardActive,
+                ]}
+                activeOpacity={0.85}
+                onPress={() => setSelectedProposal('learning')}
+              >
+                <View style={styles.proposalHeaderRow}>
+                  <View style={styles.radioContainer}>
+                    <View style={[styles.radioOuter, selectedProposal === 'learning' && styles.radioOuterActive]}>
+                      {selectedProposal === 'learning' && <View style={styles.radioInner} />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.proposalTypeLabel}>
+                        {learningAlt?.type_label || 'Más aprendizaje'}
+                      </Text>
+                      <Text style={styles.proposalTitle}>
+                        {learningAlt?.title || learningAlt?.tagline || 'Añadir refuerzo guiado'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.badgeSupport}>
+                    <Text style={styles.badgeSupportText}>MÁS APOYO</Text>
+                  </View>
                 </View>
-              </View>
-              <View style={styles.badgeLight}>
-                <Text style={styles.badgeLightText}>MENOR CARGA</Text>
-              </View>
+
+                <Text style={styles.proposalDesc}>
+                  {learningAlt?.description || 'Agrega 2 recursos y desplaza la práctica 3 días.'}
+                </Text>
+
+                <View style={styles.proposalStatsRow}>
+                  <View style={styles.miniTag}>
+                    <Text style={styles.miniTagText}>
+                      {learningAlt?.stats_summary || learningAlt?.session_info || '4 sesiones · Incluye refuerzo'}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.proposalPillsRow}>
+                  {(learningAlt?.pills || learningAlt?.changes || ['+ 2 recursos', 'Reforzar conceptos']).map((ch, idx) => (
+                    <View key={idx} style={styles.actionPill}>
+                      <Text style={styles.actionPillText}>{ch}</Text>
+                    </View>
+                  ))}
+                </View>
+              </TouchableOpacity>
+
+              {/* Opción 3: Más tiempo */}
+              <TouchableOpacity
+                style={[
+                  styles.proposalCard,
+                  selectedProposal === 'time' && styles.proposalCardActive,
+                ]}
+                activeOpacity={0.85}
+                onPress={() => setSelectedProposal('time')}
+              >
+                <View style={styles.proposalHeaderRow}>
+                  <View style={styles.radioContainer}>
+                    <View style={[styles.radioOuter, selectedProposal === 'time' && styles.radioOuterActive]}>
+                      {selectedProposal === 'time' && <View style={styles.radioInner} />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.proposalTypeLabel}>
+                        {timeAlt?.type_label || 'Más tiempo'}
+                      </Text>
+                      <Text style={styles.proposalTitle}>
+                        {timeAlt?.title || timeAlt?.tagline || 'Extender fecha límite'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.badgeLight}>
+                    <Text style={styles.badgeLightText}>MENOR CARGA</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.proposalDesc}>
+                  {timeAlt?.description || 'Reduce la carga semanal y extiende el plazo 2 semanas.'}
+                </Text>
+
+                <View style={styles.proposalStatsRow}>
+                  <View style={styles.miniTag}>
+                    <Text style={styles.miniTagText}>
+                      {timeAlt?.stats_summary || timeAlt?.session_info || '2 sesiones · máx. 45 min'}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.proposalPillsRow}>
+                  {(timeAlt?.pills || timeAlt?.changes || ['Extensión +14 días', '- 1 sesión/sem']).map((ch, idx) => (
+                    <View key={idx} style={styles.actionPill}>
+                      <Text style={styles.actionPillText}>{ch}</Text>
+                    </View>
+                  ))}
+                </View>
+              </TouchableOpacity>
             </View>
 
-            <Text style={styles.proposalDesc}>Reduce la carga semanal y cambia el cierre al 15 jul.</Text>
-
-            <View style={styles.proposalStatsRow}>
-              <View style={styles.miniTag}><Text style={styles.miniTagText}>2 sesiones · máx. 45 min</Text></View>
+            {/* Caja de explicación de la opción seleccionada */}
+            <View style={styles.reasonBox}>
+              <Text style={styles.reasonCategory}>¿POR QUÉ ESTÁ OPCIÓN?</Text>
+              <Text style={styles.reasonText}>
+                {selectedProposal === 'balanced' &&
+                  (balancedAlt?.impact ||
+                    balancedAlt?.why_this_option ||
+                    'Aprovecha tu disponibilidad semanal para resolver el retraso sin cambiar la fecha límite.')}
+                {selectedProposal === 'learning' &&
+                  (learningAlt?.impact ||
+                    learningAlt?.why_this_option ||
+                    'Ideal si necesitas afianzar conceptos clave antes de avanzar con la programación.')}
+                {selectedProposal === 'time' &&
+                  (timeAlt?.impact ||
+                    timeAlt?.why_this_option ||
+                    'Distribuye mejor el esfuerzo diario si tienes una agenda apretada esta semana.')}
+              </Text>
             </View>
 
-            <View style={styles.proposalPillsRow}>
-              <View style={styles.actionPill}><Text style={styles.actionPillText}>Fechas: 15 jul</Text></View>
-              <View style={styles.actionPill}><Text style={styles.actionPillText}>- 1 sesión/sem</Text></View>
-            </View>
-          </TouchableOpacity>
-        </View>
+            {/* Botón principal: Aplicar propuesta */}
+            <TouchableOpacity
+              style={styles.primaryButton}
+              activeOpacity={0.85}
+              disabled={submitting}
+              onPress={handleApplyProposal}
+            >
+              {submitting ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Aplicar propuesta seleccionada</Text>
+              )}
+            </TouchableOpacity>
 
-        {/* Caja de explicación de la opción seleccionada */}
-        <View style={styles.reasonBox}>
-          <Text style={styles.reasonCategory}>¿POR QUÉ ESTÁ OPCIÓN?</Text>
-          <Text style={styles.reasonText}>
-            {selectedProposal === 'balanced' && 'Aprovecha tu disponibilidad del sábado para resolver el retraso sin cambiar la fecha límite.'}
-            {selectedProposal === 'learning' && 'Ideal si necesitas afianzar conceptos clave antes de avanzar con la programación.'}
-            {selectedProposal === 'time' && 'Distribuye mejor el esfuerzo diario si tienes una agenda apretada esta semana.'}
-          </Text>
-        </View>
-
-        {/* Botón principal: Aplicar propuesta */}
-        <TouchableOpacity
-          style={styles.primaryButton}
-          activeOpacity={0.85}
-          onPress={handleApplyProposal}
-        >
-          <Text style={styles.primaryButtonText}>Aplicar propuesta seleccionada</Text>
-        </TouchableOpacity>
-
-        {/* Botón secundario: Rechazar cambios */}
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          activeOpacity={0.7}
-          onPress={handleRejectChanges}
-        >
-          <Text style={styles.secondaryButtonText}>Rechazar cambios</Text>
-        </TouchableOpacity>
+            {/* Botón secundario: Rechazar cambios */}
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              activeOpacity={0.7}
+              disabled={submitting}
+              onPress={handleRejectChanges}
+            >
+              <Text style={styles.secondaryButtonText}>Rechazar cambios</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </Screen>
   );
@@ -214,7 +392,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 16,
+
     paddingTop: 16,
     paddingBottom: 40,
     gap: 16,
@@ -400,6 +578,7 @@ const styles = StyleSheet.create({
   },
   proposalPillsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginLeft: 34,
     marginTop: 4,
@@ -458,5 +637,16 @@ const styles = StyleSheet.create({
     color: '#627D98',
     fontSize: 13,
     fontWeight: '700',
+  },
+  loadingContainer: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#627D98',
+    fontWeight: '600',
   },
 });

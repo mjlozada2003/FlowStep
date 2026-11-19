@@ -142,6 +142,7 @@ export default function GeneratingPlanScreen() {
           title: createdGoal.title,
           targetDate: createdGoal.due_date ?? '',
           priority: createdGoal.priority ?? mappedPriority,
+          isNew: '1',
         },
       });
     } catch (error) {
@@ -282,7 +283,6 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     alignSelf: 'center',
     gap: 20,
-    paddingHorizontal: 16,
   },
   topRow: {
     flexDirection: 'row',

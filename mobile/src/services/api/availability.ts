@@ -141,11 +141,17 @@ export async function saveBulkAvailability(
   availabilities: AvailabilitySlot[],
   sessionDurationMinutes?: AvailabilityPreferences['session_duration_minutes'],
 ): Promise<AvailabilitySlot[]> {
+  const sanitized = availabilities.map((slot) => ({
+    day_of_week: slot.day_of_week,
+    start_time: slot.start_time.length > 5 ? slot.start_time.slice(0, 5) : slot.start_time,
+    end_time: slot.end_time.length > 5 ? slot.end_time.slice(0, 5) : slot.end_time,
+  }));
+
   const response = await apiRequest<unknown>('/availability/bulk', {
     method: 'POST',
     token,
     body: JSON.stringify({
-      availabilities,
+      availabilities: sanitized,
       ...(sessionDurationMinutes === undefined
         ? {}
         : { session_duration_minutes: sessionDurationMinutes }),

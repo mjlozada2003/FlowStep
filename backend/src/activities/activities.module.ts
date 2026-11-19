@@ -9,9 +9,13 @@ import { MissReason } from './entities/miss-reason.entity';
 import { ScheduleMiss } from './entities/schedule-miss.entity';
 import { ActivitiesService } from './activities.service';
 import { ActivitiesController } from './activities.controller';
+import { AiModule } from '../ai/ai.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Activity, Stage, ActivitySchedule, ActivityStatusHistory, WorkSession, MissReason, ScheduleMiss])],
+  imports: [
+    TypeOrmModule.forFeature([Activity, Stage, ActivitySchedule, ActivityStatusHistory, WorkSession, MissReason, ScheduleMiss]),
+    AiModule,
+  ],
   providers: [ActivitiesService],
   controllers: [ActivitiesController],
   exports: [TypeOrmModule, ActivitiesService],

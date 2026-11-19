@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,50 +12,220 @@ import {
 
 import { Screen } from '@/components/ui/Screen';
 import { BrandHeader } from '@/components/ui/BrandHeader';
-
-interface LearningResource {
-  id: string;
-  type: 'LECTURA' | 'VÍDEO' | 'PRÁCTICA';
-  duration: string;
-  title: string;
-  category: string;
-  badgeText: string;
-  iconName: keyof typeof Feather.glyphMap;
-}
-
-const mockResources: LearningResource[] = [
-  {
-    id: '1',
-    type: 'LECTURA',
-    duration: '3 min',
-    title: 'Pensar en componentes',
-    category: 'Componentes de React',
-    badgeText: 'Esencial',
-    iconName: 'book-open',
-  },
-  {
-    id: '2',
-    type: 'VÍDEO',
-    duration: '12 min',
-    title: 'Estado y propiedades paso a paso',
-    category: 'React básico',
-    badgeText: 'Recomendado',
-    iconName: 'play',
-  },
-  {
-    id: '3',
-    type: 'PRÁCTICA',
-    duration: '20 min',
-    title: 'Construye tu primera interfaz',
-    category: 'Componentes',
-    badgeText: 'Intermedio',
-    iconName: 'code',
-  },
-];
+import { useAuth } from '@/contexts/auth-context';
+import { getGoalsOverview, GoalOverviewItem, getGoalById } from '@/services/api/goals';
+import {
+  getGoalKnowledge,
+  getGoalResources,
+  GoalKnowledgeResponse,
+  LearningResourceItem,
+} from '@/services/api/learning';
 
 export default function LearningScreen() {
-  const [dominantCount] = useState(2);
-  const [totalConcepts] = useState(5);
+  const { token } = useAuth();
+  const params = useLocalSearchParams<{ goalId?: string }>();
+  const [loading, setLoading] = useState<boolean>(true);
+  const [switchingGoal, setSwitchingGoal] = useState<boolean>(false);
+  const [goalsList, setGoalsList] = useState<GoalOverviewItem[]>([]);
+  const [currentGoalId, setCurrentGoalId] = useState<number>(0);
+  const [knowledge, setKnowledge] = useState<GoalKnowledgeResponse | null>(null);
+  const [resources, setResources] = useState<LearningResourceItem[]>([]);
+
+  const fetchGoalData = useCallback(
+    async (goalId: number, userToken: string) => {
+      try {
+        const [knowRes, resRes] = await Promise.all([
+          getGoalKnowledge(goalId, userToken).catch(() => null),
+          getGoalResources(goalId, userToken).catch(() => null),
+        ]);
+        setKnowledge(knowRes);
+        setResources(resRes && resRes.length > 0 ? resRes : []);
+      } catch (err) {
+        console.warn('Error al cargar datos de aprendizaje:', err);
+        setKnowledge(null);
+        setResources([]);
+      }
+    },
+    [],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+      async function loadInitial() {
+        if (!token) {
+          setLoading(false);
+          return;
+        }
+        try {
+          setLoading(true);
+          const allGoals = await getGoalsOverview(token).catch(() => []);
+          if (!isMounted) return;
+
+          // Excluir objetivos archivados de la vista de aprendizaje
+          // y priorizar los objetivos activos sobre los completados
+          const nonArchivedGoals = allGoals.filter((g) => g.status !== 'archived');
+          const activeOnlyGoals = nonArchivedGoals.filter(
+            (g) => g.status !== 'completed' && Number(g.progress_percentage || 0) < 100,
+          );
+          const goals = activeOnlyGoals.length > 0 ? activeOnlyGoals : nonArchivedGoals;
+
+          let targetId = 0;
+          const paramId = params.goalId ? Number(params.goalId) : null;
+          const hasValidParam = Boolean(paramId && !isNaN(paramId) && paramId > 0);
+
+          if (hasValidParam && paramId) {
+            targetId = paramId;
+          } else if (currentGoalId > 0 && goals.some((g) => g.goal_id === currentGoalId)) {
+            targetId = currentGoalId;
+          } else if (goals && goals.length > 0) {
+            targetId = Number(goals[0].goal_id);
+          }
+
+          let updatedGoals = [...goals];
+          if (targetId > 0 && !updatedGoals.some((g) => g.goal_id === targetId)) {
+            const specificGoal = await getGoalById(targetId, token).catch(() => null);
+            if (specificGoal && isMounted) {
+              updatedGoals.unshift({
+                goal_id: specificGoal.goal_id,
+                title: specificGoal.title,
+                priority: specificGoal.priority || 'medium',
+                status: 'in_progress',
+                total_activities: 0,
+                completed_activities: 0,
+                progress_percentage: 0,
+                due_date: specificGoal.due_date,
+              });
+            }
+          }
+
+          if (isMounted) {
+            setGoalsList(updatedGoals);
+            setCurrentGoalId(targetId);
+          }
+
+          if (targetId > 0) {
+            await fetchGoalData(targetId, token);
+          } else {
+            setKnowledge(null);
+            setResources([]);
+          }
+        } catch (err) {
+          console.warn('Error al inicializar pantalla de aprendizaje:', err);
+        } finally {
+          if (isMounted) setLoading(false);
+        }
+      }
+
+      loadInitial();
+      return () => {
+        isMounted = false;
+      };
+    }, [token, params.goalId, currentGoalId, fetchGoalData]),
+  );
+
+  const handleSelectGoal = async (goalId: number) => {
+    if (goalId === currentGoalId || !token) return;
+    try {
+      setSwitchingGoal(true);
+      setCurrentGoalId(goalId);
+      setKnowledge(null);
+      setResources([]);
+      await fetchGoalData(goalId, token);
+    } finally {
+      setSwitchingGoal(false);
+    }
+  };
+
+  const activeGoalObj = goalsList.find((g) => g.goal_id === currentGoalId);
+  const goalTitle = knowledge?.goal_title || activeGoalObj?.title || 'Objetivo de aprendizaje';
+  const dominantCount = knowledge?.dominant_count ?? 1;
+  const totalConcepts = knowledge?.total_concepts ?? (knowledge?.topics?.length || 4);
+  const progressPercent = knowledge?.progress_percentage ?? (activeGoalObj?.progress_percentage || 0);
+
+  const topics =
+    knowledge?.topics && knowledge.topics.length > 0
+      ? knowledge.topics.map((t, idx) => ({
+          name: t.name,
+          status:
+            t.status ||
+            (t.is_mastered
+              ? ('completed' as const)
+              : idx === (knowledge.dominant_count || 0)
+              ? ('current' as const)
+              : ('pending' as const)),
+        }))
+      : [
+          { name: `Fundamentos de ${goalTitle}`, status: 'completed' as const },
+          { name: 'Conceptos clave y práctica', status: 'current' as const },
+          { name: 'Técnicas intermedias', status: 'pending' as const },
+          { name: 'Dominio avanzado', status: 'pending' as const },
+        ];
+
+  const displayResources: LearningResourceItem[] =
+    resources.length > 0
+      ? resources
+      : [
+          {
+            id: '1',
+            type: 'LECTURA',
+            duration: '5 min',
+            title: `Guía introductoria: ${goalTitle}`,
+            category: 'Fundamentos',
+            badge_text: 'Esencial',
+            icon_name: 'book-open',
+            summary: `Conceptos introductorios y fundamentos clave para estructurar y dominar "${goalTitle}".`,
+            reading_content: `📖 1. Fundamentos y Principios Clave\nComprender los principios conceptuales y el contexto operativo de "${goalTitle}" es indispensable para avanzar con solvencia en tu objetivo. Al abordar este conocimiento, la clave reside en entender la arquitectura conceptual: qué problema resuelve, cómo se organiza y qué papel juega dentro de la ejecución general.\n\n🛠️ 2. Flujo de Trabajo y Buenas Prácticas\nPara asimilar este contenido sin abrumarte, adopta un enfoque iterativo: primero analiza el modelo conceptual y familiarízate con la terminología clave; luego, asocia cada concepto con un ejemplo tangible. Trabajar con pequeños bloques verificables previene bloqueos cognitivos y consolida la retención a largo plazo.\n\n⚠️ 3. Errores Frecuentes y Cómo Prevenirlos\nEl error más habitual es memorizar definiciones superficiales sin comprender su aplicación operativa o saltarse los fundamentos para ir directamente a casos complejos. Si experimentas fricción, descompón el tema en partes elementales y valida cada paso antes de continuar.`,
+            practical_example: `Al poner en práctica los fundamentos de "${goalTitle}", delimita primero un alcance mínimo comprobable antes de añadir complejidad. Esto te permitirá detectar errores tempranamente con mínimo esfuerzo.`,
+            key_points: [
+              'Comprender los principios teóricos básicos.',
+              'Configurar el flujo de trabajo inicial.',
+              'Buenas prácticas y recomendaciones de estudio.',
+            ],
+          },
+          {
+            id: '2',
+            type: 'VÍDEO',
+            duration: '12 min',
+            title: `Tutorial paso a paso de ${goalTitle}`,
+            category: 'Conceptos clave',
+            badge_text: 'Recomendado',
+            icon_name: 'play',
+            summary: `Explicación visual y resolución práctica de problemas para avanzar en "${goalTitle}".`,
+            key_points: [
+              'Demostración guiada del proceso.',
+              'Resolución de errores frecuentes.',
+              'Consejos para maximizar la retención.',
+            ],
+            video_timestamps: [
+              { time: '00:00', title: `Introducción a ${goalTitle}` },
+              { time: '03:30', title: 'Flujo de trabajo y demostración' },
+              { time: '07:45', title: 'Resolución de errores comunes' },
+              { time: '11:10', title: 'Resumen y conclusiones' },
+            ],
+          },
+          {
+            id: '3',
+            type: 'PRÁCTICA',
+            duration: '20 min',
+            title: 'Taller guiado para aplicar lo aprendido',
+            category: 'Práctica guiada',
+            badge_text: 'Intermedio',
+            icon_name: 'code',
+            summary: `Ejercicio práctico diseñado para poner a prueba tus habilidades en "${goalTitle}".`,
+            key_points: [
+              'Planteamiento del reto práctico.',
+              'Desarrollo e implementación paso a paso.',
+              'Comprobación final del resultado obtenido.',
+            ],
+            practice_steps: [
+              `Configurar el entorno inicial para ${goalTitle}.`,
+              'Implementar la solución guiada paso a paso.',
+              'Ejecutar las pruebas y verificar el resultado.',
+            ],
+            code_snippet: `# Taller práctico para: ${goalTitle}\n# 1. Iniciar sesión y preparar entorno\nflowstep init --goal "${goalTitle.toLowerCase().replace(/\\s+/g, '-')}"\n# 2. Ejecutar prueba del ejercicio\nflowstep run verify`,
+          },
+        ];
 
   return (
     <Screen style={styles.screen}>
@@ -74,90 +245,209 @@ export default function LearningScreen() {
           </View>
         </View>
 
-        {/* Tarjeta Azul Oscura del Objetivo Actual */}
-        <View style={styles.goalCardDark}>
-          <View style={styles.goalCardTop}>
-            <Text style={styles.goalLabel}>OBJETIVO</Text>
-            <Text style={styles.goalPercent}>33%</Text>
-          </View>
-          <Text style={styles.goalTitle}>Crear una aplicación web</Text>
-          
-          <View style={styles.progressBarBg}>
-            <View style={styles.progressBarFill} />
-          </View>
-
-          {/* Píldoras de temas */}
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.pillsRow}
-          >
-            <View style={[styles.topicPill, styles.topicDone]}><Text style={styles.topicDoneText}>✓ HTML y CSS</Text></View>
-            <View style={[styles.topicPill, styles.topicDone]}><Text style={styles.topicDoneText}>✓ JavaScript</Text></View>
-            <View style={[styles.topicPill, styles.topicActive]}><Text style={styles.topicActiveText}>React</Text></View>
-            <View style={styles.topicPill}><Text style={styles.topicText}>Hooks</Text></View>
-            <View style={styles.topicPill}><Text style={styles.topicText}>APIs</Text></View>
-            <View style={styles.topicPill}><Text style={styles.topicText}>Pruebas</Text></View>
-          </ScrollView>
-        </View>
-
-        {/* Sección RECURSOS RECOMENDADOS */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionMainTitle}>Recursos recomendados</Text>
-          <Text style={styles.sectionSubHint}>Según tus dificultades</Text>
-        </View>
-
-        <View style={styles.resourcesList}>
-          {mockResources.map((res) => (
-            <TouchableOpacity 
-              key={res.id} 
-              style={styles.resourceCard} 
-              activeOpacity={0.8}
-              onPress={() => router.push({ pathname: '/evaluation', params: { resourceId: res.id } } as any)}
+        {/* Selector interactivo de objetivos si el usuario tiene más de uno */}
+        {goalsList.length > 1 && (
+          <View style={styles.goalSelectorContainer}>
+            <Text style={styles.selectorLabel}>SELECCIONAR OBJETIVO</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.goalSelectorScroll}
             >
-              <View style={styles.resourceIconBox}>
-                <Feather name={res.iconName} size={20} color="#174A62" />
+              {goalsList.map((g) => {
+                const isSelected = g.goal_id === currentGoalId;
+                return (
+                  <TouchableOpacity
+                    key={g.goal_id}
+                    style={[
+                      styles.goalSelectorPill,
+                      isSelected && styles.goalSelectorPillActive,
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={() => handleSelectGoal(g.goal_id)}
+                  >
+                    <Text
+                      style={[
+                        styles.goalSelectorText,
+                        isSelected && styles.goalSelectorTextActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {g.title}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#174A62" />
+            <Text style={styles.loadingText}>Cargando conocimientos y recursos...</Text>
+          </View>
+        ) : goalsList.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconBox}>
+              <Feather name="book-open" size={32} color="#174A62" />
+            </View>
+            <Text style={styles.emptyTitle}>Sin objetivos activos</Text>
+            <Text style={styles.emptyDesc}>
+              Crea tu primer objetivo para acceder a conocimientos guiados, recursos formativos y evaluaciones adaptativas.
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyButton}
+              activeOpacity={0.85}
+              onPress={() => router.push('/create-goal')}
+            >
+              <Text style={styles.emptyButtonText}>Crear mi primer objetivo</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={[switchingGoal && { opacity: 0.6 }]}>
+            {/* Tarjeta Azul Oscura del Objetivo Actual */}
+            <View style={styles.goalCardDark}>
+              <View style={styles.goalCardTop}>
+                <Text style={styles.goalLabel}>OBJETIVO</Text>
+                <Text style={styles.goalPercent}>{progressPercent}%</Text>
+              </View>
+              <Text style={styles.goalTitle}>{goalTitle}</Text>
+
+              <View style={styles.progressBarBg}>
+                <View style={[styles.progressBarFill, { width: `${Math.min(100, Math.max(5, progressPercent))}%` }]} />
+              </View>
+
+              {/* Píldoras de temas */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.pillsRow}
+              >
+                {topics.map((t, idx) => {
+                  const isDone = t.status === 'completed';
+                  const isActive = t.status === 'current';
+                  return (
+                    <View
+                      key={idx}
+                      style={[
+                        styles.topicPill,
+                        isDone && styles.topicDone,
+                        isActive && styles.topicActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.topicText,
+                          isDone && styles.topicDoneText,
+                          isActive && styles.topicActiveText,
+                        ]}
+                      >
+                        {isDone ? `✓ ${t.name}` : t.name}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            {/* Sección RECURSOS RECOMENDADOS */}
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionMainTitle}>Recursos recomendados</Text>
+              <Text style={styles.sectionSubHint}>Según tus dificultades</Text>
+            </View>
+
+            <View style={styles.resourcesList}>
+              {displayResources.map((res) => {
+                const iconName: any = res.icon_name || 'book-open';
+                return (
+                  <TouchableOpacity
+                    key={res.id}
+                    style={styles.resourceCard}
+                    activeOpacity={0.8}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/evaluation',
+                        params: {
+                          goalId: String(currentGoalId),
+                          goalTitle,
+                          resourceId: res.id,
+                          resourceTitle: res.title,
+                          resourceType: res.type,
+                          resourceCategory: res.category,
+                          resourceDuration: res.duration,
+                          resourceBadge: res.badge_text,
+                          resourceSummary: res.summary || '',
+                          readingContent: res.reading_content || '',
+                          practicalExample: res.practical_example || '',
+                          resourceKeyPoints: res.key_points ? JSON.stringify(res.key_points) : '',
+                          videoTimestamps: res.video_timestamps ? JSON.stringify(res.video_timestamps) : '',
+                          practiceSteps: res.practice_steps ? JSON.stringify(res.practice_steps) : '',
+                          challengeTitle: res.challenge_title || res.title,
+                        },
+                      } as any)
+                    }
+                  >
+                    <View style={styles.resourceIconBox}>
+                      <Feather name={iconName} size={20} color="#174A62" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.resourceType}>{res.type} · {res.duration}</Text>
+                      <Text style={styles.resourceTitle}>{res.title}</Text>
+                      <View style={styles.resourceFooterRow}>
+                        <Text style={styles.resourceCategory}>{res.category}</Text>
+                        <View style={styles.miniBadge}>
+                          <Text style={styles.miniBadgeText}>{res.badge_text || 'Esencial'}</Text>
+                        </View>
+                      </View>
+                    </View>
+                    <Feather name="chevron-right" size={18} color="#627D98" />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Tarjeta de Evaluación Interactiva */}
+            <TouchableOpacity
+              style={styles.evaluationBanner}
+              activeOpacity={0.85}
+              onPress={() =>
+                router.push({
+                  pathname: '/evaluation',
+                  params: { goalId: String(currentGoalId), goalTitle },
+                } as any)
+              }
+            >
+              <View style={styles.evalIconBox}>
+                <Feather name="help-circle" size={22} color="#FFFFFF" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.resourceType}>{res.type} · {res.duration}</Text>
-                <Text style={styles.resourceTitle}>{res.title}</Text>
-                <View style={styles.resourceFooterRow}>
-                  <Text style={styles.resourceCategory}>{res.category}</Text>
-                  <View style={styles.miniBadge}>
-                    <Text style={styles.miniBadgeText}>{res.badgeText}</Text>
-                  </View>
-                </View>
+                <Text style={styles.evalTag}>COMPRUEBA LO APRENDIDO</Text>
+                <Text style={styles.evalTitle}>Evaluación: {goalTitle}</Text>
+                <Text style={styles.evalSubtitle}>Preguntas diagnósticas · Refuerzo con IA</Text>
               </View>
-              <Feather name="chevron-right" size={18} color="#627D98" />
+              <Text style={styles.evalAction}>Empezar</Text>
             </TouchableOpacity>
-          ))}
-        </View>
 
-        {/* Tarjeta de Evaluación Interactiva */}
-        <TouchableOpacity 
-          style={styles.evaluationBanner}
-          activeOpacity={0.85}
-          onPress={() => router.push('/evaluation' as any)}
-        >
-          <View style={styles.evalIconBox}>
-            <Feather name="help-circle" size={22} color="#FFFFFF" />
+            {/* Enlace a plan conectado */}
+            <TouchableOpacity
+              style={styles.planConnectedCard}
+              activeOpacity={0.8}
+              onPress={() =>
+                router.push({
+                  pathname: '/goal-plan',
+                  params: { goalId: String(currentGoalId) },
+                } as any)
+              }
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.planConnectedTitle}>Aprendizaje conectado a tu plan</Text>
+                <Text style={styles.planConnectedDesc}>Las actividades de refuerzo se incorporan directamente a las etapas de tu objetivo.</Text>
+              </View>
+              <Text style={styles.planConnectedAction}>Ver plan</Text>
+            </TouchableOpacity>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.evalTag}>COMPRUEBA LO APRENDIDO</Text>
-            <Text style={styles.evalTitle}>Evaluación de React básico</Text>
-            <Text style={styles.evalSubtitle}>3 preguntas · 5 minutos</Text>
-          </View>
-          <Text style={styles.evalAction}>Empezar</Text>
-        </TouchableOpacity>
-
-        {/* Enlace a plan conectado */}
-        <TouchableOpacity style={styles.planConnectedCard} activeOpacity={0.8}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.planConnectedTitle}>Aprendizaje conectado a tu plan</Text>
-            <Text style={styles.planConnectedDesc}>Las actividades que añadas aparecerán en la Etapa I.</Text>
-          </View>
-          <Text style={styles.planConnectedAction}>Ver plan</Text>
-        </TouchableOpacity>
+        )}
       </ScrollView>
     </Screen>
   );
@@ -209,6 +499,42 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: '#627D98',
     fontWeight: '600',
+  },
+  goalSelectorContainer: {
+    gap: 6,
+    marginBottom: 4,
+  },
+  selectorLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#627D98',
+    letterSpacing: 1,
+  },
+  goalSelectorScroll: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  goalSelectorPill: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#D8ECF8',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    maxWidth: 220,
+  },
+  goalSelectorPillActive: {
+    backgroundColor: '#174A62',
+    borderColor: '#174A62',
+  },
+  goalSelectorText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#627D98',
+  },
+  goalSelectorTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '800',
   },
   goalCardDark: {
     backgroundColor: '#174A62',
@@ -428,5 +754,59 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#174A62',
+  },
+  loadingContainer: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#627D98',
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 12,
+    marginVertical: 20,
+  },
+  emptyIconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#EBF5FB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F2C40',
+  },
+  emptyDesc: {
+    fontSize: 13,
+    color: '#627D98',
+    textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: 12,
+  },
+  emptyButton: {
+    backgroundColor: '#174A62',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 14,
+    marginTop: 8,
+  },
+  emptyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

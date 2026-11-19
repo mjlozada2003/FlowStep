@@ -1,8 +1,11 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  BackHandler,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,7 +17,7 @@ import { Screen } from '@/components/ui/Screen';
 import { BackButton } from '@/components/ui/BackButton';
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { useAuth } from '@/contexts/auth-context';
-import { getGoalHistory, type GoalHistoryItem } from '@/services/api/goals';
+import { deleteGoal, getGoalHistory, resumeGoal, type GoalHistoryItem } from '@/services/api/goals';
 
 function formatDisplayDate(dateStr?: string): string {
   if (!dateStr) return 'RECIENTE';
@@ -25,6 +28,24 @@ function formatDisplayDate(dateStr?: string): string {
   } catch {
     return dateStr;
   }
+}
+
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round((minutes / 60) * 10) / 10;
+  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} h`;
+}
+
+// Usa los minutos de sesiones registradas; si no hay, cae a los minutos
+// estimados de las actividades completadas para no mostrar 0 con avance real.
+function formatTimeText(item: GoalHistoryItem): string {
+  const logged = Math.round(Number(item.minutes_spent || item.total_minutes_invested || 0));
+  if (logged > 0) return `${formatDuration(logged)} registradas`;
+
+  const estimated = Math.round(Number(item.completed_estimated_minutes || 0));
+  if (estimated > 0) return `~${formatDuration(estimated)} estimadas`;
+
+  return 'Sin tiempo registrado';
 }
 
 export default function ArchivedGoalsScreen() {
@@ -60,18 +81,123 @@ export default function ArchivedGoalsScreen() {
     }, [token]),
   );
 
-  const archivedGoals = history.filter((g) => g.status === 'archived');
-  const completedGoals = history.filter((g) => g.status === 'completed');
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/home' as any);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleBack]),
+  );
+
+  const handleUnarchiveGoal = async (goalId: number, goalTitle: string) => {
+    if (!token) return;
+    const execute = async () => {
+      try {
+        await resumeGoal(goalId, token);
+        const data = await getGoalHistory(token).catch(() => []);
+        setHistory(data);
+        if (Platform.OS === 'web') {
+          window.alert('Objetivo reactivado correctamente.');
+        } else {
+          Alert.alert('Éxito', 'Objetivo reactivado correctamente.');
+        }
+      } catch (err: any) {
+        const msg = err?.message || 'No se pudo reactivar el objetivo.';
+        if (Platform.OS === 'web') {
+          window.alert(msg);
+        } else {
+          Alert.alert('Error', msg);
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(`¿Deseas desarchivar y reactivar "${goalTitle}"? Volverá a estar activo en tu inicio y agenda.`)) {
+        execute();
+      }
+    } else {
+      Alert.alert(
+        'Reactivar objetivo',
+        `¿Deseas desarchivar y reactivar "${goalTitle}"? Volverá a estar activo en tu inicio y agenda.`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Reactivar', onPress: execute },
+        ],
+      );
+    }
+  };
+
+  const handleDeleteGoal = async (goalId: number, goalTitle: string) => {
+    if (!token) return;
+    const execute = async () => {
+      try {
+        await deleteGoal(goalId, token);
+        const data = await getGoalHistory(token).catch(() => []);
+        setHistory(data);
+        if (Platform.OS === 'web') {
+          window.alert('Objetivo eliminado correctamente.');
+        } else {
+          Alert.alert('Éxito', 'Objetivo eliminado correctamente.');
+        }
+      } catch (err: any) {
+        const msg = err?.message || 'No se pudo eliminar el objetivo.';
+        if (Platform.OS === 'web') {
+          window.alert(msg);
+        } else {
+          Alert.alert('Error', msg);
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(`¿Estás seguro de que deseas eliminar permanentemente "${goalTitle}"?`)) {
+        execute();
+      }
+    } else {
+      Alert.alert(
+        'Eliminar objetivo',
+        `¿Estás seguro de que deseas eliminar permanentemente "${goalTitle}"?`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Eliminar', style: 'destructive', onPress: execute },
+        ],
+      );
+    }
+  };
+
+  // Pestañas excluyentes: un objetivo al 100 % siempre cuenta como completado,
+  // aunque se haya archivado.
+  const isFinished = (g: GoalHistoryItem) =>
+    g.status === 'completed' || Number(g.progress_percentage || 0) >= 100;
+  const completedGoals = history.filter(isFinished);
+  const archivedGoals = history.filter((g) => g.status === 'archived' && !isFinished(g));
+
+  // Si no hay archivados pero sí completados, mostrar la pestaña de completados por defecto
+  useEffect(() => {
+    if (archivedGoals.length === 0 && completedGoals.length > 0 && activeTab === 'archived') {
+      setActiveTab('completed');
+    }
+  }, [archivedGoals.length, completedGoals.length]);
 
   const rawGoals = activeTab === 'archived' ? archivedGoals : completedGoals;
 
   const currentGoals = rawGoals.map((item) => {
     const isCompleted = activeTab === 'completed';
-    const statusLabel = `${isCompleted ? 'COMPLETADO' : 'ARCHIVADO'} · ${formatDisplayDate((item as any).closed_at || item.status_changed_at || item.end_date)}`;
+    const statusLabel = `${isCompleted ? 'COMPLETADO' : 'ARCHIVADO'} · ${formatDisplayDate(item.closed_at || item.status_changed_at || item.end_date)}`;
     const progress = Math.round(Number(item.progress_percentage || 0));
     const completedActivities = Number(item.completed_activities || 0);
     const totalActivities = Number(item.total_activities || 0);
-    const hours = Math.round(Number((item as any).minutes_spent || item.total_minutes_invested || 0) / 60);
 
     return {
       id: item.goal_id,
@@ -79,7 +205,7 @@ export default function ArchivedGoalsScreen() {
       title: item.title,
       progress,
       activitiesText: `${completedActivities} de ${totalActivities} actividades`,
-      timeText: `${hours} h registradas`,
+      timeText: formatTimeText(item),
       actionText: isCompleted ? 'Consultar planificación' : 'Consultar progreso',
     };
   });
@@ -92,7 +218,7 @@ export default function ArchivedGoalsScreen() {
       >
         {/* Cabecera superior con BackButton, etiqueta y Logo */}
         <View style={styles.topHeader}>
-          <BackButton />
+          <BackButton onPress={handleBack} />
           <Text style={styles.headerTag}>OBJETIVOS</Text>
           <BrandHeader showTagline={false} />
         </View>
@@ -114,7 +240,7 @@ export default function ArchivedGoalsScreen() {
             onPress={() => setActiveTab('archived')}
           >
             <Text style={[styles.tabText, activeTab === 'archived' && styles.tabTextActive]}>
-              Archivados
+              Archivados ({archivedGoals.length})
             </Text>
           </TouchableOpacity>
 
@@ -124,7 +250,7 @@ export default function ArchivedGoalsScreen() {
             onPress={() => setActiveTab('completed')}
           >
             <Text style={[styles.tabText, activeTab === 'completed' && styles.tabTextActive]}>
-              Completados
+              Completados ({completedGoals.length})
             </Text>
           </TouchableOpacity>
         </View>
@@ -159,19 +285,40 @@ export default function ArchivedGoalsScreen() {
                   <Text style={styles.infoText}>{item.timeText}</Text>
                 </View>
 
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  activeOpacity={0.8}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/goal-plan',
-                      params: { goalId: String(item.id), title: item.title },
-                    })
-                  }
-                >
-                  <Text style={styles.actionButtonText}>{item.actionText}</Text>
-                  <Feather name="arrow-right" size={16} color="#174A62" style={{ marginLeft: 6 }} />
-                </TouchableOpacity>
+                <View style={styles.cardActionsRow}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, { flex: 1 }]}
+                    activeOpacity={0.8}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/goal-plan',
+                        params: { goalId: String(item.id), title: item.title },
+                      })
+                    }
+                  >
+                    <Text style={styles.actionButtonText}>{item.actionText}</Text>
+                    <Feather name="arrow-right" size={16} color="#174A62" style={{ marginLeft: 6 }} />
+                  </TouchableOpacity>
+
+                  {!isCompleted && (
+                    <TouchableOpacity
+                      style={styles.unarchiveButton}
+                      activeOpacity={0.8}
+                      onPress={() => handleUnarchiveGoal(item.id, item.title)}
+                    >
+                      <Feather name="rotate-ccw" size={14} color="#174A62" />
+                      <Text style={styles.unarchiveButtonText}>Reactivar</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.deleteCardButton}
+                    activeOpacity={0.8}
+                    onPress={() => handleDeleteGoal(item.id, item.title)}
+                  >
+                    <Feather name="trash-2" size={14} color="#C53030" />
+                  </TouchableOpacity>
+                </View>
               </View>
             );
           })}
@@ -193,7 +340,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 16,
+  
     paddingTop: 16,
     paddingBottom: 40,
     gap: 16,
@@ -333,6 +480,38 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#D8ECF8',
     marginTop: 2,
+  },
+  cardActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  unarchiveButton: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  unarchiveButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#174A62',
+  },
+  deleteCardButton: {
+    backgroundColor: '#FEE2E2',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
   },
   actionButtonText: {
     fontSize: 13,

@@ -167,7 +167,11 @@ export default function AvailabilityScreen() {
     const formattedStartTime = `${String(startHour).padStart(2, '0')}:00`;
     const formattedEndTime = `${String(endHour).padStart(2, '0')}:00`;
     const availabilitiesPayload = !isAvailabilityDirty && savedSlots.length > 0
-      ? savedSlots
+      ? savedSlots.map((s) => ({
+          day_of_week: s.day_of_week,
+          start_time: s.start_time.length > 5 ? s.start_time.slice(0, 5) : s.start_time,
+          end_time: s.end_time.length > 5 ? s.end_time.slice(0, 5) : s.end_time,
+        }))
       : selectedDays.map((day) => ({
           day_of_week: DAY_MAP[day],
           start_time: formattedStartTime,
@@ -336,7 +340,7 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     alignSelf: 'center',
     gap: 16,
-    paddingHorizontal: 16,
+  
   },
   topRow: {
     flexDirection: 'row',
