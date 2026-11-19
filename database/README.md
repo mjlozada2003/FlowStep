@@ -1,4 +1,4 @@
-# Módulo de Base de Datos - FlowStep (Sprints 1 a 3)
+# Módulo de Base de Datos - FlowStep (Sprints 1 a 5)
 
 Este módulo contiene los esquemas DDL, vistas, migración del Sprint 2, datos de demostración y pruebas de PostgreSQL de **FlowStep**. El Sprint 2 cubre HU-06, HU-07, HU-11, HU-13, HU-14, HU-16, HU-35 y HU-36, según el ER y las entidades existentes del backend.
 
@@ -160,10 +160,16 @@ database/
 ├── 09_goal_management_schema.sql # Preferencias, historiales, avisos, sesiones y triggers
 ├── 10_goal_management_views.sql  # Visión general, alertas, resumen, calendario
 ├── 11_goal_management_seeds.sql  # Demo de gestión de objetivos
+├── 12_learning_adaptation_schema.sql # Conocimientos, recursos, evaluación y recomendaciones IA
+├── 13_learning_adaptation_views.sql  # Vistas de aprendizaje, debilidades y replanificación
+├── 14_learning_adaptation_seeds.sql  # Demo de aprendizaje y adaptación
+├── cloud/
+│   ├── cloud_setup.sql # Zona horaria y permisos para la base en la nube (Supabase)
 ├── tests/
 │   ├── sprint2.sql # Pruebas de integridad y de las ocho HU con ROLLBACK
 │   ├── sprint3.sql # Pruebas de seguimiento (HU-17 a HU-24)
 │   ├── goal_management.sql # Pruebas de las 14 HU de gestión de objetivos
+│   ├── learning_adaptation.sql # Pruebas de las 18 HU de aprendizaje y adaptación
 │   └── backend.integration.cjs # Servicios y entidades reales contra PostgreSQL
 └── README.md      # Este documento
 ```
@@ -175,7 +181,7 @@ cd backend
 # Iniciar PostgreSQL (los scripts se ejecutan si el volumen es nuevo):
 docker compose up -d db
 ```
-El contenedor monta `../database` en `/docker-entrypoint-initdb.d:ro` y ejecuta todos los scripts raíz (`01` a `11`) en orden. PostgreSQL solo inicializa volúmenes vacíos; un volumen existente debe actualizarse con la migración descrita abajo. No hace falta eliminar el volumen ni sus datos. Las pruebas están en una subcarpeta y no se ejecutan durante la inicialización.
+El contenedor monta `../database` en `/docker-entrypoint-initdb.d:ro` y ejecuta todos los scripts raíz (`01` a `14`) en orden. PostgreSQL solo inicializa volúmenes vacíos; un volumen existente debe actualizarse con la migración descrita abajo. No hace falta eliminar el volumen ni sus datos. Las pruebas están en una subcarpeta y no se ejecutan durante la inicialización.
 
 ### Ejecución Manual con `psql`
 ```bash
@@ -533,3 +539,176 @@ psql -v ON_ERROR_STOP=1 -U postgres -d flowstep_db -f database/tests/goal_manage
 Cubre las 14 historias, incluidos los casos inválidos (transiciones prohibidas, fechas pasadas,
 preferencias fuera de catálogo, alertas y resúmenes duplicados, sesiones cerradas o expiradas).
 Termina con `ROLLBACK`.
+
+---
+
+## 11. Sprint 5 · Aprendizaje, evaluación y adaptación con IA
+
+Scripts: `12_learning_adaptation_schema.sql`, `13_learning_adaptation_views.sql` y, opcional,
+`14_learning_adaptation_seeds.sql`. Implementan los dominios del ER que faltaban: **Knowledge**,
+**Resources**, **Assessment** y **AI Adaptation**. Son transaccionales, repetibles y aditivos
+(solo agregan las FK reservadas desde el Sprint 2 en `ACTIVITY.origin_recommendation_id` y
+`ACTIVITY_SCHEDULE.recommendation_id`, columnas que hoy están vacías).
+
+### Diagrama de las tablas nuevas
+
+```mermaid
+erDiagram
+    GOAL ||--o{ GOAL_TOPIC : "requiere"
+    TOPIC ||--o{ GOAL_TOPIC : ""
+    STAGE |o--o{ GOAL_TOPIC : "se trabaja en"
+    ACTIVITY ||--o{ ACTIVITY_TOPIC : "trabaja"
+    TOPIC ||--o{ ACTIVITY_TOPIC : ""
+    APP_USER ||--o{ USER_TOPIC : "dominio medido"
+    TOPIC ||--o{ USER_TOPIC : ""
+    TOPIC |o--o{ LEARNING_RESOURCE : "agrupa"
+    ACTIVITY ||--o{ ACTIVITY_RESOURCE : "usa"
+    LEARNING_RESOURCE ||--o{ ACTIVITY_RESOURCE : ""
+    APP_USER ||--o{ RESOURCE_PROGRESS : "avanza"
+    GOAL ||--o{ ASSESSMENT : "se evalúa"
+    ASSESSMENT ||--o{ ASSESSMENT_QUESTION : "contiene"
+    ASSESSMENT_QUESTION ||--o{ QUESTION_OPTION : "ofrece"
+    ASSESSMENT ||--o{ ASSESSMENT_ATTEMPT : "se responde"
+    ASSESSMENT_ATTEMPT ||--o{ ATTEMPT_ANSWER : "registra"
+    APP_USER ||--o{ AI_RECOMMENDATION : "recibe"
+    GOAL ||--o{ AI_RECOMMENDATION : "sobre"
+    AI_RECOMMENDATION ||--o{ REPLAN_PROPOSAL : "propone alternativas"
+    REPLAN_PROPOSAL ||--o{ REPLAN_PROPOSAL_ITEM : "detalla cambios"
+    AI_RECOMMENDATION |o--o{ ACTIVITY : "origina (origin_recommendation_id)"
+    AI_RECOMMENDATION |o--o{ ACTIVITY_SCHEDULE : "reprograma (recommendation_id)"
+
+    AI_RECOMMENDATION {
+        int recommendation_id PK
+        int user_id FK
+        int goal_id FK
+        int activity_id FK
+        enum type
+        varchar alert_level
+        text why_suggested
+        varchar solution_focus
+        jsonb solutions
+        jsonb metrics
+        enum status
+        timestamp responded_at
+    }
+    REPLAN_PROPOSAL {
+        int proposal_id PK
+        int recommendation_id FK
+        enum proposal_type
+        text description
+        jsonb changes
+        boolean is_recommended
+        date new_due_date
+        enum status
+    }
+    REPLAN_PROPOSAL_ITEM {
+        int item_id PK
+        int proposal_id FK
+        int activity_id FK
+        enum action
+        date new_scheduled_date
+        time new_start_time
+        time new_end_time
+    }
+```
+
+### Cobertura
+
+| Historia | Soporte de base de datos |
+| --- | --- |
+| HU-04 | `AI_RECOMMENDATION` (`type = delay_adjustment`) guarda el diagnóstico y las soluciones; `v_goal_delay_alert` y `v_goal_replan_context` dan los datos de entrada. |
+| HU-05 | `LEARNING_RESOURCE` + `v_goal_learning_resources` con `type_label` (`LECTURA`, `VÍDEO`, `PRÁCTICA`, `EJERCICIO`), `icon_name`, `badge_text` y `duration_label`, como los consume la app. |
+| HU-08 | `GOAL.due_date` (Sprint 1) con historial y validación (Sprint 3). La propuesta "Más tiempo" guarda `new_due_date`, que no puede estar en el pasado. |
+| HU-26 | `v_activity_difficulty`: dificultad máxima/promedio, notas de las sesiones e incumplimientos por "Dificultad con la actividad"; `needs_support` indica cuándo sugerir ayuda. La sugerencia se guarda como `AI_RECOMMENDATION` (`difficulty_support`). |
+| HU-27 | `REPLAN_PROPOSAL_ITEM` (`reschedule`/`add`/`keep`). Al aplicarla se crea una nueva versión en `ACTIVITY_SCHEDULE` con `reason = 'ai_adjustment'` y `recommendation_id`. |
+| HU-28 | `v_goal_replan_context` (minutos disponibles por semana vs. carga pendiente, `capacity_status`) y `v_replan_item_availability.fits_availability` para cada cambio propuesto. |
+| HU-29 | Un trigger impide proponer reprogramar una actividad **completada** o de otro objetivo; `completed_activities_preserved` y `recorded_minutes` muestran lo que se conserva. |
+| HU-30 | `why_suggested` es obligatorio; además `solution_focus`, `solutions`, `expected_benefit` y `metrics`. `v_recommendation_history` las muestra con la decisión del usuario. |
+| HU-31 | `AI_RECOMMENDATION.status`: `pending` → `accepted` / `rejected` / `expired`, con `responded_at` automático. Una respuesta no se puede cambiar. Rechazar descarta sus propuestas. |
+| HU-37 | `TOPIC`, `GOAL_TOPIC`, `USER_TOPIC`; `v_goal_knowledge` (estado `completed` / `current` / `pending`) y `v_goal_knowledge_summary` (`dominant_count`, `total_concepts`, tema actual). |
+| HU-38 | `ACTIVITY_RESOURCE` + `v_activity_learning_resources` (recursos directos y de los temas de la actividad). |
+| HU-39 | Actividades `learning`/`reinforcement` en `v_learning_activities` y avance por recurso en `RESOURCE_PROGRESS`. |
+| HU-40 | `ASSESSMENT`, `ASSESSMENT_QUESTION`, `QUESTION_OPTION` (una sola correcta), `ASSESSMENT_ATTEMPT`, `ATTEMPT_ANSWER`. Se califica contra las preguntas que realmente se mostraron (`v_assessment_attempt_result`). |
+| HU-41 | `v_attempt_topic_result` (aciertos por tema; < 60 % = por mejorar). Al enviar el intento, un trigger actualiza `USER_TOPIC.mastery_percentage`. |
+| HU-42 | `v_goal_weak_topics` con título sugerido y `has_pending_reinforcement`; el refuerzo es una `ACTIVITY` `reinforcement` vinculada al tema (`ACTIVITY_TOPIC`) y a la recomendación (`origin_recommendation_id`). |
+| HU-43 | `v_user_learning_profile.recommended_focus` (`recover_pace`, `reinforce_topics`, `resume_activity`, `create_goal`, `keep_momentum`) y `focus_goal_id`. |
+| HU-51 | `REPLAN_PROPOSAL`: una por tipo (`balanced`, `learning`, `time`) y una sola recomendada; `v_replan_proposal_detail` resume cada alternativa. |
+| HU-52 | Al marcar una propuesta como `selected`, la recomendación pasa a `accepted` y las demás propuestas a `discarded`. Solo se elige una y solo sobre una recomendación pendiente. |
+
+### Indicaciones para el backend
+
+El backend del Sprint 5 (rama `feature/backend`) funciona sin guardar nada: genera recomendaciones,
+alternativas, conocimientos, recursos y cuestionarios con Gemini en cada llamada. Las tablas permiten
+persistirlos sin cambiar el contrato de la API:
+
+1. **Evaluación (HU-40/41)**: al generar el cuestionario, guardarlo en `ASSESSMENT`/`ASSESSMENT_QUESTION`/`QUESTION_OPTION` y devolver `question_id` reales. Al enviar, crear `ASSESSMENT_ATTEMPT` + `ATTEMPT_ANSWER`, fijar `submitted_at` y leer `v_assessment_attempt_result` y `v_attempt_topic_result`. Hoy `submitGoalEvaluation` vuelve a generar el cuestionario y puede calificar contra preguntas distintas.
+2. **Alternativas (HU-51/52/31)**: guardar la recomendación y sus tres `REPLAN_PROPOSAL`; `apply` marca la elegida como `selected` (y crea las versiones de `ACTIVITY_SCHEDULE` con `recommendation_id`); `reject` pone la recomendación en `rejected`. Hoy `reject` no deja rastro.
+3. **Conocimientos y recursos (HU-37/38)**: guardar lo que genere la IA en `TOPIC`/`GOAL_TOPIC`/`LEARNING_RESOURCE` una vez por objetivo y luego leer `v_goal_knowledge_summary`, `v_goal_knowledge` y `v_goal_learning_resources` (evita una llamada a Gemini por visita).
+4. Errores `23514` (check_violation) → 400; `23505` (unique_violation) → 409.
+
+```sql
+-- HU-37
+SELECT * FROM v_goal_knowledge_summary WHERE goal_id = $1 AND user_id = $2;
+SELECT topic_name AS name, knowledge_status AS status FROM v_goal_knowledge WHERE goal_id = $1 ORDER BY sort_order;
+-- HU-05, HU-38
+SELECT * FROM v_goal_learning_resources WHERE goal_id = $1 AND user_id = $2 ORDER BY is_essential DESC, resource_id;
+SELECT * FROM v_activity_learning_resources WHERE activity_id = $1 AND user_id = $2 ORDER BY sort_order;
+-- HU-41, HU-42
+SELECT * FROM v_goal_weak_topics WHERE goal_id = $1 AND user_id = $2 AND NOT has_pending_reinforcement;
+-- HU-27, HU-28, HU-29
+SELECT * FROM v_goal_replan_context WHERE goal_id = $1 AND user_id = $2;
+-- HU-52
+UPDATE "REPLAN_PROPOSAL" SET status = 'selected' WHERE proposal_id = $1;
+-- HU-31
+UPDATE "AI_RECOMMENDATION" SET status = 'rejected' WHERE recommendation_id = $1 AND user_id = $2;
+-- HU-43
+SELECT * FROM v_user_learning_profile WHERE user_id = $1;
+```
+
+### Demostración
+
+`14_learning_adaptation_seeds.sql` crea `aprendizaje.demo@flowstep.test` (contraseña `Password123!`)
+con el objetivo **Docker y Despliegue** de los ejemplos de `docs/api_contract.md`: 5 conocimientos
+(2 dominados, Compose en curso), 5 recursos, una evaluación respondida (50 %, con Compose y
+Volúmenes por mejorar), un refuerzo agregado por una recomendación aceptada, una recomendación
+rechazada y una recomendación pendiente por retraso con sus tres alternativas (todas dentro de la
+disponibilidad de lunes a viernes de 18:00 a 20:00).
+
+### Pruebas
+
+```powershell
+psql -v ON_ERROR_STOP=1 -U postgres -d flowstep_db -f database/tests/learning_adaptation.sql
+```
+
+Cubre las 18 historias con casos válidos e inválidos y termina con `ROLLBACK`.
+
+---
+
+## 12. Base de datos en la nube (Supabase)
+
+La base puede alojarse en **Supabase**, que es PostgreSQL administrado: se usan los mismos scripts,
+triggers y vistas, y el backend se conecta igual con TypeORM. Así todo el equipo trabaja contra una
+misma base en línea y ya no hace falta Docker para la base.
+
+1. Crear un proyecto en [supabase.com](https://supabase.com) (plan gratuito). Región sugerida: *South America (São Paulo)*. Guardar la contraseña de la base.
+2. En **Connect**, copiar la cadena de **Session pooler** (puerto 5432; funciona en redes solo IPv4).
+3. En `backend/.env`:
+   ```env
+   DATABASE_URL=postgresql://postgres.xxxxxxxx:TU_CONTRASEÑA@aws-0-sa-east-1.pooler.supabase.com:5432/postgres
+   DB_SSL=true
+   ```
+   Si la contraseña tiene caracteres como `@`, `#` o `/`, codificarlos (por ejemplo `@` → `%40`).
+4. Crear las tablas desde `backend/`:
+   ```powershell
+   npm run db:setup:demo     # esquema + datos de demostración
+   # o: npm run db:setup     # solo esquema
+   # y para validar: npm run db:setup -- --seeds --tests
+   ```
+   El script aplica `01` a `14` en orden y luego `cloud/cloud_setup.sql`, que fija la zona horaria
+   `America/La_Paz` y retira el acceso público de la API REST de Supabase (roles `anon` y
+   `authenticated`) activando RLS. El backend se conecta como `postgres`, así que no le afecta.
+5. Iniciar el backend como siempre (`npm run start:dev`). Para volver a Docker local, comentar
+   `DATABASE_URL` y `DB_SSL`.
+
+**No subir `.env` al repositorio**: la cadena incluye la contraseña. Cada integrante copia la misma
+`DATABASE_URL` en su propio `.env`.
