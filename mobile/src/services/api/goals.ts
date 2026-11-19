@@ -37,6 +37,7 @@ export interface CreatedGoal {
   goal_id: number;
   title: string;
   user_description: string;
+  status?: string;
   priority?: 'high' | 'medium' | 'low';
   start_date?: string;
   due_date?: string | null;
@@ -295,7 +296,7 @@ export interface GoalOverviewItem {
   title: string;
   description?: string;
   priority: 'high' | 'medium' | 'low';
-  status: 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'archived';
+  status: 'active' | 'paused' | 'completed' | 'archived' | 'in_progress' | 'cancelled';
   due_date?: string | null;
   start_date?: string;
   total_stages?: number;

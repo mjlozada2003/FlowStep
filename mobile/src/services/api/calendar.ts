@@ -19,7 +19,7 @@ export interface CalendarActivityItem {
   start_time?: string | null;
   end_time?: string | null;
   estimated_minutes?: number | null;
-  status: 'pending' | 'completed' | 'in_progress' | 'cancelled' | 'overdue';
+  status: 'pending' | 'completed' | 'in_progress' | 'cancelled' | 'overdue' | 'skipped';
   priority?: string | null;
   is_overdue?: boolean;
 }
