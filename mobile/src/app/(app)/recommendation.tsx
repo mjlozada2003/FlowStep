@@ -58,7 +58,10 @@ export default function RecommendationScreen() {
   const activityTitle = diagnostic?.activity_title || params.activityTitle || 'Actividad pendiente';
   const progressPercent = diagnostic?.metrics?.progress_percentage ?? 25;
   const completedCount = diagnostic?.metrics?.completed_activities ?? 3;
-  const availableHours = diagnostic?.metrics?.available_hours_weekly ?? 4;
+  const availableHours =
+    diagnostic?.metrics?.available_hours ??
+    diagnostic?.metrics?.available_hours_weekly ??
+    4;
   const solutionTitle = diagnostic?.solution_focus || 'Dar más espacio al aprendizaje';
   const solutions = diagnostic?.solutions?.length
     ? diagnostic.solutions
@@ -68,6 +71,7 @@ export default function RecommendationScreen() {
         `Reprogramar "${activityTitle}" a tu horario de mayor concentración.`,
       ];
   const benefitText =
+    diagnostic?.expected_benefit ||
     diagnostic?.recommended_actions?.[0] ||
     'Recuperar el ritmo manteniendo sesiones adaptadas a tu disponibilidad.';
 

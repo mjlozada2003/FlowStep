@@ -5,40 +5,48 @@ export interface RecommendationDiagnostic {
   goal_title: string;
   activity_title?: string;
   max_days_late?: number;
-  alert_level: 'warning' | 'critical' | 'info';
-  alert_message: string;
+  alert_level?: 'warning' | 'critical' | 'info' | string;
+  alert_message?: string;
   difficulty_context?: string;
-  why_suggested: string;
-  solution_focus: string;
-  solutions: string[];
-  metrics: {
-    progress_percentage: number;
-    completed_activities: number;
-    total_activities: number;
-    available_hours_weekly: number;
+  why_suggested?: string;
+  solution_focus?: string;
+  solutions?: string[];
+  expected_benefit?: string;
+  metrics?: {
+    progress_percentage?: number;
+    completed_activities?: number;
+    total_activities?: number;
+    available_hours?: number;
+    available_hours_weekly?: number;
   };
-  recommended_actions: string[];
+  recommended_actions?: string[];
 }
 
 export interface ReplanAlternativeItem {
-  proposal_type: 'balanced' | 'learning' | 'time';
-  title: string;
-  tagline: string;
-  recommended: boolean;
-  description: string;
-  session_info: string;
-  changes: string[];
-  impact: string;
+  type: 'balanced' | 'learning' | 'time';
+  proposal_type?: 'balanced' | 'learning' | 'time';
+  type_label?: string;
+  title?: string;
+  tagline?: string;
+  recommended?: boolean;
+  description?: string;
+  stats_summary?: string;
+  session_info?: string;
+  pills?: string[];
+  changes?: string[];
+  impact?: string;
+  why_this_option?: string;
   suggested_due_date?: string;
 }
 
 export interface ReplanAlternativesResponse {
   goal_id: number;
-  goal_title: string;
-  completed_count: number;
-  recorded_hours: number;
-  progress_percentage: number;
-  alternatives: ReplanAlternativeItem[];
+  goal_title?: string;
+  completed_count?: number;
+  recorded_hours?: number;
+  progress_percentage?: number;
+  proposals?: ReplanAlternativeItem[];
+  alternatives?: ReplanAlternativeItem[];
 }
 
 export interface ActivitySuggestionResponse {
@@ -91,12 +99,12 @@ export async function getReplanAlternatives(
 
 /**
  * HU-31, HU-52, HU-08: Aplicar propuesta de replanificación seleccionada
+ * Nota: ApplyAlternativeDto solo acepta proposal_type (forbidNonWhitelisted activo).
  */
 export async function applyReplanAlternative(
   goalId: number,
   proposalType: 'balanced' | 'learning' | 'time',
   token: string,
-  targetDate?: string,
 ): Promise<{ message: string; proposal_type: string; goal_id: number }> {
   return apiRequest<{ message: string; proposal_type: string; goal_id: number }>(
     `/goals/${goalId}/alternatives/apply`,
@@ -105,7 +113,6 @@ export async function applyReplanAlternative(
       token,
       body: JSON.stringify({
         proposal_type: proposalType,
-        target_date: targetDate,
       }),
     },
   );

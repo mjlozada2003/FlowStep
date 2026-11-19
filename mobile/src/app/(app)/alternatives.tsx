@@ -46,6 +46,12 @@ export default function AlternativesScreen() {
         const res = await getReplanAlternatives(goalIdNum, token);
         if (isMounted && res) {
           setAlternativesData(res);
+          const list = res.proposals ?? res.alternatives ?? [];
+          const recommendedItem = list.find((item) => item.recommended);
+          const recType = recommendedItem?.type ?? recommendedItem?.proposal_type;
+          if (recType === 'balanced' || recType === 'learning' || recType === 'time') {
+            setSelectedProposal(recType);
+          }
         }
       } catch (err) {
         console.warn('No se pudieron obtener alternativas del backend:', err);
@@ -130,9 +136,13 @@ export default function AlternativesScreen() {
   const recordedHours = alternativesData?.recorded_hours ?? 3;
   const progressPct = alternativesData?.progress_percentage ?? 25;
 
-  const balancedAlt = alternativesData?.alternatives?.find((a) => a.proposal_type === 'balanced');
-  const learningAlt = alternativesData?.alternatives?.find((a) => a.proposal_type === 'learning');
-  const timeAlt = alternativesData?.alternatives?.find((a) => a.proposal_type === 'time');
+  const proposalList = alternativesData?.proposals ?? alternativesData?.alternatives ?? [];
+  const findProposal = (kind: ProposalType) =>
+    proposalList.find((a) => (a.type ?? a.proposal_type) === kind);
+
+  const balancedAlt = findProposal('balanced');
+  const learningAlt = findProposal('learning');
+  const timeAlt = findProposal('time');
 
   return (
     <Screen style={styles.screen}>
@@ -193,9 +203,13 @@ export default function AlternativesScreen() {
                     <View style={[styles.radioOuter, selectedProposal === 'balanced' && styles.radioOuterActive]}>
                       {selectedProposal === 'balanced' && <View style={styles.radioInner} />}
                     </View>
-                    <View>
-                      <Text style={styles.proposalTypeLabel}>{balancedAlt?.title || 'Equilibrada'}</Text>
-                      <Text style={styles.proposalTitle}>{balancedAlt?.tagline || 'Redistribuir esta semana'}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.proposalTypeLabel}>
+                        {balancedAlt?.type_label || 'Equilibrada'}
+                      </Text>
+                      <Text style={styles.proposalTitle}>
+                        {balancedAlt?.title || balancedAlt?.tagline || 'Redistribuir esta semana'}
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.badgeRecommended}>
@@ -209,12 +223,14 @@ export default function AlternativesScreen() {
 
                 <View style={styles.proposalStatsRow}>
                   <View style={styles.miniTag}>
-                    <Text style={styles.miniTagText}>{balancedAlt?.session_info || '3 sesiones · máx. 60 min'}</Text>
+                    <Text style={styles.miniTagText}>
+                      {balancedAlt?.stats_summary || balancedAlt?.session_info || '3 sesiones · máx. 60 min'}
+                    </Text>
                   </View>
                 </View>
 
                 <View style={styles.proposalPillsRow}>
-                  {(balancedAlt?.changes || ['Redistribuir próximas sesiones', 'Mantener fecha']).map((ch, idx) => (
+                  {(balancedAlt?.pills || balancedAlt?.changes || ['Redistribuir próximas sesiones', 'Mantener fecha']).map((ch, idx) => (
                     <View key={idx} style={styles.actionPill}>
                       <Text style={styles.actionPillText}>{ch}</Text>
                     </View>
@@ -236,9 +252,13 @@ export default function AlternativesScreen() {
                     <View style={[styles.radioOuter, selectedProposal === 'learning' && styles.radioOuterActive]}>
                       {selectedProposal === 'learning' && <View style={styles.radioInner} />}
                     </View>
-                    <View>
-                      <Text style={styles.proposalTypeLabel}>{learningAlt?.title || 'Más aprendizaje'}</Text>
-                      <Text style={styles.proposalTitle}>{learningAlt?.tagline || 'Añadir refuerzo guiado'}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.proposalTypeLabel}>
+                        {learningAlt?.type_label || 'Más aprendizaje'}
+                      </Text>
+                      <Text style={styles.proposalTitle}>
+                        {learningAlt?.title || learningAlt?.tagline || 'Añadir refuerzo guiado'}
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.badgeSupport}>
@@ -252,12 +272,14 @@ export default function AlternativesScreen() {
 
                 <View style={styles.proposalStatsRow}>
                   <View style={styles.miniTag}>
-                    <Text style={styles.miniTagText}>{learningAlt?.session_info || '4 sesiones · Incluye refuerzo'}</Text>
+                    <Text style={styles.miniTagText}>
+                      {learningAlt?.stats_summary || learningAlt?.session_info || '4 sesiones · Incluye refuerzo'}
+                    </Text>
                   </View>
                 </View>
 
                 <View style={styles.proposalPillsRow}>
-                  {(learningAlt?.changes || ['+ 2 recursos', 'Reforzar conceptos']).map((ch, idx) => (
+                  {(learningAlt?.pills || learningAlt?.changes || ['+ 2 recursos', 'Reforzar conceptos']).map((ch, idx) => (
                     <View key={idx} style={styles.actionPill}>
                       <Text style={styles.actionPillText}>{ch}</Text>
                     </View>
@@ -279,9 +301,13 @@ export default function AlternativesScreen() {
                     <View style={[styles.radioOuter, selectedProposal === 'time' && styles.radioOuterActive]}>
                       {selectedProposal === 'time' && <View style={styles.radioInner} />}
                     </View>
-                    <View>
-                      <Text style={styles.proposalTypeLabel}>{timeAlt?.title || 'Más tiempo'}</Text>
-                      <Text style={styles.proposalTitle}>{timeAlt?.tagline || 'Extender fecha límite'}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.proposalTypeLabel}>
+                        {timeAlt?.type_label || 'Más tiempo'}
+                      </Text>
+                      <Text style={styles.proposalTitle}>
+                        {timeAlt?.title || timeAlt?.tagline || 'Extender fecha límite'}
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.badgeLight}>
@@ -295,12 +321,14 @@ export default function AlternativesScreen() {
 
                 <View style={styles.proposalStatsRow}>
                   <View style={styles.miniTag}>
-                    <Text style={styles.miniTagText}>{timeAlt?.session_info || '2 sesiones · máx. 45 min'}</Text>
+                    <Text style={styles.miniTagText}>
+                      {timeAlt?.stats_summary || timeAlt?.session_info || '2 sesiones · máx. 45 min'}
+                    </Text>
                   </View>
                 </View>
 
                 <View style={styles.proposalPillsRow}>
-                  {(timeAlt?.changes || ['Extensión +14 días', '- 1 sesión/sem']).map((ch, idx) => (
+                  {(timeAlt?.pills || timeAlt?.changes || ['Extensión +14 días', '- 1 sesión/sem']).map((ch, idx) => (
                     <View key={idx} style={styles.actionPill}>
                       <Text style={styles.actionPillText}>{ch}</Text>
                     </View>
@@ -314,11 +342,17 @@ export default function AlternativesScreen() {
               <Text style={styles.reasonCategory}>¿POR QUÉ ESTÁ OPCIÓN?</Text>
               <Text style={styles.reasonText}>
                 {selectedProposal === 'balanced' &&
-                  (balancedAlt?.impact || 'Aprovecha tu disponibilidad semanal para resolver el retraso sin cambiar la fecha límite.')}
+                  (balancedAlt?.impact ||
+                    balancedAlt?.why_this_option ||
+                    'Aprovecha tu disponibilidad semanal para resolver el retraso sin cambiar la fecha límite.')}
                 {selectedProposal === 'learning' &&
-                  (learningAlt?.impact || 'Ideal si necesitas afianzar conceptos clave antes de avanzar con la programación.')}
+                  (learningAlt?.impact ||
+                    learningAlt?.why_this_option ||
+                    'Ideal si necesitas afianzar conceptos clave antes de avanzar con la programación.')}
                 {selectedProposal === 'time' &&
-                  (timeAlt?.impact || 'Distribuye mejor el esfuerzo diario si tienes una agenda apretada esta semana.')}
+                  (timeAlt?.impact ||
+                    timeAlt?.why_this_option ||
+                    'Distribuye mejor el esfuerzo diario si tienes una agenda apretada esta semana.')}
               </Text>
             </View>
 
@@ -544,6 +578,7 @@ const styles = StyleSheet.create({
   },
   proposalPillsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginLeft: 34,
     marginTop: 4,
