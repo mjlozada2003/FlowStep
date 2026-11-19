@@ -458,6 +458,20 @@ export default function StageDetailScreen() {
                   isBusy={busyActivityId !== null}
                   onToggle={() => toggleActivity(activity.id)}
                   onEdit={() => openEditModal(activity)}
+                  onOpenDetail={() =>
+                    router.push({
+                      pathname: '/activity-detail',
+                      params: {
+                        activityId: String(activity.id),
+                        stageId: stageId ? String(stageId) : '',
+                        goalId: goalId ? String(goalId) : '',
+                        title: activity.title,
+                        duration: activity.duration ? String(activity.duration) : '45',
+                        stageTitle,
+                        description: activity.description ?? '',
+                      },
+                    } as any)
+                  }
                 />
               ))}
             </View>

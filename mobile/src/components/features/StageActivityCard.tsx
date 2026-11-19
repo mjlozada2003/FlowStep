@@ -20,6 +20,7 @@ interface StageActivityCardProps {
   isBusy: boolean;
   onToggle: () => void;
   onEdit: () => void;
+  onOpenDetail?: () => void;
 }
 
 export function StageActivityCard({
@@ -28,6 +29,7 @@ export function StageActivityCard({
   isBusy,
   onToggle,
   onEdit,
+  onOpenDetail,
 }: StageActivityCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const isReinforcement = activity.type === 'reinforcement' || activity.title.toLowerCase().includes('refuerzo');
@@ -49,57 +51,71 @@ export function StageActivityCard({
           ) : null}
         </TouchableOpacity>
 
-        <Pressable
-          style={styles.cardMainClickable}
-          onPress={() => {
-            if (activity.description) {
-              setIsExpanded(!isExpanded);
-            }
-          }}
-        >
-          <View style={styles.activityInfo}>
-            <View style={styles.badgeRow}>
-              <Text style={styles.activityBadge}>ACTIVIDAD {index + 1}</Text>
-              {isReinforcement ? (
-                <View style={styles.reinforcementBadge}>
-                  <Feather name="zap" size={10} color="#B45309" />
-                  <Text style={styles.reinforcementBadgeText}>Refuerzo guiado</Text>
-                </View>
-              ) : isPractice ? (
-                <View style={styles.practiceBadge}>
-                  <Feather name="code" size={10} color="#047857" />
-                  <Text style={styles.practiceBadgeText}>Práctica guiada</Text>
+        <View style={styles.cardMainClickable}>
+          <Pressable
+            onPress={() => {
+              if (activity.description) {
+                setIsExpanded(!isExpanded);
+              } else if (onOpenDetail) {
+                onOpenDetail();
+              }
+            }}
+          >
+            <View style={styles.activityInfo}>
+              <View style={styles.badgeRow}>
+                <Text style={styles.activityBadge}>ACTIVIDAD {index + 1}</Text>
+                {isReinforcement ? (
+                  <View style={styles.reinforcementBadge}>
+                    <Feather name="zap" size={10} color="#B45309" />
+                    <Text style={styles.reinforcementBadgeText}>Refuerzo guiado</Text>
+                  </View>
+                ) : isPractice ? (
+                  <View style={styles.practiceBadge}>
+                    <Feather name="code" size={10} color="#047857" />
+                    <Text style={styles.practiceBadgeText}>Práctica guiada</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <Text style={[styles.activityTitle, activity.completed && styles.activityTitleCompleted]}>
+                {activity.title}
+              </Text>
+
+              {activity.date ? (
+                <Text style={styles.activityDateText}>
+                  <Feather name="calendar" size={11} color="#627D98" /> {activity.date}
+                </Text>
+              ) : null}
+
+              {activity.description ? (
+                <View style={styles.guideWrapper}>
+                  {isExpanded ? (
+                    <View style={styles.expandedGuideBox}>
+                      <Text style={styles.expandedGuideTitle}>Instrucciones y pasos:</Text>
+                      <Text style={styles.expandedGuideText}>{activity.description}</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.seeGuideRow}>
+                      <Feather name="chevron-down" size={12} color="#174A62" />
+                      <Text style={styles.seeGuideHint}>Ver guía paso a paso</Text>
+                    </View>
+                  )}
                 </View>
               ) : null}
             </View>
+          </Pressable>
 
-            <Text style={[styles.activityTitle, activity.completed && styles.activityTitleCompleted]}>
-              {activity.title}
-            </Text>
-
-            {activity.date ? (
-              <Text style={styles.activityDateText}>
-                <Feather name="calendar" size={11} color="#627D98" /> {activity.date}
-              </Text>
-            ) : null}
-
-            {activity.description ? (
-              <View style={styles.guideWrapper}>
-                {isExpanded ? (
-                  <View style={styles.expandedGuideBox}>
-                    <Text style={styles.expandedGuideTitle}>Instrucciones y pasos:</Text>
-                    <Text style={styles.expandedGuideText}>{activity.description}</Text>
-                  </View>
-                ) : (
-                  <View style={styles.seeGuideRow}>
-                    <Feather name="chevron-down" size={12} color="#174A62" />
-                    <Text style={styles.seeGuideHint}>Ver guía paso a paso</Text>
-                  </View>
-                )}
-              </View>
-            ) : null}
-          </View>
-        </Pressable>
+          {onOpenDetail ? (
+            <TouchableOpacity
+              style={styles.detailLinkRow}
+              onPress={onOpenDetail}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.detailLinkText}>Registrar sesión y detalle</Text>
+              <Feather name="arrow-right" size={12} color="#174A62" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
 
         <TouchableOpacity style={styles.editIconButton} onPress={onEdit} activeOpacity={0.7}>
           <Feather name="edit-2" size={16} color="#174A62" />
@@ -233,6 +249,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#334E68',
     lineHeight: 18,
+  },
+  detailLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 8,
+    alignSelf: 'flex-start',
+  },
+  detailLinkText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#174A62',
   },
   editIconButton: {
     padding: 8,
