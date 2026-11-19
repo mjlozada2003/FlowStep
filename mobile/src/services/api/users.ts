@@ -1,28 +1,24 @@
 import { apiRequest } from '@/services/api/client';
 
 export interface UserPreferences {
-  user_id: number;
-  reminders_enabled: boolean;
-  delay_alerts_enabled: boolean;
-  weekly_digest_enabled: boolean;
-  reminder_lead_minutes: number;
-  max_active_goals: number;
-  auto_reschedule_missed: boolean;
-  preferred_work_days?: string[];
-  preferred_start_time?: string;
-  preferred_end_time?: string;
+  user_id?: number;
+  reminders_enabled?: boolean;
+  reminder_minutes_before?: number;
+  delay_alerts_enabled?: boolean;
+  periodic_summary_enabled?: boolean;
+  goals_sort_by?: 'priority' | 'due_date' | 'progress' | 'created_at' | string;
+  timezone?: string;
+  session_duration_minutes?: number;
 }
 
 export interface UpdatePreferencesDto {
   reminders_enabled?: boolean;
+  reminder_minutes_before?: number;
   delay_alerts_enabled?: boolean;
-  weekly_digest_enabled?: boolean;
-  reminder_lead_minutes?: number;
-  max_active_goals?: number;
-  auto_reschedule_missed?: boolean;
-  preferred_work_days?: string[];
-  preferred_start_time?: string;
-  preferred_end_time?: string;
+  periodic_summary_enabled?: boolean;
+  goals_sort_by?: 'priority' | 'due_date' | 'progress' | 'created_at';
+  timezone?: string;
+  session_duration_minutes?: number;
 }
 
 // HU-49: Consultar y configurar preferencias del usuario
