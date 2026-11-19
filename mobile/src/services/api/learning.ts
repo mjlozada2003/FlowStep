@@ -62,7 +62,7 @@ export interface QuizEvaluationResult {
   total_questions: number;
   percentage: number;
   weak_topics: string[];
-  reinforcement_recommendations: string[];
+  reinforcement_recommendations: Array<string | Record<string, unknown>>;
 }
 
 /**
