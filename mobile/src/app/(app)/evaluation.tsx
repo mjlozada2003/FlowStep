@@ -366,7 +366,8 @@ export default function EvaluationScreen() {
                   <Text style={styles.reinforcementTitle}>Refuerzo adaptativo recomendado</Text>
                 </View>
                 <Text style={styles.reinforcementDesc}>
-                  La IA propone añadir una sesión de aprendizaje focalizada en "{evaluationResult.weak_topics[0]}".
+                  La IA propone añadir una sesión de aprendizaje focalizada en &quot;
+                  {evaluationResult.weak_topics[0]}&quot;.
                 </Text>
 
                 {reinforcementAdded ? (

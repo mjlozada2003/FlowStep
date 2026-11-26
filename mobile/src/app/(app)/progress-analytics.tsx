@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
@@ -58,20 +58,27 @@ const defaultEmptyPaceData: GoalPaceData = {
 export default function ProgressAnalyticsScreen() {
   const { token } = useAuth();
   const params = useLocalSearchParams<{ goalId?: string; fromSuccess?: string }>();
-  const [activeGoalId, setActiveGoalId] = useState<number | null>(
-    params.goalId && /^\d+$/.test(params.goalId) ? Number(params.goalId) : null,
+  const routeGoalId =
+    params.goalId && /^\d+$/.test(params.goalId) ? Number(params.goalId) : null;
+  const [goalSelection, setGoalSelection] = useState({
+    routeParam: params.goalId,
+    selectedGoalId: routeGoalId,
+  });
+  const activeGoalId =
+    goalSelection.routeParam === params.goalId
+      ? goalSelection.selectedGoalId
+      : routeGoalId ?? goalSelection.selectedGoalId;
+  const setActiveGoalId = useCallback(
+    (goalId: number | null) => {
+      setGoalSelection({ routeParam: params.goalId, selectedGoalId: goalId });
+    },
+    [params.goalId],
   );
   const [availableGoals, setAvailableGoals] = useState<CreatedGoal[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [chartData, setChartData] = useState<GoalChartData>(defaultEmptyChartData);
   const [paceData, setPaceData] = useState<GoalPaceData>(defaultEmptyPaceData);
-
-  useEffect(() => {
-    if (params.goalId && /^\d+$/.test(params.goalId)) {
-      setActiveGoalId(Number(params.goalId));
-    }
-  }, [params.goalId]);
 
   const handleBack = useCallback(() => {
     if (router.canGoBack()) {
@@ -139,7 +146,7 @@ export default function ProgressAnalyticsScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [token, activeGoalId]);
+  }, [token, activeGoalId, setActiveGoalId]);
 
   useFocusEffect(
     useCallback(() => {

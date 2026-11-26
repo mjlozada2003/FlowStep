@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
@@ -118,7 +118,6 @@ export default function ActivityDetailScreen() {
   const [difficultyNotes, setDifficultyNotes] = useState('Me costó entender cómo se conectan los componentes.');
 
   const [knowledgeExpanded, setKnowledgeExpanded] = useState(true);
-  const [loadingKnowledge, setLoadingKnowledge] = useState(false);
   const [activityResources, setActivityResources] = useState<LearningResourceItem[]>([]);
   const [expandedResourceId, setExpandedResourceId] = useState<string | null>(null);
 
@@ -130,20 +129,21 @@ export default function ActivityDetailScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const fallbackKnowledge = buildFallbackActivityKnowledge(
-    activityTitle,
-    stageInfo,
-    activityDesc,
+  const fallbackKnowledge = useMemo(
+    () => buildFallbackActivityKnowledge(activityTitle, stageInfo, activityDesc),
+    [activityTitle, stageInfo, activityDesc],
   );
+
+  const resourcesToDisplay =
+    activityResources.length > 0 ? activityResources : fallbackKnowledge.resources;
+  const loadingKnowledge = Boolean(token && activityId && activityResources.length === 0);
 
   useEffect(() => {
     let active = true;
     if (!token || !activityId) {
-      setActivityResources(fallbackKnowledge.resources);
       return;
     }
 
-    setLoadingKnowledge(true);
     getActivityResources(activityId, token)
       .then((res) => {
         if (!active) return;
@@ -156,15 +156,12 @@ export default function ActivityDetailScreen() {
       .catch(() => {
         if (!active) return;
         setActivityResources(fallbackKnowledge.resources);
-      })
-      .finally(() => {
-        if (active) setLoadingKnowledge(false);
       });
 
     return () => {
       active = false;
     };
-  }, [activityId, token, activityTitle, stageInfo, activityDesc]);
+  }, [activityId, token, activityTitle, stageInfo, activityDesc, fallbackKnowledge.resources]);
 
   const handleBack = useCallback(() => {
     if (router.canGoBack()) {
@@ -354,7 +351,7 @@ export default function ActivityDetailScreen() {
                 <ActivityIndicator size="small" color="#174A62" style={{ marginVertical: 4 }} />
               ) : (
                 <View style={styles.resourceList}>
-                  {activityResources.map((res) => {
+                  {resourcesToDisplay.map((res) => {
                     const isOpen = expandedResourceId === res.id;
                     const bodyText =
                       res.reading_content ||

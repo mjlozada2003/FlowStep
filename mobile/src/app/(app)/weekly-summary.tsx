@@ -199,7 +199,7 @@ export default function WeeklySummaryScreen() {
               <FlowMascotAvatar />
               <View style={{ flex: 1 }}>
                 <Text style={styles.mascotBannerText}>
-                  Flow dice: <Text style={styles.mascotQuote}>"{weeklyStats.mascotTip}"</Text>
+                  Flow dice: <Text style={styles.mascotQuote}>&quot;{weeklyStats.mascotTip}&quot;</Text>
                 </Text>
               </View>
             </View>

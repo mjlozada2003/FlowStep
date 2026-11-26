@@ -1,9 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 
 export function FlowThinkingMascot() {
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const waveAnim = useRef(new Animated.Value(0)).current;
+  const [pulseAnim] = useState(() => new Animated.Value(1));
+  const [waveAnim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     Animated.loop(

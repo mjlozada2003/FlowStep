@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 
 interface SuccessAnimationBoxProps {
@@ -7,8 +7,8 @@ interface SuccessAnimationBoxProps {
 }
 
 export function SuccessAnimationBox({ isError = false }: SuccessAnimationBoxProps) {
-  const scaleAnim = useRef(new Animated.Value(0)).current;
-  const bounceAnim = useRef(new Animated.Value(1)).current;
+  const [scaleAnim] = useState(() => new Animated.Value(0));
+  const [bounceAnim] = useState(() => new Animated.Value(1));
 
   useEffect(() => {
     // Animación de aparición con rebote al cargar
