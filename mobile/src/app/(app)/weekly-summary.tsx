@@ -215,18 +215,24 @@ export default function WeeklySummaryScreen() {
             </TouchableOpacity>
           </>
         ) : (
-          // HU-49: si el usuario desactivó el resumen semanal, el backend no envía datos.
+          // Respaldo: si la API no envía datos, se ofrece reintentar en lugar de dejar la pantalla en blanco.
           <View style={styles.centeredContainer}>
-            <Feather name="bell-off" size={36} color="#627D98" />
-            <Text style={styles.emptyTitle}>Resumen semanal desactivado</Text>
+            <Feather name="bar-chart-2" size={36} color="#627D98" />
+            <Text style={styles.emptyTitle}>Sin resumen disponible</Text>
             <Text style={styles.emptyText}>
-              Actívalo en Preferencias para ver tu progreso de la semana.
+              No recibimos datos de tu semana. Inténtalo de nuevo en unos segundos.
             </Text>
             <TouchableOpacity
               style={styles.retryButton}
-              onPress={() => router.navigate('/(tabs)/preferences' as any)}
+              onPress={() => {
+                setIsLoading(true);
+                getWeeklySummary(token!)
+                  .then((data) => setWeeklyStats(data ?? null))
+                  .catch((e) => setErrorMessage(e.message))
+                  .finally(() => setIsLoading(false));
+              }}
             >
-              <Text style={styles.retryButtonText}>Ir a Preferencias</Text>
+              <Text style={styles.retryButtonText}>Reintentar</Text>
             </TouchableOpacity>
           </View>
         )}
