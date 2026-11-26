@@ -8,16 +8,17 @@ Assessment y AI Adaptation.
 
 ## Entregables
 
-- `database/12_learning_adaptation_schema.sql`: 15 tablas (`TOPIC`, `GOAL_TOPIC`, `ACTIVITY_TOPIC`,
+- `database/12_learning_adaptation_schema.sql`: 16 tablas (`TOPIC`, `GOAL_TOPIC`, `ACTIVITY_TOPIC`,
   `USER_TOPIC`, `LEARNING_RESOURCE`, `ACTIVITY_RESOURCE`, `RESOURCE_PROGRESS`, `ASSESSMENT`,
   `ASSESSMENT_QUESTION`, `QUESTION_OPTION`, `ASSESSMENT_ATTEMPT`, `ATTEMPT_ANSWER`,
-  `AI_RECOMMENDATION`, `REPLAN_PROPOSAL`, `REPLAN_PROPOSAL_ITEM`), las FK reservadas desde el
+  `AI_RECOMMENDATION`, `REPLAN_PROPOSAL`, `REPLAN_PROPOSAL_ITEM`, `GOAL_RESOURCE`), las FK reservadas desde el
   Sprint 2 y 11 triggers de integridad.
 - `database/13_learning_adaptation_views.sql`: 14 vistas (conocimientos, recursos, actividades de
   aprendizaje, resultados de evaluación, temas débiles, dificultad, contexto de replanificación,
   propuestas, disponibilidad, historial de recomendaciones y perfil para recomendaciones).
 - `database/14_learning_adaptation_seeds.sql`: demo `aprendizaje.demo@flowstep.test`.
 - `database/tests/learning_adaptation.sql`: casos válidos e inválidos de las 18 historias.
+- `database/tests/learning_persistence.sql`: columnas, tabla y vistas que usa el backend para persistir.
 - `database/cloud/cloud_setup.sql` y `backend/scripts/db-setup.cjs`: base en la nube (Supabase).
 
 ## Decisiones
@@ -36,16 +37,24 @@ Assessment y AI Adaptation.
 - **Base en la nube con Supabase**: es PostgreSQL, así que se conservan todos los scripts, triggers,
   vistas y la conexión TypeORM. Firebase (NoSQL) obligaría a reescribir el modelo y el backend.
 
-## Revisión del backend (rama `feature/backend`)
+## Persistencia desde el backend
 
-- El Sprint 5 del backend está en `feature/backend` y aún no se fusionó en `main`.
-- Usa correctamente las vistas y triggers de los sprints 3 y 4 (`v_goal_delay_alert`, `v_goal_pace`,
-  `fn_progress_summary`, `flowstep.change_reason`, `AUTH_SESSION`, `USER_PREFERENCE`).
-- No persiste nada del Sprint 5; ver "Indicaciones para el backend" en la sección 11 de
-  `database/README.md`.
-- La alternativa "Más tiempo" suma 14 días a la fecha límite actual; si esa fecha ya pasó, el
-  resultado puede seguir en el pasado y el trigger del Sprint 3 lo rechaza. Conviene partir de
-  `GREATEST(due_date, CURRENT_DATE)`.
+El backend guarda en estas tablas lo que genera la IA, sin cambiar el contrato de la API
+(`backend/src/learning/learning-store.service.ts`; detalle en la sección 11 de `database/README.md`):
+
+- Conocimientos, recursos y cuestionarios se generan una sola vez y luego se leen de la base.
+- La evaluación se califica en el servidor contra las opciones guardadas y actualiza el dominio
+  por tema (`USER_TOPIC`).
+- Recomendaciones, sugerencias por dificultad y alternativas quedan registradas con su explicación
+  y la decisión del usuario (aceptar, elegir propuesta o rechazar).
+- "Equilibrada" guarda y aplica el cambio real de cada actividad pendiente según la disponibilidad;
+  "Más tiempo" extiende desde hoy si la fecha límite ya venció (antes producía un error 500).
+- Si la base no tiene las tablas, cada endpoint responde como antes (solo IA).
+
+Para esto se agregaron `LEARNING_RESOURCE.details`, `REPLAN_PROPOSAL.presentation`,
+`AI_RECOMMENDATION.details` y la tabla `GOAL_RESOURCE` (sección 7 de `12_learning_adaptation_schema.sql`),
+y las vistas de recursos y propuestas de `13` las exponen. Una base existente se actualiza con
+`npm run db:setup` (los scripts se pueden repetir).
 
 ## Validación
 
