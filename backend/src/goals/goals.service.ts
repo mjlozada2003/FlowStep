@@ -691,16 +691,9 @@ export class GoalsService {
 
   // HU-23: Resumen periódico / semanal de progreso (agrega barras L-D y desglose por meta)
   async getWeeklySummary(userId: number, startDate?: string, endDate?: string): Promise<any> {
-    try {
-      const prefRows = await this.goalsRepository.query(
-        'SELECT periodic_summary_enabled FROM v_user_preferences WHERE user_id = $1',
-        [userId],
-      );
-      if (prefRows.length > 0 && prefRows[0].periodic_summary_enabled === false) {
-        return null;
-      }
-    } catch {}
-
+    // HU-23, HU-49: la preferencia "Resumen semanal" solo controla el envio
+    // automatico del domingo (v_due_progress_summaries). Si el usuario abre la
+    // pantalla de resumenes, siempre se le muestra su progreso.
     let sql: string;
     let params: any[];
 
