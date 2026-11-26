@@ -28,6 +28,8 @@ import {
   type RecommendationDiagnostic,
 } from '@/services/api/recommendations';
 
+const PRIORITY_ORDER: Record<string, number> = { high: 3, medium: 2, low: 1 };
+
 export default function HomeScreen() {
   const { user, token } = useAuth();
   
@@ -36,23 +38,35 @@ export default function HomeScreen() {
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummaryData | null>(null);
   const [personalizedRec, setPersonalizedRec] = useState<RecommendationDiagnostic | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [prioritySort, setPrioritySort] = useState<'default' | 'high_first' | 'low_first'>('default');
 
   const loadData = useCallback(async () => {
-    if (!token) return;
+    if (!token) {
+      setLoadError('Inicia sesión para cargar tus objetivos.');
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadError(null);
     try {
       const [overviewData, alertData, weeklyData, recData] = await Promise.all([
-        getGoalsOverview(token).catch(() => []),
-        getDelayAlerts(token).catch(() => []),
-        getWeeklySummary(token).catch(() => null),
-        getPersonalizedRecommendations(token).catch(() => null),
+        getGoalsOverview(token),
+        getDelayAlerts(token),
+        getWeeklySummary(token),
+        getPersonalizedRecommendations(token),
       ]);
       setGoals(overviewData);
       setAlerts(alertData);
       if (weeklyData) setWeeklySummary(weeklyData);
       if (recData) setPersonalizedRec(recData);
-    } catch {
-      // Ignorar fallos de red en polling de home
+    } catch (error) {
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : 'No se pudieron cargar tus datos. Inténtalo de nuevo.',
+      );
     } finally {
       setIsLoading(false);
     }
@@ -68,8 +82,6 @@ export default function HomeScreen() {
   const initials = user?.name 
     ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) 
     : 'LM';
-
-  const priorityOrder: Record<string, number> = { high: 3, medium: 2, low: 1 };
 
   const handleTogglePriority = () => {
     setPrioritySort((prev) => {
@@ -90,15 +102,15 @@ export default function HomeScreen() {
     const list = [...activeGoals];
     if (prioritySort === 'high_first') {
       return list.sort((a, b) => {
-        const pA = priorityOrder[a.priority?.toLowerCase() || ''] || 0;
-        const pB = priorityOrder[b.priority?.toLowerCase() || ''] || 0;
+        const pA = PRIORITY_ORDER[a.priority?.toLowerCase() || ''] || 0;
+        const pB = PRIORITY_ORDER[b.priority?.toLowerCase() || ''] || 0;
         return pB - pA;
       });
     }
     if (prioritySort === 'low_first') {
       return list.sort((a, b) => {
-        const pA = priorityOrder[a.priority?.toLowerCase() || ''] || 0;
-        const pB = priorityOrder[b.priority?.toLowerCase() || ''] || 0;
+        const pA = PRIORITY_ORDER[a.priority?.toLowerCase() || ''] || 0;
+        const pB = PRIORITY_ORDER[b.priority?.toLowerCase() || ''] || 0;
         return pA - pB;
       });
     }
@@ -219,7 +231,20 @@ export default function HomeScreen() {
 
         {/* Lista de Tarjetas de Objetivos */}
         <View style={styles.goalsList}>
-          {isLoading && goals.length === 0 ? (
+          {loadError ? (
+            <View style={styles.loadErrorBox}>
+              <Text style={styles.loadErrorText}>{loadError}</Text>
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => void loadData()}
+                disabled={isLoading}
+              >
+                <Text style={styles.retryButtonText}>
+                  {isLoading ? 'Reintentando...' : 'Reintentar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : isLoading && goals.length === 0 ? (
             <ActivityIndicator size="small" color="#174A62" style={{ marginVertical: 20 }} />
           ) : displayedGoals.length === 0 ? (
             <Text style={styles.emptyGoalsText}>No tienes objetivos activos en este momento.</Text>
@@ -501,6 +526,32 @@ const styles = StyleSheet.create({
   },
   goalsList: {
     gap: 12,
+  },
+  loadErrorBox: {
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    backgroundColor: '#FFF5F5',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#FED7D7',
+  },
+  loadErrorText: {
+    color: '#C53030',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#174A62',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   goalCard: {
     backgroundColor: '#FFFFFF',

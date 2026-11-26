@@ -17,8 +17,7 @@ import { BackButton } from '@/components/ui/BackButton';
 import { useAuth } from '@/contexts/auth-context';
 import { trackingApi } from '@/services/api/tracking';
 import {
-  HistoryItem,
-  mockItems,
+  type HistoryItem,
   mapBackendEventToHistoryItem,
 } from '@/services/tracking-helpers';
 import { HistoryStatsBanner } from '@/components/features/HistoryStatsBanner';
@@ -32,14 +31,15 @@ export default function ActivityHistoryScreen() {
 
   const [filter, setFilter] = useState<FilterType>('all');
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
 
   const fetchHistory = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
     try {
-      setIsLoading(true);
       if (!token) {
-        setHistoryItems([]);
-        return;
+        throw new Error('Inicia sesión para consultar el historial.');
       }
       const rawData = await trackingApi.getActivityHistory(
         params.goalId && /^\d+$/.test(params.goalId)
@@ -51,11 +51,15 @@ export default function ActivityHistoryScreen() {
         const mapped = rawData.map(mapBackendEventToHistoryItem);
         setHistoryItems(mapped);
       } else {
-        setHistoryItems([]);
+        throw new Error('La API devolvió un historial con formato inválido.');
       }
-    } catch {
-      // En caso de fallo de red puntual, conservar estado anterior o mock de respaldo
-      setHistoryItems((prev) => (prev.length > 0 ? prev : mockItems));
+    } catch (error) {
+      setHistoryItems([]);
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo cargar el historial. Inténtalo de nuevo.',
+      );
     } finally {
       setIsLoading(false);
     }
@@ -229,6 +233,16 @@ export default function ActivityHistoryScreen() {
             color="#174A62"
             style={{ marginVertical: 30 }}
           />
+        ) : loadError ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.errorText}>{loadError}</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => void fetchHistory()}
+            >
+              <Text style={styles.retryButtonText}>Reintentar</Text>
+            </TouchableOpacity>
+          </View>
         ) : filteredItems.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>
@@ -332,6 +346,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#627D98',
     textAlign: 'center',
+  },
+  errorText: {
+    fontSize: 13,
+    color: '#C53030',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  retryButton: {
+    backgroundColor: '#174A62',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   timelineList: { marginBottom: 24 },
   bottomNavButton: {

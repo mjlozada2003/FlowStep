@@ -395,14 +395,25 @@ export class LearningStoreService {
     const ids = [...new Set((answers ?? []).map((a) => Number(a.question_id)).filter(Number.isInteger))];
     if (!ids.length) return null;
 
-    const owners = await this.run(
-      `SELECT DISTINCT q.assessment_id FROM "ASSESSMENT_QUESTION" q
+    // Todas las preguntas deben existir y ser de un mismo cuestionario de este objetivo.
+    const matched = await this.run(
+      `SELECT q.question_id, q.assessment_id FROM "ASSESSMENT_QUESTION" q
          JOIN "ASSESSMENT" a ON a.assessment_id = q.assessment_id
         WHERE q.question_id = ANY($1::int[]) AND a.goal_id = $2`,
       [ids, goalId],
     );
-    if (owners.length !== 1) return null;
-    const assessmentId = Number(owners[0].assessment_id);
+    const assessments = new Set(matched.map((m) => Number(m.assessment_id)));
+    if (matched.length !== ids.length || assessments.size !== 1) return null;
+    const assessmentId = [...assessments][0];
+
+    // Un segundo envio del mismo cuestionario devuelve el resultado ya guardado.
+    const [previous] = await this.run(
+      `SELECT attempt_id FROM "ASSESSMENT_ATTEMPT"
+        WHERE assessment_id = $1 AND user_id = $2 AND submitted_at IS NOT NULL
+        ORDER BY submitted_at DESC, attempt_id DESC LIMIT 1`,
+      [assessmentId, userId],
+    );
+    if (previous) return this.attemptResult(Number(previous.attempt_id));
 
     const attemptId = await this.dataSource.transaction(async (m) => {
       const [attempt] = await m.query(
@@ -429,6 +440,10 @@ export class LearningStoreService {
       return Number(attempt.attempt_id);
     });
 
+    return this.attemptResult(attemptId);
+  }
+
+  private async attemptResult(attemptId: number): Promise<QuizEvaluationResult & { attempt_id: number }> {
     const [result] = await this.run('SELECT * FROM v_assessment_attempt_result WHERE attempt_id = $1', [attemptId]);
     const weak = await this.run(
       `SELECT topic_name FROM v_attempt_topic_result

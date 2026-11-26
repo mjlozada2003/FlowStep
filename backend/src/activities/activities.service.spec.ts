@@ -208,7 +208,7 @@ describe('ActivitiesService', () => {
         estimated_minutes: 30,
       };
       mockActivityRepository.findOne.mockResolvedValue(existing);
-      mockActivityRepository.save.mockImplementation((act) => Promise.resolve(act));
+      mockActivityRepository.save.mockImplementation((act: any) => Promise.resolve(act));
 
       const updated = await service.update(7, 1, { title: 'Nuevo Título' });
       expect(updated.title).toBe('Nuevo Título');
@@ -224,7 +224,7 @@ describe('ActivitiesService', () => {
         completed_at: completedAt,
       };
       mockActivityRepository.findOne.mockResolvedValue(existing);
-      mockActivityRepository.save.mockImplementation((act) => Promise.resolve(act));
+      mockActivityRepository.save.mockImplementation((act: any) => Promise.resolve(act));
 
       mockStatusHistoryRepository.save.mockResolvedValue({});
 
@@ -266,7 +266,7 @@ describe('ActivitiesService', () => {
       completed_at: completedAt,
     };
     mockActivityRepository.findOne.mockResolvedValue(existing);
-    mockActivityRepository.save.mockImplementation((activity) => Promise.resolve(activity));
+    mockActivityRepository.save.mockImplementation((activity: any) => Promise.resolve(activity));
     mockStatusHistoryRepository.save.mockResolvedValue({});
 
     const result = await service.update(7, 1, { status: ActivityStatus.PENDING });

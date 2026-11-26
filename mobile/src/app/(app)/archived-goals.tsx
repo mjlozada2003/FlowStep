@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -183,17 +183,16 @@ export default function ArchivedGoalsScreen() {
   const completedGoals = history.filter(isFinished);
   const archivedGoals = history.filter((g) => g.status === 'archived' && !isFinished(g));
 
-  // Si no hay archivados pero sí completados, mostrar la pestaña de completados por defecto
-  useEffect(() => {
-    if (archivedGoals.length === 0 && completedGoals.length > 0 && activeTab === 'archived') {
-      setActiveTab('completed');
-    }
-  }, [archivedGoals.length, completedGoals.length]);
+  // Si no hay archivados pero sí completados, mostrar los completados por defecto.
+  const visibleTab =
+    activeTab === 'archived' && archivedGoals.length === 0 && completedGoals.length > 0
+      ? 'completed'
+      : activeTab;
 
-  const rawGoals = activeTab === 'archived' ? archivedGoals : completedGoals;
+  const rawGoals = visibleTab === 'archived' ? archivedGoals : completedGoals;
 
   const currentGoals = rawGoals.map((item) => {
-    const isCompleted = activeTab === 'completed';
+    const isCompleted = visibleTab === 'completed';
     const statusLabel = `${isCompleted ? 'COMPLETADO' : 'ARCHIVADO'} · ${formatDisplayDate(item.closed_at || item.status_changed_at || item.end_date)}`;
     const progress = Math.round(Number(item.progress_percentage || 0));
     const completedActivities = Number(item.completed_activities || 0);
@@ -235,21 +234,21 @@ export default function ArchivedGoalsScreen() {
         {/* Selector de Pestañas (Tabs) */}
         <View style={styles.tabsContainer}>
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'archived' && styles.tabButtonActive]}
+            style={[styles.tabButton, visibleTab === 'archived' && styles.tabButtonActive]}
             activeOpacity={0.8}
             onPress={() => setActiveTab('archived')}
           >
-            <Text style={[styles.tabText, activeTab === 'archived' && styles.tabTextActive]}>
+            <Text style={[styles.tabText, visibleTab === 'archived' && styles.tabTextActive]}>
               Archivados ({archivedGoals.length})
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'completed' && styles.tabButtonActive]}
+            style={[styles.tabButton, visibleTab === 'completed' && styles.tabButtonActive]}
             activeOpacity={0.8}
             onPress={() => setActiveTab('completed')}
           >
-            <Text style={[styles.tabText, activeTab === 'completed' && styles.tabTextActive]}>
+            <Text style={[styles.tabText, visibleTab === 'completed' && styles.tabTextActive]}>
               Completados ({completedGoals.length})
             </Text>
           </TouchableOpacity>
@@ -258,7 +257,7 @@ export default function ArchivedGoalsScreen() {
         {/* Lista de Tarjetas */}
         <View style={styles.goalsList}>
           {currentGoals.map((item) => {
-            const isCompleted = activeTab === 'completed';
+            const isCompleted = visibleTab === 'completed';
             return (
               <View key={item.id} style={styles.goalCard}>
                 <View style={styles.cardHeaderRow}>

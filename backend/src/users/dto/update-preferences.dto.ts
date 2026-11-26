@@ -59,5 +59,6 @@ export class UpdatePreferencesDto {
   })
   @IsOptional()
   @IsInt()
+  @IsIn([30, 60, 120])
   session_duration_minutes?: number;
 }

@@ -143,7 +143,7 @@ export default function RecommendationScreen() {
               <Text style={styles.highlightSubTag}>RECOMENDACIÓN DE FLOW</Text>
               <Text style={styles.highlightTitle}>Recupera el ritmo sin sobrecargarte</Text>
               <Text style={styles.highlightDesc}>
-                Detectamos una oportunidad para ajustar tu plan de "{goalTitle}".
+                Detectamos una oportunidad para ajustar tu plan de &quot;{goalTitle}&quot;.
               </Text>
             </View>
 
