@@ -10,6 +10,7 @@ import { UpdateGoalDueDateDto } from './dto/update-goal-due-date.dto';
 import { WeeklySummaryQueryDto } from './dto/weekly-summary-query.dto';
 import { ApplyAlternativeDto } from './dto/apply-alternative.dto';
 import { SubmitEvaluationDto } from './dto/submit-evaluation.dto';
+import { CheckEvaluationAnswerDto } from './dto/check-evaluation-answer.dto';
 import { AddReinforcementDto } from './dto/add-reinforcement.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -614,6 +615,21 @@ export class GoalsController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.goalsService.getGoalEvaluation(req.user.userId, id);
+  }
+
+  @Post(':id/evaluation/answer')
+  @ApiOperation({
+    summary: 'Corregir una respuesta de la evaluación (HU-40, HU-41)',
+    description:
+      'Registra la primera respuesta del usuario a una pregunta y devuelve si fue correcta, la opción correcta y la explicación. Las respuestas correctas no se envían antes de responder.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del objetivo', example: 1 })
+  checkEvaluationAnswer(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CheckEvaluationAnswerDto,
+  ) {
+    return this.goalsService.checkEvaluationAnswer(req.user.userId, id, dto);
   }
 
   @Post(':id/evaluation/submit')

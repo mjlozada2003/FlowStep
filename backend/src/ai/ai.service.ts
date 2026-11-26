@@ -132,6 +132,25 @@ export interface PublicQuizQuestionItem {
   options: { key: string; text: string }[];
 }
 
+// Detalle por pregunta: se envia solo despues de responder (HU-40, HU-41).
+export interface EvaluationQuestionResult {
+  question_id: number;
+  question: string;
+  category: string;
+  selected_option: string | null;
+  correct_option: string | null;
+  is_correct: boolean;
+  explanation: string;
+}
+
+export interface EvaluationAnswerFeedback {
+  question_id: number;
+  selected_option: string;
+  correct_option: string | null;
+  is_correct: boolean;
+  explanation: string;
+}
+
 export interface QuizEvaluationResult {
   score: number;
   total_questions: number;
@@ -142,6 +161,7 @@ export interface QuizEvaluationResult {
     suggested_title: string;
     estimated_minutes: number;
   }[];
+  question_results?: EvaluationQuestionResult[];
 }
 
 @Injectable()
@@ -403,16 +423,27 @@ export class AiService {
     completedActivities = 0,
     totalActivities = 0,
     availableHours = 4,
+    delayMessage?: string,
   ): Promise<RecommendationDiagnostic> {
-    const isDelayed = maxDaysLate > 0;
+    // Un objetivo puede ir atrasado sin actividades vencidas (avance por debajo del
+    // plan o fecha limite vencida); delayMessage trae ese motivo desde v_goal_delay_alert.
+    const isDelayed = maxDaysLate > 0 || Boolean(delayMessage);
     const hasDifficulty = Boolean(difficultyNotes || missReason);
+    const alertMessage =
+      maxDaysLate > 0
+        ? `"${overdueActivityTitle || 'Una actividad'}" lleva ${maxDaysLate} ${maxDaysLate === 1 ? 'día' : 'días'} de retraso.`
+        : delayMessage || 'Estás al día con tu planificación.';
 
     const prompt = `
       Actúa como un mentor educativo y pedagógico empático de la aplicación FlowStep.
       El usuario tiene el objetivo: "${goalTitle}"
       Progreso actual: ${progressPercentage}%, actividades completadas: ${completedActivities} de ${totalActivities}.
       Horas disponibles estimadas esta semana: ${availableHours}h.
-      ${isDelayed ? `Actividad con retraso: "${overdueActivityTitle}" con ${maxDaysLate} días de atraso.` : 'El objetivo no presenta retrasos críticos.'}
+      ${maxDaysLate > 0
+        ? `Actividad con retraso: "${overdueActivityTitle}" con ${maxDaysLate} días de atraso.`
+        : delayMessage
+          ? `El objetivo va atrasado respecto a su planificación: ${delayMessage}`
+          : 'El objetivo no presenta retrasos críticos.'}
       ${hasDifficulty ? `Dificultad o causa registrada: "${difficultyNotes || missReason}".` : 'No se registraron dificultades severas.'}
 
       Genera un diagnóstico constructivo que explique claramente la razón de la recomendación y qué busca solucionar.
@@ -442,9 +473,7 @@ export class AiService {
           activity_title: overdueActivityTitle || 'Actividad programada',
           max_days_late: maxDaysLate,
           alert_level: maxDaysLate > 3 ? 'critical' : isDelayed ? 'warning' : 'info',
-          alert_message: isDelayed
-            ? `"${overdueActivityTitle || 'Una actividad'}" lleva ${maxDaysLate} ${maxDaysLate === 1 ? 'día' : 'días'} de retraso.`
-            : 'Estás al día con tu planificación.',
+          alert_message: alertMessage,
           difficulty_context: difficultyNotes || missReason || undefined,
           why_suggested: parsed.why_suggested,
           solution_focus: parsed.solution_focus,
@@ -462,9 +491,13 @@ export class AiService {
     }
 
     // Fallback pedagógico contextual
-    const defaultWhy = isDelayed
-      ? `"${overdueActivityTitle || 'Una actividad'}" no pudo completarse dentro del plazo${hasDifficulty ? ` y registraste: ${difficultyNotes || missReason}` : ''}.`
-      : 'Mantén el buen ritmo actual asegurando sesiones de repaso para consolidar tu avance.';
+    const difficultyText = hasDifficulty ? ` y registraste: ${difficultyNotes || missReason}` : '';
+    const defaultWhy =
+      maxDaysLate > 0
+        ? `"${overdueActivityTitle || 'Una actividad'}" no pudo completarse dentro del plazo${difficultyText}.`
+        : isDelayed
+          ? `Tu avance en "${goalTitle}" va por debajo de lo planificado${difficultyText}. Conviene reorganizar las próximas sesiones.`
+          : 'Mantén el buen ritmo actual asegurando sesiones de repaso para consolidar tu avance.';
 
     return {
       goal_id: goalId,
@@ -472,9 +505,7 @@ export class AiService {
       activity_title: overdueActivityTitle || 'Actividad del plan',
       max_days_late: maxDaysLate,
       alert_level: maxDaysLate > 3 ? 'critical' : isDelayed ? 'warning' : 'info',
-      alert_message: isDelayed
-        ? `"${overdueActivityTitle || 'Una actividad'}" lleva ${maxDaysLate} ${maxDaysLate === 1 ? 'día' : 'días'} de retraso.`
-        : 'Estás al día con tu planificación.',
+      alert_message: alertMessage,
       difficulty_context: difficultyNotes || missReason || undefined,
       why_suggested: defaultWhy,
       solution_focus: isDelayed ? 'Dar más espacio al aprendizaje' : 'Consolidar el progreso alcanzado',
@@ -963,6 +994,7 @@ export class AiService {
   ): QuizEvaluationResult {
     let score = 0;
     const weakTopicsSet = new Set<string>();
+    const question_results: EvaluationQuestionResult[] = [];
 
     for (const q of questions) {
       const userAns = answers.find((a) => a.question_id === q.id);
@@ -976,6 +1008,15 @@ export class AiService {
       } else {
         weakTopicsSet.add(q.category || 'General');
       }
+      question_results.push({
+        question_id: q.id,
+        question: q.question,
+        category: q.category || 'General',
+        selected_option: userChoice || null,
+        correct_option: correctOpt?.key ?? null,
+        is_correct: isCorrect,
+        explanation: q.explanation || '',
+      });
     }
 
     const total = questions.length || answers.length || 1;
@@ -994,6 +1035,7 @@ export class AiService {
       percentage,
       weak_topics,
       reinforcement_recommendations,
+      question_results,
     };
   }
 
