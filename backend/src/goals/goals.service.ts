@@ -23,6 +23,7 @@ import { GoalStatus, PriorityLevel } from './enums/goal.enum';
 import { ScheduleReason } from '../activities/enums/schedule-reason.enum';
 import { ApplyAlternativeDto } from './dto/apply-alternative.dto';
 import { SubmitEvaluationDto } from './dto/submit-evaluation.dto';
+import { CheckEvaluationAnswerDto } from './dto/check-evaluation-answer.dto';
 import { AddReinforcementDto } from './dto/add-reinforcement.dto';
 import { LearningStoreService, ReplanProposalPlan } from '../learning/learning-store.service';
 import {
@@ -33,6 +34,7 @@ import {
   QuizQuestionItem,
   PublicQuizQuestionItem,
   QuizEvaluationResult,
+  EvaluationAnswerFeedback,
 } from '../ai/ai.service';
 
 const DAY_MAP: Record<string, number> = {
@@ -51,7 +53,13 @@ const EVALUATION_TTL_MS = 15 * 60 * 1000;
 export class GoalsService {
   private readonly evaluationQuizzes = new Map<
     string,
-    { questions: QuizQuestionItem[]; expiresAt: number; result?: QuizEvaluationResult }
+    {
+      questions: QuizQuestionItem[];
+      expiresAt: number;
+      result?: QuizEvaluationResult;
+      // Primera respuesta de cada pregunta corregida al momento (HU-41).
+      firstAnswers?: Map<number, string>;
+    }
   >();
 
   constructor(
@@ -938,7 +946,9 @@ export class GoalsService {
     const maxDaysLate = delayInfo ? Number(delayInfo.max_days_late) || 0 : 0;
 
     // Sprint 5: se reutiliza la recomendacion pendiente de la ultima hora para no
-    // generar (y guardar) una nueva en cada visita a la pantalla.
+    // generar (y guardar) una nueva en cada visita a la pantalla, siempre que el
+    // objetivo siga en la misma situacion (retraso, avance y actividades completadas).
+    const stateKey = [delayInfo?.alert_message ?? 'sin-retraso', maxDaysLate, progressPercentage, completedActivities].join('|');
     const store = this.learningStore;
     if (store) {
       const recent = await store.safely(
@@ -946,7 +956,8 @@ export class GoalsService {
         () => store.findRecentRecommendation(userId, ['delay_adjustment', 'difficulty_support', 'personalized'], goalId),
         null,
       );
-      if (recent) return recent.diagnostic;
+      // Solo se reutiliza si el objetivo sigue en la misma situacion.
+      if (recent && recent.details?.state_key === stateKey) return recent.diagnostic;
     }
 
     const diagnostic = await this.aiService.generateRecommendationDiagnostic(
@@ -960,6 +971,7 @@ export class GoalsService {
       completedActivities,
       totalActivities,
       availableHours,
+      this.readableDelayMessage(delayInfo?.alert_message),
     );
 
     // HU-30, HU-31: se guarda la recomendacion con su explicacion para tener historial.
@@ -979,6 +991,7 @@ export class GoalsService {
             solutions: diagnostic.solutions,
             metrics: diagnostic.metrics,
             details: {
+              state_key: stateKey,
               diagnostic: {
                 goal_title: diagnostic.goal_title,
                 activity_title: diagnostic.activity_title,
@@ -1615,7 +1628,11 @@ export class GoalsService {
       submittedIds.add(answer.question_id);
       return {
         question_id: answer.question_id,
-        selected_option: answer.selected_option || answer.selected_option_id || '',
+        selected_option:
+          quiz.firstAnswers?.get(answer.question_id) ||
+          answer.selected_option ||
+          answer.selected_option_id ||
+          '',
       };
     });
 
@@ -1624,7 +1641,63 @@ export class GoalsService {
     return result;
   }
 
-  private evaluationKey(userId: number, goalId: number): string {
+  // HU-40, HU-41: corregir una pregunta al responderla (sin enviar antes las correctas)
+  async checkEvaluationAnswer(
+    userId: number,
+    goalId: number,
+    dto: CheckEvaluationAnswerDto,
+  ): Promise<EvaluationAnswerFeedback> {
+    const goal = await this.findOneByUser(userId, goalId);
+    if (!goal) {
+      throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
+    }
+    const selected = String(dto.selected_option ?? '').trim().toUpperCase();
+
+    const store = this.learningStore;
+    if (store) {
+      const checked = await store.safely(
+        'Corregir respuesta',
+        () => store.checkAnswer(userId, goalId, dto.question_id, selected),
+        null,
+      );
+      if (checked) return checked;
+    }
+
+    const quizKey = this.evaluationKey(userId, goalId);
+    const quiz = this.evaluationQuizzes.get(quizKey);
+    if (!quiz || quiz.expiresAt <= Date.now()) {
+      this.evaluationQuizzes.delete(quizKey);
+      throw new BadRequestException(
+        'La evaluación expiró o no está disponible. Vuelve a cargar las preguntas.',
+      );
+    }
+    const question = quiz.questions.find((q) => q.id === dto.question_id);
+    if (!question) {
+      throw new BadRequestException('Las respuestas no corresponden a esta evaluación.');
+    }
+    // Cuenta la primera respuesta: no se puede ver la correcta y cambiarla.
+    quiz.firstAnswers ??= new Map<number, string>();
+    if (!quiz.result && !quiz.firstAnswers.has(question.id)) {
+      quiz.firstAnswers.set(question.id, selected);
+    }
+    const chosen = quiz.firstAnswers.get(question.id) ?? selected;
+    const correct = question.options.find((o) => o.isCorrect || o.is_correct)?.key ?? null;
+    return {
+      question_id: question.id,
+      selected_option: chosen,
+      correct_option: correct,
+      is_correct: Boolean(correct && chosen === correct),
+      explanation: question.explanation || '',
+    };
+  }
+
+  // "0.00% real frente a 100.00%" -> "0% real frente a 100%" para el recuadro de la app.
+  private readableDelayMessage(message?: string | null): string | undefined {
+    if (!message) return undefined;
+    return message.replace(/(\d+(?:\.\d+)?)%/g, (_m, n: string) => `${Math.round(Number(n))}%`);
+  }
+
+    private evaluationKey(userId: number, goalId: number): string {
     return `${userId}:${goalId}`;
   }
 

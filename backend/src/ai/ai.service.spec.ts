@@ -65,6 +65,26 @@ describe('AiService', () => {
           estimated_minutes: 30,
         },
       ],
+      question_results: [
+        {
+          question_id: 1,
+          question: 'Pregunta 1',
+          category: 'Fundamentos',
+          selected_option: 'B',
+          correct_option: 'A',
+          is_correct: false,
+          explanation: '',
+        },
+        {
+          question_id: 2,
+          question: 'Pregunta 2',
+          category: 'Práctica',
+          selected_option: 'B',
+          correct_option: 'B',
+          is_correct: true,
+          explanation: '',
+        },
+      ],
     });
   });
 });

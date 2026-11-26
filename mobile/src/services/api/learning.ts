@@ -53,6 +53,25 @@ export interface QuizQuestionItem {
   options: QuizQuestionOption[];
 }
 
+/** Corrección de una pregunta: el servidor la devuelve solo después de responder. */
+export interface EvaluationAnswerFeedback {
+  question_id: number;
+  selected_option: string;
+  correct_option: string | null;
+  is_correct: boolean;
+  explanation: string;
+}
+
+export interface EvaluationQuestionResult {
+  question_id: number;
+  question: string;
+  category: string;
+  selected_option: string | null;
+  correct_option: string | null;
+  is_correct: boolean;
+  explanation: string;
+}
+
 export interface QuizEvaluationResult {
   goal_id: number;
   score: number;
@@ -60,6 +79,7 @@ export interface QuizEvaluationResult {
   percentage: number;
   weak_topics: string[];
   reinforcement_recommendations: Array<string | Record<string, unknown>>;
+  question_results?: EvaluationQuestionResult[];
 }
 
 /**
@@ -98,6 +118,22 @@ export async function getGoalEvaluation(
   return apiRequest<QuizQuestionItem[]>(`/goals/${goalId}/evaluation`, {
     method: 'GET',
     token,
+  });
+}
+
+/**
+ * HU-40, HU-41: Corregir una pregunta al responderla. Cuenta la primera respuesta.
+ */
+export async function checkEvaluationAnswer(
+  goalId: number,
+  questionId: number,
+  selectedOption: string,
+  token: string,
+): Promise<EvaluationAnswerFeedback> {
+  return apiRequest<EvaluationAnswerFeedback>(`/goals/${goalId}/evaluation/answer`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ question_id: questionId, selected_option: selectedOption }),
   });
 }
 
