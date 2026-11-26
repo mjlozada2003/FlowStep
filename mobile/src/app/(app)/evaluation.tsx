@@ -20,6 +20,8 @@ import { BrandHeader } from '@/components/ui/BrandHeader';
 import { useAuth } from '@/contexts/auth-context';
 import {
   addReinforcementActivity,
+  checkEvaluationAnswer,
+  EvaluationAnswerFeedback,
   getGoalEvaluation,
   QuizEvaluationResult,
   QuizQuestionItem,
@@ -58,6 +60,9 @@ export default function EvaluationScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
+  // HU-41: corrección de la pregunta actual (la envía el servidor al responder).
+  const [answerFeedback, setAnswerFeedback] = useState<EvaluationAnswerFeedback | null>(null);
+  const [checkingAnswer, setCheckingAnswer] = useState(false);
   const [userAnswers, setUserAnswers] = useState<
     {
       question_id: number;
@@ -175,18 +180,43 @@ export default function EvaluationScreen() {
     ? ((currentIndex + 1) / questions.length) * 100
     : 0;
 
-  const handleSelectOption = (key: string) => {
+  const handleSelectOption = async (key: string) => {
     if (isAnswered || !currentQ) return;
+    const question = currentQ;
     setSelectedOption(key);
     setIsAnswered(true);
     setSubmitError(null);
+    setAnswerFeedback(null);
     setUserAnswers((prev) => [
-      ...prev,
+      ...prev.filter((a) => a.question_id !== question.id),
       {
-        question_id: currentQ.id,
+        question_id: question.id,
         selected_option: key,
       },
     ]);
+
+    // El servidor guarda la primera respuesta y devuelve si fue correcta, cuál era
+    // la correcta y la explicación. Si falla, se muestra el mensaje neutro.
+    if (!token) return;
+    try {
+      setCheckingAnswer(true);
+      const feedback = await checkEvaluationAnswer(goalIdNum, question.id, key, token);
+      if (feedback.question_id !== question.id) return;
+      setAnswerFeedback(feedback);
+      if (feedback.selected_option && feedback.selected_option !== key) {
+        // Ya había respondido esta pregunta: se mantiene su primera respuesta.
+        setSelectedOption(feedback.selected_option);
+        setUserAnswers((prev) =>
+          prev.map((a) =>
+            a.question_id === question.id ? { ...a, selected_option: feedback.selected_option } : a,
+          ),
+        );
+      }
+    } catch {
+      setAnswerFeedback(null);
+    } finally {
+      setCheckingAnswer(false);
+    }
   };
 
   const handleNext = async () => {
@@ -194,6 +224,7 @@ export default function EvaluationScreen() {
       setCurrentIndex((prev) => prev + 1);
       setSelectedOption(null);
       setIsAnswered(false);
+      setAnswerFeedback(null);
     } else {
       // Finalizó el cuestionario, enviar resultados al backend
       try {
@@ -338,6 +369,43 @@ export default function EvaluationScreen() {
                   : `Has completado el cuestionario de "${resourceTitle}". Identificamos temas clave que te recomendamos reforzar.`}
               </Text>
             </View>
+
+            {/* HU-41: En qué se equivocó el usuario */}
+            {evaluationResult.question_results?.some((r) => !r.is_correct) ? (
+              <View style={styles.mistakesCard}>
+                <View style={styles.weakTopicsHeader}>
+                  <Feather name="x-circle" size={18} color="#C53030" />
+                  <Text style={styles.mistakesTitle}>Preguntas a repasar</Text>
+                </View>
+                {evaluationResult.question_results
+                  .filter((r) => !r.is_correct)
+                  .map((r) => {
+                    const options = questions.find((q) => q.id === r.question_id)?.options ?? [];
+                    const optionText = (key: string | null) =>
+                      key ? options.find((o) => o.key === key)?.text ?? '' : '';
+                    return (
+                      <View key={r.question_id} style={styles.mistakeItem}>
+                        <Text style={styles.mistakeQuestion}>{r.question}</Text>
+                        <Text style={styles.mistakeLine}>
+                          Tu respuesta:{' '}
+                          {r.selected_option
+                            ? `${r.selected_option}${optionText(r.selected_option) ? ` · ${optionText(r.selected_option)}` : ''}`
+                            : 'Sin responder'}
+                        </Text>
+                        {r.correct_option ? (
+                          <Text style={styles.mistakeCorrect}>
+                            Correcta: {r.correct_option}
+                            {optionText(r.correct_option) ? ` · ${optionText(r.correct_option)}` : ''}
+                          </Text>
+                        ) : null}
+                        {r.explanation ? (
+                          <Text style={styles.feedbackDesc}>{r.explanation}</Text>
+                        ) : null}
+                      </View>
+                    );
+                  })}
+              </View>
+            ) : null}
 
             {/* HU-41: Detectar conocimientos por mejorar */}
             {evaluationResult.weak_topics && evaluationResult.weak_topics.length > 0 ? (
@@ -746,13 +814,18 @@ export default function EvaluationScreen() {
             <View style={styles.optionsList}>
               {currentQ.options.map((opt) => {
                 const isSelected = selectedOption === opt.key;
+                const corrected = isAnswered && answerFeedback?.question_id === currentQ.id;
+                const isCorrectOption = corrected && answerFeedback?.correct_option === opt.key;
+                const isWrongSelection = corrected && isSelected && !isCorrectOption;
 
                 return (
                   <TouchableOpacity
                     key={opt.key}
                     style={[
                       styles.optionCard,
-                      isAnswered && isSelected && styles.cardSelected,
+                      isAnswered && isSelected && !corrected && styles.cardSelected,
+                      isCorrectOption && styles.cardCorrect,
+                      isWrongSelection && styles.cardIncorrect,
                     ]}
                     activeOpacity={0.8}
                     onPress={() => handleSelectOption(opt.key)}
@@ -760,31 +833,69 @@ export default function EvaluationScreen() {
                     <View
                       style={[
                         styles.optionBadge,
-                        isAnswered && isSelected && styles.badgeSelected,
+                        isAnswered && isSelected && !corrected && styles.badgeSelected,
+                        isCorrectOption && styles.badgeCorrect,
+                        isWrongSelection && styles.badgeIncorrect,
                       ]}
                     >
                       <Text style={styles.badgeKey}>{opt.key}</Text>
                     </View>
                     <Text style={styles.optionText}>{opt.text}</Text>
-                    {isAnswered && isSelected && (
+                    {isCorrectOption ? (
+                      <Feather name="check" size={18} color="#2F855A" style={{ marginLeft: 'auto' }} />
+                    ) : isWrongSelection ? (
+                      <Feather name="x" size={18} color="#C53030" style={{ marginLeft: 'auto' }} />
+                    ) : isAnswered && isSelected && !corrected ? (
                       <Feather name="check" size={18} color="#174A62" style={{ marginLeft: 'auto' }} />
-                    )}
+                    ) : null}
                   </TouchableOpacity>
                 );
               })}
             </View>
 
             {/* Caja de explicación / retroalimentación inmediata */}
-            {isAnswered && (
+            {isAnswered && answerFeedback?.question_id === currentQ.id ? (
+              <View
+                style={[
+                  styles.feedbackBox,
+                  answerFeedback.is_correct ? styles.feedbackSuccess : styles.feedbackWarn,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.feedbackTitle,
+                    answerFeedback.is_correct ? styles.textSuccess : styles.textWarn,
+                  ]}
+                >
+                  {answerFeedback.is_correct ? '¡Correcto!' : 'Casi. Repasemos este punto.'}
+                </Text>
+                {!answerFeedback.is_correct && answerFeedback.correct_option ? (
+                  <Text style={styles.feedbackDesc}>
+                    La respuesta correcta es la {answerFeedback.correct_option}
+                    {(() => {
+                      const text = currentQ.options.find(
+                        (o) => o.key === answerFeedback.correct_option,
+                      )?.text;
+                      return text ? `: ${text}` : '.';
+                    })()}
+                  </Text>
+                ) : null}
+                {answerFeedback.explanation ? (
+                  <Text style={styles.feedbackDesc}>{answerFeedback.explanation}</Text>
+                ) : null}
+              </View>
+            ) : isAnswered ? (
               <View style={[styles.feedbackBox, styles.feedbackNeutral]}>
                 <Text style={[styles.feedbackTitle, styles.feedbackNeutralTitle]}>
-                  Respuesta registrada
+                  {checkingAnswer ? 'Revisando tu respuesta...' : 'Respuesta registrada'}
                 </Text>
-                <Text style={styles.feedbackDesc}>
-                  El resultado se calculará al finalizar la evaluación.
-                </Text>
+                {!checkingAnswer ? (
+                  <Text style={styles.feedbackDesc}>
+                    El resultado se calculará al finalizar la evaluación.
+                  </Text>
+                ) : null}
               </View>
-            )}
+            ) : null}
 
             {submitError ? (
               <>
@@ -799,6 +910,7 @@ export default function EvaluationScreen() {
                     setCurrentIndex(0);
                     setSelectedOption(null);
                     setIsAnswered(false);
+                    setAnswerFeedback(null);
                     setLoading(true);
                     setQuizRequestVersion((version) => version + 1);
                   }}
@@ -913,6 +1025,68 @@ const styles = StyleSheet.create({
   },
   badgeSelected: {
     backgroundColor: '#D8ECF8',
+  },
+  cardCorrect: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#34D399',
+  },
+  cardIncorrect: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#F87171',
+  },
+  badgeCorrect: {
+    backgroundColor: '#D1FAE5',
+  },
+  badgeIncorrect: {
+    backgroundColor: '#FEE2E2',
+  },
+  feedbackSuccess: {
+    backgroundColor: '#E6FFFA',
+    borderColor: '#B2F5EA',
+  },
+  feedbackWarn: {
+    backgroundColor: '#FDF2F8',
+    borderColor: '#FCE7F3',
+  },
+  textSuccess: {
+    color: '#234E52',
+  },
+  textWarn: {
+    color: '#9B2C2C',
+  },
+  mistakesCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  mistakesTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#9B2C2C',
+  },
+  mistakeItem: {
+    gap: 4,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  mistakeQuestion: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F2C40',
+  },
+  mistakeLine: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#C53030',
+  },
+  mistakeCorrect: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2F855A',
   },
   badgeKey: {
     fontSize: 12,
