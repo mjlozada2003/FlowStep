@@ -14,11 +14,11 @@ export class GoalQueryDto {
 
   @ApiPropertyOptional({
     description: 'Criterio de ordenamiento',
-    enum: ['priority', 'due_date', 'created_at'],
+    enum: ['priority', 'due_date', 'progress', 'created_at'],
     example: 'priority',
   })
   @IsOptional()
   @IsString()
-  @IsIn(['priority', 'due_date', 'created_at'])
+  @IsIn(['priority', 'due_date', 'progress', 'created_at'])
   sortBy?: string;
 }

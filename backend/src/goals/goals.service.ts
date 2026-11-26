@@ -559,6 +559,8 @@ export class GoalsService {
 
     if (sortBy === 'due_date') {
       sql += ' ORDER BY due_date ASC NULLS LAST';
+    } else if (sortBy === 'progress') {
+      sql += ' ORDER BY progress_percentage DESC NULLS LAST';
     } else if (sortBy === 'created_at') {
       sql += ' ORDER BY created_at DESC';
     } else {
