@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import type {
+  EvaluationAnswerFeedback,
   GoalKnowledgeResponse,
   LearningResourceItem,
   QuizEvaluationResult,
@@ -193,28 +194,41 @@ export class LearningStoreService {
       badge_text: details.badge_text ?? row.badge_text,
       icon_name: (details.icon_name ?? row.icon_name) as LearningResourceItem['icon_name'],
       ...(url ? { url } : {}),
+      // Recursos sin detalle (semillas o creados a mano): el texto guardado en
+      // "content" se usa como resumen y lectura para que la app no quede vacia.
+      ...(this.contentFallback(details, row.content)),
     };
   }
 
+  private contentFallback(details: any, content: unknown): Partial<LearningResourceItem> {
+    const text = typeof content === 'string' ? content.trim() : '';
+    if (!text) return {};
+    const extra: Partial<LearningResourceItem> = {};
+    if (!details.summary) {
+      const firstSentences = text.match(/^(.+?[.!?])(\s+.+?[.!?])?(\s|$)/s)?.[0]?.trim() ?? text;
+      extra.summary = firstSentences.length > 280 ? `${firstSentences.slice(0, 277).trimEnd()}...` : firstSentences;
+    }
+    if (!details.reading_content) extra.reading_content = text;
+    return extra;
+  }
+
+  /**
+   * Lista propia del objetivo (GOAL_RESOURCE), generada por la IA con resumen,
+   * puntos clave y lectura. Los recursos que solo llegan por temas o por
+   * actividades no se mezclan aqui: se ven en cada actividad.
+   */
   async loadGoalResources(goalId: number): Promise<LearningResourceItem[]> {
     const rows = await this.run(
-      `SELECT * FROM v_goal_learning_resources WHERE goal_id = $1
-       ORDER BY goal_sort_order NULLS LAST, is_essential DESC, resource_id`,
+      `SELECT * FROM v_goal_learning_resources WHERE goal_id = $1 AND goal_sort_order IS NOT NULL
+       ORDER BY goal_sort_order, resource_id`,
       [goalId],
     );
     return rows.map((r) => this.mapResource(r));
   }
 
-  /** Si el objetivo ya tiene su lista propia de recursos (GOAL_RESOURCE) o recursos por sus temas. */
+  /** Si el objetivo ya tiene su lista propia de recursos (GOAL_RESOURCE). */
   async hasGoalResources(goalId: number): Promise<boolean> {
-    const rows = await this.run(
-      `SELECT 1 FROM "GOAL_RESOURCE" WHERE goal_id = $1
-       UNION ALL
-       SELECT 1 FROM "GOAL_TOPIC" gt JOIN "LEARNING_RESOURCE" r ON r.topic_id = gt.topic_id
-        WHERE gt.goal_id = $1 AND r.deleted_at IS NULL
-       LIMIT 1`,
-      [goalId],
-    );
+    const rows = await this.run('SELECT 1 FROM "GOAL_RESOURCE" WHERE goal_id = $1 LIMIT 1', [goalId]);
     return rows.length > 0;
   }
 
@@ -382,20 +396,10 @@ export class LearningStoreService {
     return this.loadQuestions(assessmentId);
   }
 
-  /**
-   * Califica en el servidor contra el cuestionario guardado. Devuelve null si
-   * las preguntas no pertenecen a un cuestionario guardado de este objetivo
-   * (por ejemplo, un cuestionario generado antes de esta version).
-   */
-  async gradeSubmission(
-    userId: number,
-    goalId: number,
-    answers: { question_id: number; selected_option?: string; selected_option_id?: string }[],
-  ): Promise<(QuizEvaluationResult & { attempt_id: number }) | null> {
-    const ids = [...new Set((answers ?? []).map((a) => Number(a.question_id)).filter(Number.isInteger))];
+  /** Cuestionario guardado de este objetivo al que pertenecen todas las preguntas, o null. */
+  private async assessmentOf(goalId: number, questionIds: number[]): Promise<number | null> {
+    const ids = [...new Set(questionIds.map(Number).filter(Number.isInteger))];
     if (!ids.length) return null;
-
-    // Todas las preguntas deben existir y ser de un mismo cuestionario de este objetivo.
     const matched = await this.run(
       `SELECT q.question_id, q.assessment_id FROM "ASSESSMENT_QUESTION" q
          JOIN "ASSESSMENT" a ON a.assessment_id = q.assessment_id
@@ -404,22 +408,118 @@ export class LearningStoreService {
     );
     const assessments = new Set(matched.map((m) => Number(m.assessment_id)));
     if (matched.length !== ids.length || assessments.size !== 1) return null;
-    const assessmentId = [...assessments][0];
+    return [...assessments][0];
+  }
 
-    // Un segundo envio del mismo cuestionario devuelve el resultado ya guardado.
-    const [previous] = await this.run(
+  /**
+   * Intento sin enviar del usuario para el cuestionario (lo crea si no existe).
+   * Se llama dentro de una transaccion con el candado del par cuestionario/usuario.
+   */
+  private async openAttempt(m: EntityManager, assessmentId: number, userId: number): Promise<number> {
+    const [open] = await m.query(
+      `SELECT attempt_id FROM "ASSESSMENT_ATTEMPT"
+        WHERE assessment_id = $1 AND user_id = $2 AND submitted_at IS NULL
+        ORDER BY attempt_id DESC LIMIT 1`,
+      [assessmentId, userId],
+    );
+    if (open) return Number(open.attempt_id);
+    const [attempt] = await m.query(
+      `INSERT INTO "ASSESSMENT_ATTEMPT" (assessment_id, user_id) VALUES ($1, $2) RETURNING attempt_id`,
+      [assessmentId, userId],
+    );
+    return Number(attempt.attempt_id);
+  }
+
+  /** Candado por cuestionario y usuario: evita intentos duplicados con peticiones simultaneas. */
+  private async lockAttempt(m: EntityManager, assessmentId: number, userId: number): Promise<void> {
+    await m.query('SELECT pg_advisory_xact_lock($1::int, $2::int)', [assessmentId, userId]);
+  }
+
+  private async submittedAttempt(m: EntityManager, assessmentId: number, userId: number): Promise<number | null> {
+    const [previous] = await m.query(
       `SELECT attempt_id FROM "ASSESSMENT_ATTEMPT"
         WHERE assessment_id = $1 AND user_id = $2 AND submitted_at IS NOT NULL
         ORDER BY submitted_at DESC, attempt_id DESC LIMIT 1`,
       [assessmentId, userId],
     );
-    if (previous) return this.attemptResult(Number(previous.attempt_id));
+    return previous ? Number(previous.attempt_id) : null;
+  }
+
+  /**
+   * HU-40, HU-41: corrige una pregunta al responderla. Se guarda la PRIMERA
+   * respuesta en el intento abierto, asi no se puede ver la correcta y luego
+   * cambiarla. Devuelve null si la pregunta no es de un cuestionario guardado.
+   */
+  async checkAnswer(
+    userId: number,
+    goalId: number,
+    questionId: number,
+    selectedOption: string,
+  ): Promise<EvaluationAnswerFeedback | null> {
+    const assessmentId = await this.assessmentOf(goalId, [questionId]);
+    if (!assessmentId) return null;
+    const key = String(selectedOption ?? '').trim().toUpperCase();
+
+    return this.dataSource.transaction(async (m) => {
+      await this.lockAttempt(m, assessmentId, userId);
+      const submitted = await this.submittedAttempt(m, assessmentId, userId);
+      const attemptId = submitted ?? (await this.openAttempt(m, assessmentId, userId));
+      if (!submitted) {
+        await m.query(
+          `INSERT INTO "ATTEMPT_ANSWER" (attempt_id, question_id, option_id)
+           SELECT $1, o.question_id, o.option_id FROM "QUESTION_OPTION" o
+            WHERE o.question_id = $2 AND o.option_key = $3
+           ON CONFLICT (attempt_id, question_id) DO NOTHING`,
+          [attemptId, questionId, key],
+        );
+      }
+      const [row] = await m.query(
+        `SELECT q.explanation,
+                (SELECT option_key FROM "QUESTION_OPTION" WHERE question_id = q.question_id AND is_correct LIMIT 1) AS correct_option,
+                chosen.option_key AS chosen_option
+           FROM "ASSESSMENT_QUESTION" q
+           LEFT JOIN "ATTEMPT_ANSWER" aa ON aa.question_id = q.question_id AND aa.attempt_id = $2
+           LEFT JOIN "QUESTION_OPTION" chosen ON chosen.option_id = aa.option_id
+          WHERE q.question_id = $1`,
+        [questionId, attemptId],
+      );
+      // Si ya habia respondido, se mantiene su primera respuesta.
+      const selected = row?.chosen_option ?? key;
+      const correct = row?.correct_option ?? null;
+      return {
+        question_id: questionId,
+        selected_option: selected,
+        correct_option: correct,
+        is_correct: Boolean(correct && selected === correct),
+        explanation: row?.explanation ?? '',
+      };
+    });
+  }
+
+  /**
+   * Califica en el servidor contra el cuestionario guardado. Devuelve null si
+   * las preguntas no pertenecen a un cuestionario guardado de este objetivo
+   * (por ejemplo, un cuestionario generado antes de esta version).
+   * Las respuestas ya corregidas una por una se mantienen (cuenta la primera).
+   */
+  async gradeSubmission(
+    userId: number,
+    goalId: number,
+    answers: { question_id: number; selected_option?: string; selected_option_id?: string }[],
+  ): Promise<(QuizEvaluationResult & { attempt_id: number }) | null> {
+    const assessmentId = await this.assessmentOf(
+      goalId,
+      (answers ?? []).map((a) => Number(a.question_id)),
+    );
+    if (!assessmentId) return null;
 
     const attemptId = await this.dataSource.transaction(async (m) => {
-      const [attempt] = await m.query(
-        `INSERT INTO "ASSESSMENT_ATTEMPT" (assessment_id, user_id) VALUES ($1, $2) RETURNING attempt_id`,
-        [assessmentId, userId],
-      );
+      await this.lockAttempt(m, assessmentId, userId);
+      // Un segundo envio del mismo cuestionario devuelve el resultado ya guardado.
+      const previous = await this.submittedAttempt(m, assessmentId, userId);
+      if (previous) return previous;
+
+      const attempt = await this.openAttempt(m, assessmentId, userId);
       for (const answer of answers) {
         const key = String(answer.selected_option || answer.selected_option_id || '').trim().toUpperCase();
         if (!key) continue;
@@ -430,14 +530,14 @@ export class LearningStoreService {
              JOIN "ASSESSMENT_QUESTION" q ON q.question_id = o.question_id AND q.assessment_id = $4
             WHERE o.question_id = $2 AND o.option_key = $3
            ON CONFLICT (attempt_id, question_id) DO NOTHING`,
-          [attempt.attempt_id, Number(answer.question_id), key, assessmentId],
+          [attempt, Number(answer.question_id), key, assessmentId],
         );
       }
       // Al enviar, un trigger actualiza USER_TOPIC con el dominio de cada tema.
       await m.query('UPDATE "ASSESSMENT_ATTEMPT" SET submitted_at = CURRENT_TIMESTAMP WHERE attempt_id = $1', [
-        attempt.attempt_id,
+        attempt,
       ]);
-      return Number(attempt.attempt_id);
+      return attempt;
     });
 
     return this.attemptResult(attemptId);
@@ -448,6 +548,21 @@ export class LearningStoreService {
     const weak = await this.run(
       `SELECT topic_name FROM v_attempt_topic_result
         WHERE attempt_id = $1 AND is_weak ORDER BY percentage, topic_name`,
+      [attemptId],
+    );
+    // Detalle por pregunta (en que se equivoco el usuario). Solo despues de enviar.
+    const details = await this.run(
+      `SELECT q.question_id, q.question_text, COALESCE(q.category, tp.name, 'General') AS category,
+              q.explanation, chosen.option_key AS selected_option,
+              (SELECT option_key FROM "QUESTION_OPTION" WHERE question_id = q.question_id AND is_correct LIMIT 1) AS correct_option,
+              COALESCE(chosen.is_correct, FALSE) AS is_correct
+         FROM "ASSESSMENT_ATTEMPT" t
+         JOIN "ASSESSMENT_QUESTION" q ON q.assessment_id = t.assessment_id
+         LEFT JOIN "TOPIC" tp ON tp.topic_id = q.topic_id
+         LEFT JOIN "ATTEMPT_ANSWER" aa ON aa.attempt_id = t.attempt_id AND aa.question_id = q.question_id
+         LEFT JOIN "QUESTION_OPTION" chosen ON chosen.option_id = aa.option_id
+        WHERE t.attempt_id = $1
+        ORDER BY q.sort_order, q.question_id`,
       [attemptId],
     );
     const weakTopics: string[] = weak.map((w) => w.topic_name);
@@ -461,6 +576,15 @@ export class LearningStoreService {
         topic,
         suggested_title: `Refuerzo guiado: ${topic}`,
         estimated_minutes: 30,
+      })),
+      question_results: details.map((d) => ({
+        question_id: Number(d.question_id),
+        question: d.question_text,
+        category: d.category,
+        selected_option: d.selected_option ?? null,
+        correct_option: d.correct_option ?? null,
+        is_correct: Boolean(d.is_correct),
+        explanation: d.explanation ?? '',
       })),
     };
   }
