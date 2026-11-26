@@ -26,43 +26,6 @@ import {
   submitGoalEvaluation,
 } from '@/services/api/learning';
 
-// Preguntas de respaldo si la API aún no ha respondido o está sin conexión
-const fallbackQuestions: QuizQuestionItem[] = [
-  {
-    id: 1,
-    category: 'REACT BÁSICO',
-    question: '¿Cuál es el objetivo principal de un componente?',
-    options: [
-      { key: 'A', text: 'Reutilizar una parte de la interfaz', is_correct: true },
-      { key: 'B', text: 'Guardar todos los datos', is_correct: false },
-      { key: 'C', text: 'Conectar directamente la base de datos', is_correct: false },
-    ],
-    explanation: 'Los componentes permiten modularizar y reutilizar estructura y comportamiento.',
-  },
-  {
-    id: 2,
-    category: 'REACT BÁSICO',
-    question: '¿Qué se utiliza para enviar datos de un componente padre a un hijo?',
-    options: [
-      { key: 'A', text: 'Hooks', is_correct: false },
-      { key: 'B', text: 'Props', is_correct: true },
-      { key: 'C', text: 'CSS', is_correct: false },
-    ],
-    explanation: 'Las props permiten transferir datos unidireccionalmente hacia componentes secundarios.',
-  },
-  {
-    id: 3,
-    category: 'REACT BÁSICO',
-    question: '¿Qué dato puede cambiar internamente en un componente con el tiempo?',
-    options: [
-      { key: 'A', text: 'El estado', is_correct: true },
-      { key: 'B', text: 'El nombre del archivo', is_correct: false },
-      { key: 'C', text: 'La etiqueta HTML', is_correct: false },
-    ],
-    explanation: 'El estado (state) maneja los valores reactivos internos del componente.',
-  },
-];
-
 export default function EvaluationScreen() {
   const { token } = useAuth();
   const params = useLocalSearchParams<{
@@ -88,18 +51,17 @@ export default function EvaluationScreen() {
   const [showResourceIntro, setShowResourceIntro] = useState<boolean>(hasResourceInfo);
   const [loading, setLoading] = useState<boolean>(true);
   const [submitting, setSubmitting] = useState<boolean>(false);
-  const [questions, setQuestions] = useState<QuizQuestionItem[]>(fallbackQuestions);
+  const [questions, setQuestions] = useState<QuizQuestionItem[]>([]);
+  const [quizError, setQuizError] = useState<string | null>(null);
+  const [quizRequestVersion, setQuizRequestVersion] = useState(0);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
-  const [score, setScore] = useState(0);
   const [userAnswers, setUserAnswers] = useState<
     {
       question_id: number;
       selected_option: string;
-      selected_option_id: string;
-      is_correct: boolean;
-      category: string;
     }[]
   >([]);
   const [evaluationResult, setEvaluationResult] = useState<QuizEvaluationResult | null>(null);
@@ -176,17 +138,27 @@ export default function EvaluationScreen() {
     let isMounted = true;
     async function fetchQuiz() {
       if (!token) {
+        setQuizError('Inicia sesión para cargar la evaluación.');
         setLoading(false);
         return;
       }
       try {
         setLoading(true);
+        setQuizError(null);
         const res = await getGoalEvaluation(goalIdNum, token);
         if (isMounted && res && res.length > 0) {
           setQuestions(res);
+        } else if (isMounted) {
+          setQuizError('No se generaron preguntas. Inténtalo de nuevo.');
         }
       } catch (err) {
-        console.warn('Error al cargar preguntas:', err);
+        if (isMounted) {
+          setQuizError(
+            err instanceof Error
+              ? err.message
+              : 'No se pudo cargar la evaluación. Inténtalo de nuevo.',
+          );
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -196,26 +168,23 @@ export default function EvaluationScreen() {
     return () => {
       isMounted = false;
     };
-  }, [goalIdNum, token]);
+  }, [goalIdNum, token, quizRequestVersion]);
 
-  const currentQ = questions[currentIndex] || questions[0];
-  const progressPercent = ((currentIndex + 1) / questions.length) * 100;
+  const currentQ = questions[currentIndex];
+  const progressPercent = questions.length
+    ? ((currentIndex + 1) / questions.length) * 100
+    : 0;
 
-  const handleSelectOption = (key: string, isCorrect: boolean) => {
-    if (isAnswered) return;
+  const handleSelectOption = (key: string) => {
+    if (isAnswered || !currentQ) return;
     setSelectedOption(key);
     setIsAnswered(true);
-    if (isCorrect) {
-      setScore((prev) => prev + 1);
-    }
+    setSubmitError(null);
     setUserAnswers((prev) => [
       ...prev,
       {
         question_id: currentQ.id,
         selected_option: key,
-        selected_option_id: key,
-        is_correct: isCorrect,
-        category: currentQ.category,
       },
     ]);
   };
@@ -229,31 +198,18 @@ export default function EvaluationScreen() {
       // Finalizó el cuestionario, enviar resultados al backend
       try {
         setSubmitting(true);
-        let result: QuizEvaluationResult | null = null;
-        if (token) {
-          try {
-            result = await submitGoalEvaluation(goalIdNum, userAnswers, token);
-          } catch (err) {
-            console.warn('Error al enviar respuestas:', err);
-          }
+        setSubmitError(null);
+        if (!token) {
+          throw new Error('Inicia sesión para enviar tus respuestas.');
         }
-        if (!result) {
-          // Fallback de cálculo local para garantizar que siempre se muestren los resultados
-          const correctCount = userAnswers.filter((a) => a.is_correct).length;
-          const weakTopics = Array.from(
-            new Set(userAnswers.filter((a) => !a.is_correct).map((a) => a.category).filter(Boolean)),
-          );
-          const totalQ = userAnswers.length || questions.length || 3;
-          result = {
-            goal_id: goalIdNum,
-            score: correctCount,
-            total_questions: totalQ,
-            percentage: Math.round((correctCount / totalQ) * 100),
-            weak_topics: weakTopics.length > 0 ? weakTopics : (correctCount < totalQ ? [resourceCategory] : []),
-            reinforcement_recommendations: (weakTopics.length > 0 ? weakTopics : (correctCount < totalQ ? [resourceCategory] : [])).map((t) => `Refuerzo: ${t}`),
-          };
-        }
+        const result = await submitGoalEvaluation(goalIdNum, userAnswers, token);
         setEvaluationResult(result);
+      } catch (err) {
+        setSubmitError(
+          err instanceof Error
+            ? err.message
+            : 'No se pudieron enviar las respuestas. Inténtalo de nuevo.',
+        );
       } finally {
         setSubmitting(false);
       }
@@ -342,8 +298,6 @@ export default function EvaluationScreen() {
       return () => sub.remove();
     }, [handleBack]),
   );
-
-  const selectedObj = currentQ?.options?.find((o) => o.key === selectedOption);
 
   return (
     <Screen style={styles.screen}>
@@ -758,6 +712,22 @@ export default function EvaluationScreen() {
             <ActivityIndicator size="large" color="#174A62" />
             <Text style={styles.loadingText}>Generando evaluación diagnóstica...</Text>
           </View>
+        ) : quizError || !currentQ ? (
+          <View style={styles.quizErrorContainer}>
+            <Feather name="alert-circle" size={22} color="#C53030" />
+            <Text style={styles.quizErrorText}>
+              {quizError || 'No hay preguntas disponibles para esta evaluación.'}
+            </Text>
+            <TouchableOpacity
+              style={styles.retryQuizButton}
+              onPress={() => {
+                setLoading(true);
+                setQuizRequestVersion((version) => version + 1);
+              }}
+            >
+              <Text style={styles.retryQuizButtonText}>Reintentar</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <>
             {/* Barra de progreso */}
@@ -775,31 +745,28 @@ export default function EvaluationScreen() {
             <View style={styles.optionsList}>
               {currentQ.options.map((opt) => {
                 const isSelected = selectedOption === opt.key;
-                const isCorrectOption = Boolean(opt.is_correct ?? opt.isCorrect);
 
                 return (
                   <TouchableOpacity
                     key={opt.key}
                     style={[
                       styles.optionCard,
-                      isAnswered && isCorrectOption && styles.cardCorrect,
-                      isAnswered && isSelected && !isCorrectOption && styles.cardIncorrect,
+                      isAnswered && isSelected && styles.cardSelected,
                     ]}
                     activeOpacity={0.8}
-                    onPress={() => handleSelectOption(opt.key, isCorrectOption)}
+                    onPress={() => handleSelectOption(opt.key)}
                   >
                     <View
                       style={[
                         styles.optionBadge,
-                        isAnswered && isCorrectOption && styles.badgeCorrect,
-                        isAnswered && isSelected && !isCorrectOption && styles.badgeIncorrect,
+                        isAnswered && isSelected && styles.badgeSelected,
                       ]}
                     >
                       <Text style={styles.badgeKey}>{opt.key}</Text>
                     </View>
                     <Text style={styles.optionText}>{opt.text}</Text>
-                    {isAnswered && isCorrectOption && (
-                      <Feather name="check" size={18} color="#2F855A" style={{ marginLeft: 'auto' }} />
+                    {isAnswered && isSelected && (
+                      <Feather name="check" size={18} color="#174A62" style={{ marginLeft: 'auto' }} />
                     )}
                   </TouchableOpacity>
                 );
@@ -808,29 +775,37 @@ export default function EvaluationScreen() {
 
             {/* Caja de explicación / retroalimentación inmediata */}
             {isAnswered && (
-              <View
-                style={[
-                  styles.feedbackBox,
-                  (selectedObj?.is_correct ?? selectedObj?.isCorrect)
-                    ? styles.feedbackSuccess
-                    : styles.feedbackWarn,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.feedbackTitle,
-                    (selectedObj?.is_correct ?? selectedObj?.isCorrect)
-                      ? styles.textSuccess
-                      : styles.textWarn,
-                  ]}
-                >
-                  {(selectedObj?.is_correct ?? selectedObj?.isCorrect)
-                    ? '¡Correcto!'
-                    : 'Casi. Repasemos este punto.'}
+              <View style={[styles.feedbackBox, styles.feedbackNeutral]}>
+                <Text style={[styles.feedbackTitle, styles.feedbackNeutralTitle]}>
+                  Respuesta registrada
                 </Text>
-                <Text style={styles.feedbackDesc}>{currentQ.explanation}</Text>
+                <Text style={styles.feedbackDesc}>
+                  El resultado se calculará al finalizar la evaluación.
+                </Text>
               </View>
             )}
+
+            {submitError ? (
+              <>
+                <View style={styles.submitErrorBox}>
+                  <Text style={styles.submitErrorText}>{submitError}</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.restartQuizButton}
+                  onPress={() => {
+                    setSubmitError(null);
+                    setUserAnswers([]);
+                    setCurrentIndex(0);
+                    setSelectedOption(null);
+                    setIsAnswered(false);
+                    setLoading(true);
+                    setQuizRequestVersion((version) => version + 1);
+                  }}
+                >
+                  <Text style={styles.restartQuizButtonText}>Reiniciar evaluación</Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
 
             {/* Botón Siguiente pregunta */}
             {isAnswered && (
@@ -845,7 +820,11 @@ export default function EvaluationScreen() {
                 ) : (
                   <>
                     <Text style={styles.nextButtonText}>
-                      {currentIndex < questions.length - 1 ? 'Siguiente pregunta' : 'Ver resultados'}
+                      {currentIndex < questions.length - 1
+                        ? 'Siguiente pregunta'
+                        : submitError
+                          ? 'Reintentar envío'
+                          : 'Ver resultados'}
                     </Text>
                     <Feather name="arrow-right" size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
                   </>
@@ -919,13 +898,9 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     gap: 14,
   },
-  cardCorrect: {
-    backgroundColor: '#F0FDF4',
-    borderColor: '#34D399',
-  },
-  cardIncorrect: {
-    backgroundColor: '#FEF2F2',
-    borderColor: '#F87171',
+  cardSelected: {
+    backgroundColor: '#EBF5FB',
+    borderColor: '#63B3ED',
   },
   optionBadge: {
     width: 32,
@@ -935,11 +910,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  badgeCorrect: {
-    backgroundColor: '#D1FAE5',
-  },
-  badgeIncorrect: {
-    backgroundColor: '#FEE2E2',
+  badgeSelected: {
+    backgroundColor: '#D8ECF8',
   },
   badgeKey: {
     fontSize: 12,
@@ -958,23 +930,16 @@ const styles = StyleSheet.create({
     gap: 4,
     borderWidth: 1,
   },
-  feedbackSuccess: {
-    backgroundColor: '#E6FFFA',
-    borderColor: '#B2F5EA',
-  },
-  feedbackWarn: {
-    backgroundColor: '#FDF2F8',
-    borderColor: '#FCE7F3',
+  feedbackNeutral: {
+    backgroundColor: '#EBF5FB',
+    borderColor: '#BEE3F8',
   },
   feedbackTitle: {
     fontSize: 14,
     fontWeight: '800',
   },
-  textSuccess: {
-    color: '#234E52',
-  },
-  textWarn: {
-    color: '#9B2C2C',
+  feedbackNeutralTitle: {
+    color: '#174A62',
   },
   feedbackDesc: {
     fontSize: 12,
@@ -1009,6 +974,50 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#627D98',
     fontWeight: '600',
+  },
+  quizErrorContainer: {
+    paddingVertical: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+  },
+  quizErrorText: {
+    fontSize: 14,
+    color: '#C53030',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  retryQuizButton: {
+    backgroundColor: '#174A62',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  retryQuizButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  submitErrorBox: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FED7D7',
+    backgroundColor: '#FFF5F5',
+    padding: 12,
+  },
+  submitErrorText: {
+    color: '#C53030',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  restartQuizButton: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  restartQuizButtonText: {
+    color: '#174A62',
+    fontSize: 13,
+    fontWeight: '700',
   },
   resourceIntroContainer: {
     gap: 16,

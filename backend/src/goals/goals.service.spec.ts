@@ -9,7 +9,13 @@ import { AvailabilityService } from '../availability/availability.service';
 import { AiService } from '../ai/ai.service';
 import { PriorityLevel } from './enums/goal.enum';
 import { DayOfWeek } from '../availability/enums/day-of-week.enum';
-import { NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { DataSource } from 'typeorm';
 
 describe('GoalsService', () => {
   let service: GoalsService;
@@ -52,6 +58,23 @@ describe('GoalsService', () => {
     getPreferences: jest.fn(),
   };
 
+  const mockEntityManager = {
+    getRepository: jest.fn(),
+  };
+
+  const mockQueryRunner = {
+    connect: jest.fn(),
+    startTransaction: jest.fn(),
+    commitTransaction: jest.fn(),
+    rollbackTransaction: jest.fn(),
+    release: jest.fn(),
+    manager: mockEntityManager,
+  };
+
+  const mockDataSource = {
+    createQueryRunner: jest.fn(() => mockQueryRunner),
+  };
+
   const mockAiService = {
     generateInitialPlan: jest.fn(),
     generateRecommendationDiagnostic: jest.fn(),
@@ -63,9 +86,27 @@ describe('GoalsService', () => {
   };
 
   beforeEach(async () => {
+    mockQueryRunner.connect.mockReset();
+    mockQueryRunner.startTransaction.mockReset();
+    mockQueryRunner.commitTransaction.mockReset();
+    mockQueryRunner.rollbackTransaction.mockReset();
+    mockQueryRunner.release.mockReset();
+    mockDataSource.createQueryRunner.mockClear();
+    mockEntityManager.getRepository.mockImplementation((entity) => {
+      if (entity === Goal) return mockGoalRepository;
+      if (entity === Stage) return mockStageRepository;
+      if (entity === Activity) return mockActivityRepository;
+      if (entity === ActivitySchedule) return mockScheduleRepository;
+      throw new Error('Unexpected entity repository');
+    });
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         GoalsService,
+        {
+          provide: DataSource,
+          useValue: mockDataSource,
+        },
         {
           provide: getRepositoryToken(Goal),
           useValue: mockGoalRepository,
@@ -167,7 +208,159 @@ describe('GoalsService', () => {
         userAvailabilities,
         30,
       );
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalledTimes(1);
+      expect(mockQueryRunner.rollbackTransaction).not.toHaveBeenCalled();
       expect(result).toBeDefined();
+    });
+
+    it('should roll back the goal when plan generation fails', async () => {
+      const savedGoal = {
+        goal_id: 1,
+        user_id: 1,
+        title: 'Meta con IA',
+        user_description: 'Descripción',
+        start_date: new Date('2026-11-01'),
+      };
+      mockGoalRepository.create.mockReturnValue(savedGoal);
+      mockGoalRepository.save.mockResolvedValue(savedGoal);
+      mockAvailabilityService.findAllByUser.mockResolvedValue([]);
+      mockAvailabilityService.getPreferences.mockResolvedValue({
+        session_duration_minutes: 60,
+      });
+      mockAiService.generateInitialPlan.mockRejectedValue(new Error('AI unavailable'));
+      mockGoalRepository.findOne.mockClear();
+
+      await expect(
+        service.create(1, {
+          title: 'Meta con IA',
+          user_description: 'Descripción',
+        }),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+
+      expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
+      expect(mockQueryRunner.commitTransaction).not.toHaveBeenCalled();
+      expect(mockGoalRepository.findOne).not.toHaveBeenCalled();
+    });
+
+    it('should roll back all inserts when plan persistence fails', async () => {
+      const savedGoal = {
+        goal_id: 1,
+        user_id: 1,
+        title: 'Meta con IA',
+        user_description: 'Descripción',
+        start_date: new Date('2026-11-01'),
+      };
+      mockGoalRepository.create.mockReturnValue(savedGoal);
+      mockGoalRepository.save.mockResolvedValue(savedGoal);
+      mockAvailabilityService.findAllByUser.mockResolvedValue([]);
+      mockAvailabilityService.getPreferences.mockResolvedValue({
+        session_duration_minutes: 60,
+      });
+      mockAiService.generateInitialPlan.mockResolvedValue({
+        stages: [
+          {
+            name: 'Etapa 1',
+            description: 'Descripción',
+            sort_order: 1,
+            activities: [
+              {
+                title: 'Actividad',
+                type: 'learning',
+                estimated_minutes: 30,
+                sort_order: 1,
+              },
+            ],
+          },
+        ],
+      });
+      mockStageRepository.create.mockReturnValue({});
+      mockStageRepository.save.mockRejectedValue(new Error('Database unavailable'));
+
+      await expect(
+        service.create(1, {
+          title: 'Meta con IA',
+          user_description: 'Descripción',
+        }),
+      ).rejects.toBeInstanceOf(InternalServerErrorException);
+
+      expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
+      expect(mockQueryRunner.commitTransaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('diagnostic evaluation', () => {
+    it('should keep answer keys private and grade only the submitted option', async () => {
+      const quiz = [
+        {
+          id: 1,
+          category: 'Fundamentos',
+          question: '¿Cuál es la respuesta?',
+          options: [
+            { key: 'A', text: 'Correcta', isCorrect: true, is_correct: true },
+            { key: 'B', text: 'Incorrecta', isCorrect: false, is_correct: false },
+          ],
+          explanation: 'La opción A es correcta.',
+        },
+      ];
+      const goal = {
+        goal_id: 1,
+        user_id: 1,
+        title: 'Meta',
+        stages: [{ name: 'Fundamentos' }],
+      };
+      const expectedResult = {
+        score: 0,
+        total_questions: 1,
+        percentage: 0,
+        weak_topics: ['Fundamentos'],
+        reinforcement_recommendations: [],
+      };
+      mockGoalRepository.findOne.mockResolvedValue(goal);
+      mockAiService.generateEvaluationQuiz.mockResolvedValue(quiz);
+      mockAiService.evaluateQuizAnswers.mockReturnValue(expectedResult);
+
+      const publicQuiz = await service.getGoalEvaluation(1, 1);
+      expect(publicQuiz).toEqual([
+        {
+          id: 1,
+          category: 'Fundamentos',
+          question: '¿Cuál es la respuesta?',
+          options: [
+            { key: 'A', text: 'Correcta' },
+            { key: 'B', text: 'Incorrecta' },
+          ],
+        },
+      ]);
+
+      const result = await service.submitGoalEvaluation(1, 1, {
+        answers: [
+          {
+            question_id: 1,
+            selected_option: 'B',
+            is_correct: true,
+            category: 'Tema falso del cliente',
+          },
+        ],
+      });
+
+      expect(result).toEqual(expectedResult);
+      expect(mockAiService.evaluateQuizAnswers).toHaveBeenCalledWith(quiz, [
+        { question_id: 1, selected_option: 'B' },
+      ]);
+    });
+
+    it('should reject answers when no active quiz exists', async () => {
+      mockGoalRepository.findOne.mockResolvedValue({
+        goal_id: 1,
+        user_id: 1,
+        title: 'Meta',
+      });
+
+      await expect(
+        service.submitGoalEvaluation(1, 1, {
+          answers: [{ question_id: 1, selected_option: 'A' }],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
@@ -350,7 +543,20 @@ describe('GoalsService', () => {
         weak_topics: ['Tema B'],
         reinforcement_recommendations: ['Reforzar Tema B'],
       });
+      mockAiService.generateEvaluationQuiz.mockResolvedValue([
+        {
+          id: 1,
+          category: 'Tema B',
+          question: 'Pregunta',
+          options: [
+            { key: 'a', text: 'Correcta', isCorrect: true },
+            { key: 'b', text: 'Incorrecta', isCorrect: false },
+          ],
+          explanation: '',
+        },
+      ]);
 
+      await service.getGoalEvaluation(1, 1);
       const result = await service.submitGoalEvaluation(1, 1, {
         answers: [{ question_id: 1, selected_option_id: 'a' }],
       });

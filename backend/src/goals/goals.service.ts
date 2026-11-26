@@ -1,6 +1,13 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  HttpException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Goal } from './entities/goal.entity';
 import { Stage } from '../stages/entities/stage.entity';
 import { Activity } from '../activities/entities/activity.entity';
@@ -22,6 +29,7 @@ import {
   GoalKnowledgeResponse,
   LearningResourceItem,
   QuizQuestionItem,
+  PublicQuizQuestionItem,
   QuizEvaluationResult,
 } from '../ai/ai.service';
 
@@ -35,8 +43,15 @@ const DAY_MAP: Record<string, number> = {
   saturday: 6,
 };
 
+const EVALUATION_TTL_MS = 15 * 60 * 1000;
+
 @Injectable()
 export class GoalsService {
+  private readonly evaluationQuizzes = new Map<
+    string,
+    { questions: QuizQuestionItem[]; expiresAt: number; result?: QuizEvaluationResult }
+  >();
+
   constructor(
     @InjectRepository(Goal)
     private goalsRepository: Repository<Goal>,
@@ -48,6 +63,7 @@ export class GoalsService {
     private schedulesRepository: Repository<ActivitySchedule>,
     private availabilityService: AvailabilityService,
     private aiService: AiService,
+    private dataSource: DataSource,
   ) {}
 
   private calculateSequentialDates(
@@ -97,107 +113,156 @@ export class GoalsService {
     return schedules;
   }
 
-  async create(userId: number, createGoalDto: CreateGoalDto): Promise<Goal | null> {
-    // 1. Guardar la meta base (HU-01)
-    const newGoal = this.goalsRepository.create({
-      user_id: userId,
-      ...createGoalDto,
-    });
-    const savedGoal = await this.goalsRepository.save(newGoal);
+  async create(userId: number, createGoalDto: CreateGoalDto): Promise<Goal> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    let transactionStarted = false;
 
-    // 2. Consultar la disponibilidad del usuario (HU-36 & HU-07)
-    const userAvailabilities = await this.availabilityService.findAllByUser(userId);
-    const availabilityPreferences = await this.availabilityService.getPreferences(userId);
-
-    // 3. Generar el plan con IA adaptado a la disponibilidad (HU-02, HU-09, HU-36)
     try {
-      const plan = await this.aiService.generateInitialPlan(
-        savedGoal.title,
-        savedGoal.user_description,
-        userAvailabilities,
-        availabilityPreferences.session_duration_minutes,
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+      transactionStarted = true;
+
+      const goalRepository = queryRunner.manager.getRepository(Goal);
+      const stagesRepository = queryRunner.manager.getRepository(Stage);
+      const activitiesRepository = queryRunner.manager.getRepository(Activity);
+      const schedulesRepository = queryRunner.manager.getRepository(ActivitySchedule);
+
+      const savedGoal = await goalRepository.save(
+        goalRepository.create({
+          user_id: userId,
+          ...createGoalDto,
+        }),
       );
 
-      // 4. Guardar las etapas y actividades
-      if (plan && plan.stages) {
-        // Contar el total de actividades para planificar fechas
-        let totalActivities = 0;
-        for (const stage of plan.stages) {
-          totalActivities += stage.activities?.length || 0;
-        }
+      const userAvailabilities = await this.availabilityService.findAllByUser(userId);
+      const availabilityPreferences = await this.availabilityService.getPreferences(userId);
 
-        const plannedDates = this.calculateSequentialDates(
-          savedGoal.start_date,
+      let plan;
+      try {
+        plan = await this.aiService.generateInitialPlan(
+          savedGoal.title,
+          savedGoal.user_description,
           userAvailabilities,
-          totalActivities,
+          availabilityPreferences.session_duration_minutes,
         );
+      } catch (error) {
+        throw new ServiceUnavailableException(
+          'No se pudo generar el plan. Inténtalo de nuevo.',
+          { cause: error },
+        );
+      }
 
-        let dateIndex = 0;
+      if (
+        !plan?.stages?.length ||
+        plan.stages.some((stage) => !stage.activities?.length)
+      ) {
+        throw new ServiceUnavailableException(
+          'No se pudo generar un plan con actividades. Inténtalo de nuevo.',
+        );
+      }
 
-        for (const stageData of plan.stages) {
-          const newStage = this.stagesRepository.create({
+      const totalActivities = plan.stages.reduce(
+        (total, stage) => total + (stage.activities?.length || 0),
+        0,
+      );
+      const plannedDates = this.calculateSequentialDates(
+        savedGoal.start_date,
+        userAvailabilities,
+        totalActivities,
+      );
+      let dateIndex = 0;
+
+      for (const stageData of plan.stages) {
+        const savedStage = await stagesRepository.save(
+          stagesRepository.create({
             goal_id: savedGoal.goal_id,
             name: stageData.name,
             description: stageData.description,
             sort_order: stageData.sort_order,
-          });
-          const savedStage = await this.stagesRepository.save(newStage);
+          }),
+        );
 
-          if (stageData.activities) {
-            for (const act of stageData.activities) {
-              const newActivity = this.activitiesRepository.create({
-                stage_id: savedStage.stage_id,
-                title: act.title,
-                type: Object.values(ActivityType).includes(act.type as ActivityType)
-                  ? (act.type as ActivityType)
-                  : ActivityType.LEARNING,
-                estimated_minutes: act.estimated_minutes,
-                sort_order: act.sort_order,
-                origin: ActivityOrigin.INITIAL_PLAN,
-                status: ActivityStatus.PENDING,
-              });
-              const savedActivity = await this.activitiesRepository.save(newActivity);
+        for (const act of stageData.activities) {
+          const savedActivity = await activitiesRepository.save(
+            activitiesRepository.create({
+              stage_id: savedStage.stage_id,
+              title: act.title,
+              type: Object.values(ActivityType).includes(act.type as ActivityType)
+                ? (act.type as ActivityType)
+                : ActivityType.LEARNING,
+              estimated_minutes: act.estimated_minutes,
+              sort_order: act.sort_order,
+              origin: ActivityOrigin.INITIAL_PLAN,
+              status: ActivityStatus.PENDING,
+            }),
+          );
 
-              // 5. Crear la versión 1 en ACTIVITY_SCHEDULE (HU-14 y HU-36)
-              const scheduleInfo = plannedDates[dateIndex++];
-              if (scheduleInfo) {
-                const initialSchedule = this.schedulesRepository.create({
-                  activity_id: savedActivity.activity_id,
-                  version_number: 1,
-                  scheduled_date: scheduleInfo.scheduled_date,
-                  start_time: scheduleInfo.start_time,
-                  end_time: scheduleInfo.end_time,
-                  reason: ScheduleReason.INITIAL_PLAN,
-                });
-                await this.schedulesRepository.save(initialSchedule);
-              }
-            }
+          const scheduleInfo = plannedDates[dateIndex++];
+          if (scheduleInfo) {
+            await schedulesRepository.save(
+              schedulesRepository.create({
+                activity_id: savedActivity.activity_id,
+                version_number: 1,
+                scheduled_date: scheduleInfo.scheduled_date,
+                start_time: scheduleInfo.start_time,
+                end_time: scheduleInfo.end_time,
+                reason: ScheduleReason.INITIAL_PLAN,
+              }),
+            );
           }
         }
       }
-    } catch (error) {
-      console.error('No se pudo generar el plan automático adaptado con IA:', error);
-    }
 
-    // 6. Retornar el goal completo con sus etapas, actividades y cronogramas
-    return this.goalsRepository.findOne({
-      where: { goal_id: savedGoal.goal_id },
-      relations: {
-        stages: {
-          activities: {
-            schedules: true,
+      const result = await goalRepository.findOne({
+        where: { goal_id: savedGoal.goal_id },
+        relations: {
+          stages: {
+            activities: {
+              schedules: true,
+            },
           },
         },
-      },
-      order: {
-        stages: {
-          sort_order: 'ASC',
-          activities: {
+        order: {
+          stages: {
             sort_order: 'ASC',
+            activities: {
+              sort_order: 'ASC',
+            },
           },
         },
-      },
-    });
+      });
+      if (!result) {
+        throw new InternalServerErrorException(
+          'No se pudo recuperar el plan después de guardarlo.',
+        );
+      }
+
+      await queryRunner.commitTransaction();
+      transactionStarted = false;
+      return result;
+    } catch (error) {
+      if (transactionStarted) {
+        try {
+          await queryRunner.rollbackTransaction();
+        } catch (rollbackError) {
+          throw new InternalServerErrorException(
+            'No se pudo completar ni revertir la creación del plan.',
+            { cause: rollbackError },
+          );
+        }
+      }
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+        'No se pudo guardar la meta y su plan. Inténtalo de nuevo.',
+        { cause: error },
+      );
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async findAllByUser(userId: number): Promise<Goal[]> {
@@ -1123,14 +1188,39 @@ export class GoalsService {
   }
 
   // HU-40: Cuestionario de evaluación diagnóstica
-  async getGoalEvaluation(userId: number, goalId: number): Promise<QuizQuestionItem[]> {
+  async getGoalEvaluation(
+    userId: number,
+    goalId: number,
+  ): Promise<PublicQuizQuestionItem[]> {
     const goal = await this.findOneByUser(userId, goalId);
     if (!goal) {
       throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
     }
 
     const stageNames = goal.stages?.map((s) => s.name) || [];
-    return this.aiService.generateEvaluationQuiz(goalId, goal.title, stageNames);
+    const questions = await this.aiService.generateEvaluationQuiz(
+      goalId,
+      goal.title,
+      stageNames,
+    );
+    const now = Date.now();
+    for (const [key, quiz] of this.evaluationQuizzes) {
+      if (quiz.expiresAt <= now) {
+        this.evaluationQuizzes.delete(key);
+      }
+    }
+
+    this.evaluationQuizzes.set(this.evaluationKey(userId, goalId), {
+      questions,
+      expiresAt: now + EVALUATION_TTL_MS,
+    });
+
+    return questions.map(({ id, category, question, options }) => ({
+      id,
+      category,
+      question,
+      options: options.map(({ key, text }) => ({ key, text })),
+    }));
   }
 
   // HU-40, HU-41, HU-42: Evaluar respuestas del cuestionario y sugerir refuerzo
@@ -1144,36 +1234,40 @@ export class GoalsService {
       throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
     }
 
-    const hasClientGrading = dto.answers && dto.answers.some((a) => typeof a.is_correct === 'boolean');
-    if (hasClientGrading) {
-      let score = 0;
-      const weakTopicsSet = new Set<string>();
-      for (const a of dto.answers) {
-        if (a.is_correct) {
-          score++;
-        } else {
-          weakTopicsSet.add(a.category || 'General');
-        }
-      }
-      const total = dto.answers.length || 1;
-      const percentage = Math.round((score / total) * 100);
-      const weak_topics = Array.from(weakTopicsSet);
-      return {
-        score,
-        total_questions: total,
-        percentage,
-        weak_topics,
-        reinforcement_recommendations: weak_topics.map((topic) => ({
-          topic,
-          suggested_title: `Refuerzo guiado: ${topic}`,
-          estimated_minutes: 30,
-        })),
-      };
+    const quizKey = this.evaluationKey(userId, goalId);
+    const quiz = this.evaluationQuizzes.get(quizKey);
+    if (!quiz || quiz.expiresAt <= Date.now()) {
+      this.evaluationQuizzes.delete(quizKey);
+      throw new BadRequestException(
+        'La evaluación expiró o no está disponible. Vuelve a cargar las preguntas.',
+      );
+    }
+    if (quiz.result) {
+      return quiz.result;
     }
 
-    const stageNames = goal.stages?.map((s) => s.name) || [];
-    const questions = await this.aiService.generateEvaluationQuiz(goalId, goal.title, stageNames);
-    return this.aiService.evaluateQuizAnswers(questions, dto.answers);
+    const questionIds = new Set(quiz.questions.map(({ id }) => id));
+    const submittedIds = new Set<number>();
+    const answers = dto.answers.map((answer) => {
+      if (!questionIds.has(answer.question_id) || submittedIds.has(answer.question_id)) {
+        throw new BadRequestException(
+          'Las respuestas no corresponden a esta evaluación.',
+        );
+      }
+      submittedIds.add(answer.question_id);
+      return {
+        question_id: answer.question_id,
+        selected_option: answer.selected_option || answer.selected_option_id || '',
+      };
+    });
+
+    const result = this.aiService.evaluateQuizAnswers(quiz.questions, answers);
+    quiz.result = result;
+    return result;
+  }
+
+  private evaluationKey(userId: number, goalId: number): string {
+    return `${userId}:${goalId}`;
   }
 
   // HU-42, HU-39: Agregar actividad de aprendizaje de refuerzo

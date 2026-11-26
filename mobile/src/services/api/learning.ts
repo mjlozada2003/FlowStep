@@ -44,8 +44,6 @@ export interface LearningResourceItem {
 export interface QuizQuestionOption {
   key: string;
   text: string;
-  is_correct: boolean;
-  isCorrect?: boolean;
 }
 
 export interface QuizQuestionItem {
@@ -53,7 +51,6 @@ export interface QuizQuestionItem {
   category: string;
   question: string;
   options: QuizQuestionOption[];
-  explanation: string;
 }
 
 export interface QuizEvaluationResult {
@@ -113,8 +110,6 @@ export async function submitGoalEvaluation(
     question_id: number;
     selected_option?: string;
     selected_option_id?: string;
-    is_correct?: boolean;
-    category?: string;
   }[],
   token: string,
 ): Promise<QuizEvaluationResult> {
@@ -122,8 +117,6 @@ export async function submitGoalEvaluation(
     question_id: a.question_id,
     selected_option: a.selected_option || a.selected_option_id || '',
     selected_option_id: a.selected_option_id || a.selected_option || '',
-    is_correct: a.is_correct,
-    category: a.category,
   }));
   return apiRequest<QuizEvaluationResult>(`/goals/${goalId}/evaluation/submit`, {
     method: 'POST',
