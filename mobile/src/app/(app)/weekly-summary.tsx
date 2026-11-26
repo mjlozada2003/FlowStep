@@ -37,8 +37,8 @@ export default function WeeklySummaryScreen() {
 
       getWeeklySummary(token)
         .then((data) => {
-          if (active && data) {
-            setWeeklyStats(data);
+          if (active) {
+            setWeeklyStats(data ?? null);
           }
         })
         .catch((error: unknown) => {
@@ -105,7 +105,7 @@ export default function WeeklySummaryScreen() {
                 setIsLoading(true);
                 setErrorMessage(null);
                 getWeeklySummary(token!)
-                  .then(setWeeklyStats)
+                  .then((data) => setWeeklyStats(data ?? null))
                   .catch((e) => setErrorMessage(e.message))
                   .finally(() => setIsLoading(false));
               }}
@@ -214,7 +214,22 @@ export default function WeeklySummaryScreen() {
               <Feather name="arrow-right" size={16} color="#FFFFFF" />
             </TouchableOpacity>
           </>
-        ) : null}
+        ) : (
+          // HU-49: si el usuario desactivó el resumen semanal, el backend no envía datos.
+          <View style={styles.centeredContainer}>
+            <Feather name="bell-off" size={36} color="#627D98" />
+            <Text style={styles.emptyTitle}>Resumen semanal desactivado</Text>
+            <Text style={styles.emptyText}>
+              Actívalo en Preferencias para ver tu progreso de la semana.
+            </Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => router.navigate('/(tabs)/preferences' as any)}
+            >
+              <Text style={styles.retryButtonText}>Ir a Preferencias</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
     </Screen>
   );
@@ -264,6 +279,18 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 12,
     marginTop: 8,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F2C40',
+  },
+  emptyText: {
+    fontSize: 13,
+    color: '#627D98',
+    textAlign: 'center',
+    paddingHorizontal: 24,
+    lineHeight: 19,
   },
   retryButtonText: {
     color: '#FFFFFF',
