@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: flowstep-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    # --include=dev: el build necesita @nestjs/cli y typescript (devDependencies).
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /api/docs
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: DB_SSL
+        value: "true"
+      - key: APP_TIMEZONE
+        value: America/La_Paz
+      # Los secretos se cargan a mano en el panel de Render (sync: false).
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true

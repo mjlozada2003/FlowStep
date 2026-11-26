@@ -37,8 +37,9 @@ async function bootstrap() {
     },
   });
 
+  // Render (y otras plataformas) asignan el puerto en PORT y requieren escuchar en 0.0.0.0.
   const port = process.env.PORT || 3000;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   console.log(`🚀 Servidor FlowStep corriendo en: http://localhost:${port}`);
   console.log(`📖 Documentación Swagger disponible en: http://localhost:${port}/api/docs`);
 }
