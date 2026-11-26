@@ -10,6 +10,7 @@ import { AiModule } from '../ai/ai.module';
 import { StagesModule } from '../stages/stages.module';
 import { ActivitiesModule } from '../activities/activities.module';
 import { AvailabilityModule } from '../availability/availability.module';
+import { LearningModule } from '../learning/learning.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { AvailabilityModule } from '../availability/availability.module';
     StagesModule,
     ActivitiesModule,
     AvailabilityModule,
+    LearningModule,
   ],
   providers: [GoalsService],
   controllers: [GoalsController],

@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsRelations, Repository, IsNull, Not } from 'typeorm';
@@ -24,7 +25,8 @@ import { ActivityOrigin, ActivityStatus } from './enums/activity.enum';
 import { PriorityLevel, GoalStatus } from '../goals/enums/goal.enum';
 import { ScheduleReason } from './enums/schedule-reason.enum';
 import { getAppDateString } from '../common/utils/date.utils';
-import { AiService } from '../ai/ai.service';
+import { AiService, LearningResourceItem } from '../ai/ai.service';
+import { LearningStoreService } from '../learning/learning-store.service';
 
 @Injectable()
 export class ActivitiesService {
@@ -42,6 +44,8 @@ export class ActivitiesService {
     @InjectRepository(ScheduleMiss)
     private scheduleMissesRepository: Repository<ScheduleMiss>,
     private aiService: AiService,
+    // Persistencia del Sprint 5. Opcional: sin ella se responde como antes (solo IA).
+    @Optional() private learningStore?: LearningStoreService,
   ) {}
 
   private findOwnedActivity(
@@ -624,19 +628,70 @@ export class ActivitiesService {
     }
 
     const difficultyText = notes.length ? notes.join('; ') : undefined;
+    const goalId = activity.stage.goal.goal_id;
+    const base = {
+      activity_id: activity.activity_id,
+      activity_title: activity.title,
+      goal_id: goalId,
+      goal_title: activity.stage.goal.title,
+      difficulty_detected: difficultyText || null,
+    };
+
+    // Sprint 5: la sugerencia se guarda como recomendacion (HU-26, HU-30) y se
+    // reutiliza durante una hora para no generar una nueva en cada visita.
+    const store = this.learningStore;
+    if (store) {
+      const recent = await store.safely(
+        'Leer sugerencia reciente',
+        () => store.findRecentRecommendation(userId, ['difficulty_support'], goalId, activity.activity_id),
+        null,
+      );
+      if (recent?.details?.suggestion) {
+        return {
+          ...base,
+          suggestion: recent.details.suggestion,
+          alternative_actions: recent.details.alternative_actions ?? [],
+          recommendation_id: recent.recommendation_id,
+        };
+      }
+    }
+
     const aiResult = await this.aiService.generateActivitySuggestion(
       activity.title,
       difficultyText,
     );
 
+    const recommendationId = store
+      ? await store.safely(
+          'Guardar sugerencia',
+          () =>
+            store.saveRecommendation({
+              userId,
+              goalId,
+              activityId: activity.activity_id,
+              type: 'difficulty_support',
+              alertLevel: difficultyText ? 'warning' : 'info',
+              title: `Apoyo para "${activity.title}"`,
+              whySuggested: difficultyText
+                ? `Registraste estas dificultades: ${difficultyText}`
+                : 'No hay dificultades registradas; es una sugerencia preventiva para avanzar con la actividad.',
+              solutionFocus: aiResult.suggestion,
+              solutions: aiResult.alternative_actions,
+              details: {
+                suggestion: aiResult.suggestion,
+                alternative_actions: aiResult.alternative_actions,
+                difficulty_detected: difficultyText || null,
+              },
+            }),
+          null,
+        )
+      : null;
+
     return {
-      activity_id: activity.activity_id,
-      activity_title: activity.title,
-      goal_id: activity.stage.goal.goal_id,
-      goal_title: activity.stage.goal.title,
-      difficulty_detected: difficultyText || null,
+      ...base,
       suggestion: aiResult.suggestion,
       alternative_actions: aiResult.alternative_actions,
+      ...(recommendationId ? { recommendation_id: recommendationId } : {}),
     };
   }
 
@@ -655,10 +710,30 @@ export class ActivitiesService {
       throw new NotFoundException(`La actividad con ID ${activityId} no existe`);
     }
 
-    const resources = await this.aiService.generateLearningResources(
-      activity.stage.goal.goal_id,
-      `${activity.title} (${activity.stage.goal.title})`,
-    );
+    // Sprint 5: los recursos de la actividad se generan una vez y quedan guardados
+    // (LEARNING_RESOURCE + ACTIVITY_RESOURCE); tambien se incluyen los de sus temas.
+    const store = this.learningStore;
+    let resources: LearningResourceItem[] = store
+      ? await store.safely('Leer recursos de la actividad', () => store.loadActivityResources(activity.activity_id), [] as LearningResourceItem[])
+      : [];
+    if (!resources.length) {
+      const generated = await this.aiService.generateLearningResources(
+        activity.stage.goal.goal_id,
+        `${activity.title} (${activity.stage.goal.title})`,
+      );
+      resources = generated;
+      if (store) {
+        const stored = await store.safely(
+          'Guardar recursos de la actividad',
+          async () => {
+            await store.saveActivityResources(activity.activity_id, generated);
+            return store.loadActivityResources(activity.activity_id);
+          },
+          [] as LearningResourceItem[],
+        );
+        if (stored.length) resources = stored;
+      }
+    }
 
     return {
       activity_id: activity.activity_id,
