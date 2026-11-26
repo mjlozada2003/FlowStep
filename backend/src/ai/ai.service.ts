@@ -125,6 +125,13 @@ export interface QuizQuestionItem {
   explanation: string;
 }
 
+export interface PublicQuizQuestionItem {
+  id: number;
+  category: string;
+  question: string;
+  options: { key: string; text: string }[];
+}
+
 export interface QuizEvaluationResult {
   score: number;
   total_questions: number;
@@ -952,7 +959,7 @@ export class AiService {
    */
   evaluateQuizAnswers(
     questions: QuizQuestionItem[],
-    answers: { question_id: number; selected_option?: string; selected_option_id?: string; is_correct?: boolean; category?: string }[],
+    answers: { question_id: number; selected_option?: string; selected_option_id?: string }[],
   ): QuizEvaluationResult {
     let score = 0;
     const weakTopicsSet = new Set<string>();
@@ -962,15 +969,12 @@ export class AiService {
       const correctOpt = q.options.find((o) => o.isCorrect || o.is_correct);
 
       const userChoice = userAns?.selected_option || userAns?.selected_option_id;
-      const isCorrect =
-        typeof userAns?.is_correct === 'boolean'
-          ? userAns.is_correct
-          : Boolean(userAns && correctOpt && userChoice === correctOpt.key);
+      const isCorrect = Boolean(userAns && correctOpt && userChoice === correctOpt.key);
 
       if (isCorrect) {
         score++;
       } else {
-        weakTopicsSet.add(q.category || userAns?.category || 'General');
+        weakTopicsSet.add(q.category || 'General');
       }
     }
 

@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -66,23 +66,31 @@ export default function CalendarScreen() {
   const [daySummaries, setDaySummaries] = useState<CalendarDaySummary[]>([]);
   const [allActivities, setAllActivities] = useState<CalendarActivityItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadCalendar = useCallback(() => {
     let active = true;
     if (!token) {
+      setLoadError('Inicia sesión para consultar el calendario.');
       setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
+    setLoadError(null);
     getCalendarData(token, { month: currentMonth, year: currentYear })
       .then((res) => {
         if (!active) return;
         setDaySummaries(res.days || []);
         setAllActivities(res.activities || []);
       })
-      .catch(() => {
-        // Mantener estado previo en caso de fallo
+      .catch((error: unknown) => {
+        if (!active) return;
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : 'No se pudo cargar el calendario. Inténtalo de nuevo.',
+        );
       })
       .finally(() => {
         if (active) setIsLoading(false);
@@ -160,39 +168,31 @@ export default function CalendarScreen() {
   }, [currentYear, currentMonth, daysInMonth, daysMap]);
 
   // Actividades para el día seleccionado
-  const validSelectedDay = Math.min(selectedDay, daysInMonth);
-  const selectedDateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(validSelectedDay).padStart(2, '0')}`;
+  const validSelectedDay = useMemo(() => {
+    const selected = Math.min(selectedDay, daysInMonth);
+    if (allActivities.length === 0) return selected;
 
-  // Si hay actividades en el mes pero el día seleccionado no tiene ninguna, autoseleccionar el día más cercano con actividades
-  useEffect(() => {
-    if (allActivities.length > 0) {
-      const monthPrefix = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
-      const hasCurrent = allActivities.some(
-        (a) => formatDateKey(a.scheduled_date) === selectedDateStr,
-      );
-      if (!hasCurrent) {
-        const monthActivities = allActivities.filter((a) => {
-          const key = formatDateKey(a.scheduled_date);
-          return key.startsWith(monthPrefix);
-        });
-        if (monthActivities.length > 0) {
-          const upcoming = monthActivities.find((a) => {
-            const key = formatDateKey(a.scheduled_date);
-            const dayNum = parseInt(key.slice(8, 10), 10);
-            return dayNum >= validSelectedDay;
-          });
-          const target = upcoming || monthActivities[monthActivities.length - 1];
-          if (target) {
-            const key = formatDateKey(target.scheduled_date);
-            const dayNum = parseInt(key.slice(8, 10), 10);
-            if (!isNaN(dayNum) && dayNum >= 1 && dayNum <= daysInMonth) {
-              setSelectedDay(dayNum);
-            }
-          }
-        }
-      }
+    const monthPrefix = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+    const selectedDate = `${monthPrefix}-${String(selected).padStart(2, '0')}`;
+    if (allActivities.some((activity) => formatDateKey(activity.scheduled_date) === selectedDate)) {
+      return selected;
     }
-  }, [allActivities, currentMonth, currentYear, daysInMonth, selectedDateStr, validSelectedDay]);
+
+    const monthActivities = allActivities.filter((activity) =>
+      formatDateKey(activity.scheduled_date).startsWith(monthPrefix),
+    );
+    const upcoming = monthActivities.find((activity) => {
+      const dayNumber = parseInt(formatDateKey(activity.scheduled_date).slice(8, 10), 10);
+      return dayNumber >= selected;
+    });
+    const target = upcoming || monthActivities[monthActivities.length - 1];
+    const targetDay = target
+      ? parseInt(formatDateKey(target.scheduled_date).slice(8, 10), 10)
+      : selected;
+
+    return targetDay >= 1 && targetDay <= daysInMonth ? targetDay : selected;
+  }, [allActivities, currentMonth, currentYear, daysInMonth, selectedDay]);
+  const selectedDateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(validSelectedDay).padStart(2, '0')}`;
 
   const selectedDateActivities = useMemo(() => {
     const filtered = allActivities.filter((a) => {
@@ -356,6 +356,17 @@ export default function CalendarScreen() {
 
           {isLoading ? (
             <ActivityIndicator size="small" color="#174A62" style={{ marginVertical: 16 }} />
+          ) : loadError ? (
+            <View style={styles.loadErrorBox}>
+              <Text style={styles.loadErrorText}>{loadError}</Text>
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => loadCalendar()}
+                disabled={isLoading}
+              >
+                <Text style={styles.retryButtonText}>Reintentar</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             <View style={styles.activitiesList}>
               {selectedDateActivities.map((act) => (
@@ -413,9 +424,13 @@ export default function CalendarScreen() {
             <Feather name="calendar" size={18} color="#174A62" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.syncTitle}>Calendario sincronizado</Text>
+            <Text style={styles.syncTitle}>
+              {loadError ? 'No se pudo sincronizar el calendario' : 'Calendario sincronizado'}
+            </Text>
             <Text style={styles.syncSubtitle}>
-              Los cambios de fecha y actividades se reflejan aquí en tiempo real.
+              {loadError
+                ? 'Verifica tu conexión e inténtalo de nuevo.'
+                : 'Los cambios de fecha y actividades se reflejan aquí en tiempo real.'}
             </Text>
           </View>
         </View>
@@ -593,6 +608,32 @@ const styles = StyleSheet.create({
   },
   activitiesList: {
     gap: 10,
+  },
+  loadErrorBox: {
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    backgroundColor: '#FFF5F5',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FED7D7',
+  },
+  loadErrorText: {
+    color: '#C53030',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#174A62',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   activityCard: {
     backgroundColor: '#FFFFFF',

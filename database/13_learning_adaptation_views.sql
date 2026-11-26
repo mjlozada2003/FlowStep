@@ -74,22 +74,27 @@ WHERE g.deleted_at IS NULL
 GROUP BY g.goal_id, g.user_id, g.title;
 
 -- ----------------------------------------------------------------------------
--- HU-05, HU-38: recursos de aprendizaje del objetivo (por sus temas o por sus
--- actividades), con etiquetas listas para la app y el avance del usuario.
+-- HU-05, HU-38: recursos de aprendizaje del objetivo (por sus temas, por sus
+-- actividades o asociados directamente en GOAL_RESOURCE), con etiquetas listas
+-- para la app, el avance del usuario y el contenido enriquecido (details).
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE VIEW v_goal_learning_resources AS
 WITH links AS (
-    SELECT gt.goal_id, r.resource_id, NULL::integer AS activity_id
+    SELECT gt.goal_id, r.resource_id, NULL::integer AS activity_id, NULL::integer AS goal_sort_order
     FROM "GOAL_TOPIC" gt
     JOIN "LEARNING_RESOURCE" r ON r.topic_id = gt.topic_id
     UNION
-    SELECT s.goal_id, ar.resource_id, ar.activity_id
+    SELECT s.goal_id, ar.resource_id, ar.activity_id, NULL::integer
     FROM "ACTIVITY_RESOURCE" ar
     JOIN "ACTIVITY" a ON a.activity_id = ar.activity_id AND a.deleted_at IS NULL
     JOIN "STAGE" s ON s.stage_id = a.stage_id
+    UNION
+    SELECT gr.goal_id, gr.resource_id, NULL::integer, gr.sort_order
+    FROM "GOAL_RESOURCE" gr
 ), grouped AS (
     SELECT goal_id, resource_id,
-           array_agg(DISTINCT activity_id) FILTER (WHERE activity_id IS NOT NULL) AS activity_ids
+           array_agg(DISTINCT activity_id) FILTER (WHERE activity_id IS NOT NULL) AS activity_ids,
+           MIN(goal_sort_order) AS goal_sort_order
     FROM links
     GROUP BY goal_id, resource_id
 )
@@ -104,7 +109,9 @@ SELECT gr.goal_id, g.user_id, r.resource_id, r.title, r.type,
        r.url, r.content, r.topic_id, t.name AS topic_name,
        COALESCE(gr.activity_ids, ARRAY[]::integer[]) AS activity_ids,
        COALESCE(rp.status::text, 'not_started') AS progress_status,
-       rp.completed_at
+       rp.completed_at,
+       r.details,
+       gr.goal_sort_order
 FROM grouped gr
 JOIN "GOAL" g ON g.goal_id = gr.goal_id AND g.deleted_at IS NULL
 JOIN "LEARNING_RESOURCE" r ON r.resource_id = gr.resource_id AND r.deleted_at IS NULL
@@ -130,7 +137,8 @@ WITH links AS (
 SELECT d.activity_id, a.title AS activity_title, s.goal_id, g.title AS goal_title, g.user_id,
        d.link_source, d.sort_order, gr.resource_id, gr.title, gr.type, gr.type_label, gr.icon_name,
        gr.badge_text, gr.category, gr.duration_minutes, gr.duration_label, gr.url, gr.content,
-       gr.topic_name, gr.progress_status
+       gr.topic_name, gr.progress_status,
+       gr.details
 FROM dedup d
 JOIN "ACTIVITY" a ON a.activity_id = d.activity_id AND a.deleted_at IS NULL
 JOIN "STAGE" s ON s.stage_id = a.stage_id
@@ -320,7 +328,8 @@ SELECT p.proposal_id, p.recommendation_id, r.user_id, r.goal_id, g.title AS goal
        COUNT(i.item_id) FILTER (WHERE i.action = 'keep') AS activities_kept,
        (SELECT COUNT(*) FROM "ACTIVITY" a JOIN "STAGE" s ON s.stage_id = a.stage_id
         WHERE s.goal_id = r.goal_id AND a.deleted_at IS NULL AND a.status = 'completed') AS completed_activities_preserved,
-       CASE p.proposal_type WHEN 'balanced' THEN 1 WHEN 'learning' THEN 2 ELSE 3 END AS display_order
+       CASE p.proposal_type WHEN 'balanced' THEN 1 WHEN 'learning' THEN 2 ELSE 3 END AS display_order,
+       p.presentation
 FROM "REPLAN_PROPOSAL" p
 JOIN "AI_RECOMMENDATION" r ON r.recommendation_id = p.recommendation_id
 LEFT JOIN "GOAL" g ON g.goal_id = r.goal_id

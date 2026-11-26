@@ -528,6 +528,46 @@ BEGIN
     END LOOP;
 END $$;
 
+-- ----------------------------------------------------------------------------
+-- 7. PERSISTENCIA DESDE EL BACKEND
+--   * LEARNING_RESOURCE.details   : contenido enriquecido del recurso (resumen,
+--                                   puntos clave, lectura, pasos, codigo...).
+--   * GOAL_RESOURCE               : recursos asociados directamente a un objetivo.
+--   * REPLAN_PROPOSAL.presentation: textos y contadores que muestra la app.
+--   * AI_RECOMMENDATION.details   : datos del diagnostico que no son columnas
+--                                   (mensaje de alerta, contexto de dificultad...).
+-- Se agregan con ALTER para que el script siga siendo repetible en bases existentes.
+-- ----------------------------------------------------------------------------
+ALTER TABLE "LEARNING_RESOURCE" ADD COLUMN IF NOT EXISTS details JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE "REPLAN_PROPOSAL" ADD COLUMN IF NOT EXISTS presentation JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE "AI_RECOMMENDATION" ADD COLUMN IF NOT EXISTS details JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_learning_resource_details') THEN
+        ALTER TABLE "LEARNING_RESOURCE" ADD CONSTRAINT chk_learning_resource_details
+            CHECK (jsonb_typeof(details) = 'object');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_replan_proposal_presentation') THEN
+        ALTER TABLE "REPLAN_PROPOSAL" ADD CONSTRAINT chk_replan_proposal_presentation
+            CHECK (jsonb_typeof(presentation) = 'object');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_ai_recommendation_details') THEN
+        ALTER TABLE "AI_RECOMMENDATION" ADD CONSTRAINT chk_ai_recommendation_details
+            CHECK (jsonb_typeof(details) = 'object');
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS "GOAL_RESOURCE" (
+    goal_id INTEGER NOT NULL REFERENCES "GOAL"(goal_id) ON DELETE CASCADE,
+    resource_id INTEGER NOT NULL REFERENCES "LEARNING_RESOURCE"(resource_id) ON DELETE CASCADE,
+    sort_order INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (goal_id, resource_id),
+    CONSTRAINT chk_goal_resource_order CHECK (sort_order > 0)
+);
+CREATE INDEX IF NOT EXISTS idx_goal_resource_resource ON "GOAL_RESOURCE" (resource_id);
+
 -- Alias en minusculas, como en los sprints anteriores.
 CREATE OR REPLACE VIEW topic AS SELECT * FROM "TOPIC";
 CREATE OR REPLACE VIEW goal_topic AS SELECT * FROM "GOAL_TOPIC";
@@ -544,5 +584,6 @@ CREATE OR REPLACE VIEW attempt_answer AS SELECT * FROM "ATTEMPT_ANSWER";
 CREATE OR REPLACE VIEW ai_recommendation AS SELECT * FROM "AI_RECOMMENDATION";
 CREATE OR REPLACE VIEW replan_proposal AS SELECT * FROM "REPLAN_PROPOSAL";
 CREATE OR REPLACE VIEW replan_proposal_item AS SELECT * FROM "REPLAN_PROPOSAL_ITEM";
+CREATE OR REPLACE VIEW goal_resource AS SELECT * FROM "GOAL_RESOURCE";
 
 COMMIT;

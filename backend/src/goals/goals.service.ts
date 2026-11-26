@@ -1,6 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  HttpException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Goal } from './entities/goal.entity';
 import { Stage } from '../stages/entities/stage.entity';
 import { Activity } from '../activities/entities/activity.entity';
@@ -16,12 +24,14 @@ import { ScheduleReason } from '../activities/enums/schedule-reason.enum';
 import { ApplyAlternativeDto } from './dto/apply-alternative.dto';
 import { SubmitEvaluationDto } from './dto/submit-evaluation.dto';
 import { AddReinforcementDto } from './dto/add-reinforcement.dto';
+import { LearningStoreService, ReplanProposalPlan } from '../learning/learning-store.service';
 import {
   RecommendationDiagnostic,
   ReplanAlternativesResponse,
   GoalKnowledgeResponse,
   LearningResourceItem,
   QuizQuestionItem,
+  PublicQuizQuestionItem,
   QuizEvaluationResult,
 } from '../ai/ai.service';
 
@@ -35,8 +45,15 @@ const DAY_MAP: Record<string, number> = {
   saturday: 6,
 };
 
+const EVALUATION_TTL_MS = 15 * 60 * 1000;
+
 @Injectable()
 export class GoalsService {
+  private readonly evaluationQuizzes = new Map<
+    string,
+    { questions: QuizQuestionItem[]; expiresAt: number; result?: QuizEvaluationResult }
+  >();
+
   constructor(
     @InjectRepository(Goal)
     private goalsRepository: Repository<Goal>,
@@ -48,6 +65,9 @@ export class GoalsService {
     private schedulesRepository: Repository<ActivitySchedule>,
     private availabilityService: AvailabilityService,
     private aiService: AiService,
+    private dataSource: DataSource,
+    // Persistencia del Sprint 5. Opcional: sin ella se responde como antes (solo IA).
+    @Optional() private learningStore?: LearningStoreService,
   ) {}
 
   private calculateSequentialDates(
@@ -97,107 +117,156 @@ export class GoalsService {
     return schedules;
   }
 
-  async create(userId: number, createGoalDto: CreateGoalDto): Promise<Goal | null> {
-    // 1. Guardar la meta base (HU-01)
-    const newGoal = this.goalsRepository.create({
-      user_id: userId,
-      ...createGoalDto,
-    });
-    const savedGoal = await this.goalsRepository.save(newGoal);
+  async create(userId: number, createGoalDto: CreateGoalDto): Promise<Goal> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    let transactionStarted = false;
 
-    // 2. Consultar la disponibilidad del usuario (HU-36 & HU-07)
-    const userAvailabilities = await this.availabilityService.findAllByUser(userId);
-    const availabilityPreferences = await this.availabilityService.getPreferences(userId);
-
-    // 3. Generar el plan con IA adaptado a la disponibilidad (HU-02, HU-09, HU-36)
     try {
-      const plan = await this.aiService.generateInitialPlan(
-        savedGoal.title,
-        savedGoal.user_description,
-        userAvailabilities,
-        availabilityPreferences.session_duration_minutes,
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+      transactionStarted = true;
+
+      const goalRepository = queryRunner.manager.getRepository(Goal);
+      const stagesRepository = queryRunner.manager.getRepository(Stage);
+      const activitiesRepository = queryRunner.manager.getRepository(Activity);
+      const schedulesRepository = queryRunner.manager.getRepository(ActivitySchedule);
+
+      const savedGoal = await goalRepository.save(
+        goalRepository.create({
+          user_id: userId,
+          ...createGoalDto,
+        }),
       );
 
-      // 4. Guardar las etapas y actividades
-      if (plan && plan.stages) {
-        // Contar el total de actividades para planificar fechas
-        let totalActivities = 0;
-        for (const stage of plan.stages) {
-          totalActivities += stage.activities?.length || 0;
-        }
+      const userAvailabilities = await this.availabilityService.findAllByUser(userId);
+      const availabilityPreferences = await this.availabilityService.getPreferences(userId);
 
-        const plannedDates = this.calculateSequentialDates(
-          savedGoal.start_date,
+      let plan;
+      try {
+        plan = await this.aiService.generateInitialPlan(
+          savedGoal.title,
+          savedGoal.user_description,
           userAvailabilities,
-          totalActivities,
+          availabilityPreferences.session_duration_minutes,
         );
+      } catch (error) {
+        throw new ServiceUnavailableException(
+          'No se pudo generar el plan. Inténtalo de nuevo.',
+          { cause: error },
+        );
+      }
 
-        let dateIndex = 0;
+      if (
+        !plan?.stages?.length ||
+        plan.stages.some((stage) => !stage.activities?.length)
+      ) {
+        throw new ServiceUnavailableException(
+          'No se pudo generar un plan con actividades. Inténtalo de nuevo.',
+        );
+      }
 
-        for (const stageData of plan.stages) {
-          const newStage = this.stagesRepository.create({
+      const totalActivities = plan.stages.reduce(
+        (total, stage) => total + (stage.activities?.length || 0),
+        0,
+      );
+      const plannedDates = this.calculateSequentialDates(
+        savedGoal.start_date,
+        userAvailabilities,
+        totalActivities,
+      );
+      let dateIndex = 0;
+
+      for (const stageData of plan.stages) {
+        const savedStage = await stagesRepository.save(
+          stagesRepository.create({
             goal_id: savedGoal.goal_id,
             name: stageData.name,
             description: stageData.description,
             sort_order: stageData.sort_order,
-          });
-          const savedStage = await this.stagesRepository.save(newStage);
+          }),
+        );
 
-          if (stageData.activities) {
-            for (const act of stageData.activities) {
-              const newActivity = this.activitiesRepository.create({
-                stage_id: savedStage.stage_id,
-                title: act.title,
-                type: Object.values(ActivityType).includes(act.type as ActivityType)
-                  ? (act.type as ActivityType)
-                  : ActivityType.LEARNING,
-                estimated_minutes: act.estimated_minutes,
-                sort_order: act.sort_order,
-                origin: ActivityOrigin.INITIAL_PLAN,
-                status: ActivityStatus.PENDING,
-              });
-              const savedActivity = await this.activitiesRepository.save(newActivity);
+        for (const act of stageData.activities) {
+          const savedActivity = await activitiesRepository.save(
+            activitiesRepository.create({
+              stage_id: savedStage.stage_id,
+              title: act.title,
+              type: Object.values(ActivityType).includes(act.type as ActivityType)
+                ? (act.type as ActivityType)
+                : ActivityType.LEARNING,
+              estimated_minutes: act.estimated_minutes,
+              sort_order: act.sort_order,
+              origin: ActivityOrigin.INITIAL_PLAN,
+              status: ActivityStatus.PENDING,
+            }),
+          );
 
-              // 5. Crear la versión 1 en ACTIVITY_SCHEDULE (HU-14 y HU-36)
-              const scheduleInfo = plannedDates[dateIndex++];
-              if (scheduleInfo) {
-                const initialSchedule = this.schedulesRepository.create({
-                  activity_id: savedActivity.activity_id,
-                  version_number: 1,
-                  scheduled_date: scheduleInfo.scheduled_date,
-                  start_time: scheduleInfo.start_time,
-                  end_time: scheduleInfo.end_time,
-                  reason: ScheduleReason.INITIAL_PLAN,
-                });
-                await this.schedulesRepository.save(initialSchedule);
-              }
-            }
+          const scheduleInfo = plannedDates[dateIndex++];
+          if (scheduleInfo) {
+            await schedulesRepository.save(
+              schedulesRepository.create({
+                activity_id: savedActivity.activity_id,
+                version_number: 1,
+                scheduled_date: scheduleInfo.scheduled_date,
+                start_time: scheduleInfo.start_time,
+                end_time: scheduleInfo.end_time,
+                reason: ScheduleReason.INITIAL_PLAN,
+              }),
+            );
           }
         }
       }
-    } catch (error) {
-      console.error('No se pudo generar el plan automático adaptado con IA:', error);
-    }
 
-    // 6. Retornar el goal completo con sus etapas, actividades y cronogramas
-    return this.goalsRepository.findOne({
-      where: { goal_id: savedGoal.goal_id },
-      relations: {
-        stages: {
-          activities: {
-            schedules: true,
+      const result = await goalRepository.findOne({
+        where: { goal_id: savedGoal.goal_id },
+        relations: {
+          stages: {
+            activities: {
+              schedules: true,
+            },
           },
         },
-      },
-      order: {
-        stages: {
-          sort_order: 'ASC',
-          activities: {
+        order: {
+          stages: {
             sort_order: 'ASC',
+            activities: {
+              sort_order: 'ASC',
+            },
           },
         },
-      },
-    });
+      });
+      if (!result) {
+        throw new InternalServerErrorException(
+          'No se pudo recuperar el plan después de guardarlo.',
+        );
+      }
+
+      await queryRunner.commitTransaction();
+      transactionStarted = false;
+      return result;
+    } catch (error) {
+      if (transactionStarted) {
+        try {
+          await queryRunner.rollbackTransaction();
+        } catch (rollbackError) {
+          throw new InternalServerErrorException(
+            'No se pudo completar ni revertir la creación del plan.',
+            { cause: rollbackError },
+          );
+        }
+      }
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+        'No se pudo guardar la meta y su plan. Inténtalo de nuevo.',
+        { cause: error },
+      );
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async findAllByUser(userId: number): Promise<Goal[]> {
@@ -559,6 +628,8 @@ export class GoalsService {
 
     if (sortBy === 'due_date') {
       sql += ' ORDER BY due_date ASC NULLS LAST';
+    } else if (sortBy === 'progress') {
+      sql += ' ORDER BY progress_percentage DESC NULLS LAST';
     } else if (sortBy === 'created_at') {
       sql += ' ORDER BY created_at DESC';
     } else {
@@ -866,7 +937,19 @@ export class GoalsService {
     const overdueActivityTitle = delayInfo?.most_overdue_activity_title || diffInfo?.activity_title || goal.stages?.[0]?.activities?.[0]?.title;
     const maxDaysLate = delayInfo ? Number(delayInfo.max_days_late) || 0 : 0;
 
-    return this.aiService.generateRecommendationDiagnostic(
+    // Sprint 5: se reutiliza la recomendacion pendiente de la ultima hora para no
+    // generar (y guardar) una nueva en cada visita a la pantalla.
+    const store = this.learningStore;
+    if (store) {
+      const recent = await store.safely(
+        'Leer recomendacion reciente',
+        () => store.findRecentRecommendation(userId, ['delay_adjustment', 'difficulty_support', 'personalized'], goalId),
+        null,
+      );
+      if (recent) return recent.diagnostic;
+    }
+
+    const diagnostic = await this.aiService.generateRecommendationDiagnostic(
       goalId,
       goal.title,
       overdueActivityTitle,
@@ -878,10 +961,55 @@ export class GoalsService {
       totalActivities,
       availableHours,
     );
+
+    // HU-30, HU-31: se guarda la recomendacion con su explicacion para tener historial.
+    if (store) {
+      const recommendationId = await store.safely(
+        'Guardar recomendacion',
+        () =>
+          store.saveRecommendation({
+            userId,
+            goalId,
+            activityId: delayInfo?.most_overdue_activity_id ? Number(delayInfo.most_overdue_activity_id) : null,
+            type: delayInfo ? 'delay_adjustment' : diffInfo ? 'difficulty_support' : 'personalized',
+            alertLevel: diagnostic.alert_level,
+            title: diagnostic.alert_message,
+            whySuggested: diagnostic.why_suggested,
+            solutionFocus: diagnostic.solution_focus,
+            solutions: diagnostic.solutions,
+            metrics: diagnostic.metrics,
+            details: {
+              diagnostic: {
+                goal_title: diagnostic.goal_title,
+                activity_title: diagnostic.activity_title,
+                max_days_late: diagnostic.max_days_late,
+                alert_message: diagnostic.alert_message,
+                difficulty_context: diagnostic.difficulty_context,
+              },
+            },
+          }),
+        null,
+      );
+      if (recommendationId) {
+        return { ...diagnostic, recommendation_id: recommendationId } as RecommendationDiagnostic;
+      }
+    }
+    return diagnostic;
   }
 
   // HU-43: Recomendaciones personalizadas para la pantalla de inicio
   async getPersonalizedRecommendations(userId: number): Promise<RecommendationDiagnostic> {
+    // HU-43: la base sugiere sobre que objetivo actuar segun el progreso
+    // (retraso, temas por reforzar o el objetivo activo prioritario).
+    const store = this.learningStore;
+    if (store) {
+      const focusGoalId = await store.safely('Leer foco del usuario', () => store.focusGoalId(userId), null);
+      if (focusGoalId) {
+        const focusGoal = await this.findOneByUser(userId, focusGoalId);
+        if (focusGoal) return this.getGoalRecommendations(userId, focusGoalId);
+      }
+    }
+
     const delayedGoals = await this.goalsRepository.query(
       'SELECT * FROM v_goal_delay_alert WHERE user_id = $1 ORDER BY priority_rank, max_days_late DESC',
       [userId],
@@ -947,7 +1075,7 @@ export class GoalsService {
       .andWhere('activity.status != :skipped', { skipped: ActivityStatus.SKIPPED })
       .getCount();
 
-    return this.aiService.generateReplanAlternatives(
+    const template = await this.aiService.generateReplanAlternatives(
       goalId,
       goal.title,
       progressPercentage,
@@ -955,6 +1083,124 @@ export class GoalsService {
       completedHours,
       pendingActivitiesCount,
     );
+
+    const store = this.learningStore;
+    if (!store) return template;
+
+    // Sprint 5: las propuestas del dia se guardan con el detalle de cada cambio
+    // (REPLAN_PROPOSAL / REPLAN_PROPOSAL_ITEM) para aplicarlas tal como se mostraron.
+    const stored = await store.safely(
+      'Guardar propuestas de replanificacion',
+      async () =>
+        (await store.loadTodayReplan(userId, goalId)) ??
+        store.saveReplan(await this.buildReplanPlans(userId, goal, template)),
+      null,
+    );
+    if (!stored) return template;
+    return { ...template, recommendation_id: stored.recommendation_id, proposals: stored.proposals } as ReplanAlternativesResponse;
+  }
+
+  // HU-27, HU-28, HU-29, HU-08: detalle real de cada alternativa.
+  //   balanced -> reprograma las actividades pendientes en las proximas franjas de disponibilidad
+  //   learning -> agrega dos actividades de refuerzo para manana
+  //   time     -> extiende 14 dias la fecha limite (desde hoy si ya vencio)
+  // Las actividades completadas no se tocan: la base lo impide (HU-29).
+  private async buildReplanPlans(userId: number, goal: Goal, template: ReplanAlternativesResponse) {
+    const store = this.learningStore!;
+    const today = await store.today();
+    const addDays = (date: string, days: number) => {
+      const d = new Date(`${date}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + days);
+      return d.toISOString().slice(0, 10);
+    };
+
+    const pending = await this.activitiesRepository
+      .createQueryBuilder('activity')
+      .innerJoin('activity.stage', 'stage')
+      .where('stage.goal_id = :goalId', { goalId: goal.goal_id })
+      .andWhere('activity.status IN (:...open)', { open: [ActivityStatus.PENDING, ActivityStatus.IN_PROGRESS] })
+      .orderBy('stage.sort_order', 'ASC')
+      .addOrderBy('activity.sort_order', 'ASC')
+      .getMany();
+    const availabilities = await this.availabilityService.findAllByUser(userId);
+    const slots = this.calculateSequentialDates(`${today}T00:00:00`, availabilities, pending.length);
+
+    const balancedItems = pending.map((activity, i) => ({
+      action: 'reschedule' as const,
+      activity_id: activity.activity_id,
+      new_scheduled_date: slots[i]?.scheduled_date ?? addDays(today, i),
+      new_start_time: slots[i]?.start_time ?? '18:00',
+      new_end_time: slots[i]?.end_time ?? '19:00',
+    }));
+    const tomorrow = addDays(today, 1);
+    const learningItems = [
+      { title: `Refuerzo guiado: Conceptos clave de ${goal.title}`, minutes: 25, start: '18:00', end: '18:25' },
+      { title: `Práctica guiada: Ejercicio de refuerzo de ${goal.title}`, minutes: 30, start: '18:30', end: '19:00' },
+    ].map((r) => ({
+      action: 'add' as const,
+      new_title: r.title,
+      estimated_minutes: r.minutes,
+      new_scheduled_date: tomorrow,
+      new_start_time: r.start,
+      new_end_time: r.end,
+    }));
+    // TypeORM entrega las columnas DATE como 'YYYY-MM-DD'; se contempla tambien un Date.
+    const rawDue: unknown = goal.due_date;
+    const dueStr = rawDue instanceof Date
+      ? `${rawDue.getFullYear()}-${String(rawDue.getMonth() + 1).padStart(2, '0')}-${String(rawDue.getDate()).padStart(2, '0')}`
+      : rawDue ? String(rawDue).slice(0, 10) : null;
+    const baseDue = dueStr && dueStr > today ? dueStr : today;
+    const newDueDate = addDays(baseDue, 14);
+
+    const plans: ReplanProposalPlan[] = template.proposals.map((proposal) => {
+      if (proposal.type === 'balanced') {
+        const moved = balancedItems.length;
+        return {
+          proposal: {
+            ...proposal,
+            rescheduled_count: moved,
+            description: moved
+              ? `Mueve ${moved} ${moved === 1 ? 'actividad' : 'actividades'} a tus próximas franjas libres y mantiene la fecha límite.`
+              : 'No hay actividades pendientes por mover; se mantiene la fecha límite.',
+          },
+          items: balancedItems,
+        };
+      }
+      if (proposal.type === 'learning') {
+        return { proposal: { ...proposal, added_resources_count: learningItems.length }, items: learningItems };
+      }
+      return { proposal, items: [], new_due_date: newDueDate };
+    });
+
+    const [context] = await this.goalsRepository
+      .query('SELECT * FROM v_goal_replan_context WHERE goal_id = $1', [goal.goal_id])
+      .catch(() => []);
+    const capacityText: Record<string, string> = {
+      fits: 'la carga pendiente cabe en tu disponibilidad semanal',
+      overloaded: 'la carga pendiente supera tu disponibilidad semanal',
+      no_availability: 'todavía no registraste tu disponibilidad semanal',
+      deadline_passed: 'la fecha límite ya pasó',
+      nothing_pending: 'no quedan actividades pendientes',
+    };
+    const whySuggested = context
+      ? `Llevas ${Math.round(Number(context.progress_percentage) || 0)}% de avance y tus ${context.completed_activities} actividades completadas se conservan. ` +
+        `Quedan ${context.pending_activities} pendientes (${context.overdue_activities} vencidas) y ${capacityText[context.capacity_status] ?? 'conviene revisar tu plan'}.`
+      : `Propuestas para reorganizar el plan de "${goal.title}" conservando lo que ya completaste.`;
+
+    return {
+      userId,
+      goalId: goal.goal_id,
+      whySuggested,
+      metrics: {
+        progress_percentage: template.current_progress_percentage,
+        completed_count: template.completed_count,
+        completed_hours: template.completed_hours,
+        pending_activities: pending.length,
+        weekly_available_minutes: context ? Number(context.weekly_available_minutes) : null,
+        capacity_status: context?.capacity_status ?? null,
+      },
+      plans,
+    };
   }
 
   // HU-31, HU-52, HU-08: Aplicar propuesta de replanificación seleccionada
@@ -968,6 +1214,102 @@ export class GoalsService {
       throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
     }
 
+    const store = this.learningStore;
+    if (!store) return this.applyReplanLegacy(userId, goalId, dto, goal);
+
+    try {
+      // Si el usuario no abrio hoy las alternativas, se generan y guardan primero.
+      const hasProposal = await store.transaction((m) =>
+        store.loadProposalForApply(m, userId, goalId, dto.proposal_type),
+      );
+      if (!hasProposal) await this.getReplanAlternatives(userId, goalId);
+
+      return await store.transaction(async (m) => {
+        const selected = await store.loadProposalForApply(m, userId, goalId, dto.proposal_type);
+        if (!selected) {
+          throw new BadRequestException('No hay una propuesta de replanificación disponible para aplicar');
+        }
+
+        if (selected.proposal_type === 'balanced') {
+          for (const item of selected.items.filter((i) => i.action === 'reschedule' && i.activity_id)) {
+            // Solo se reprograma lo que sigue pendiente (HU-29).
+            await m.query(
+              `INSERT INTO "ACTIVITY_SCHEDULE"
+                 (activity_id, recommendation_id, version_number, scheduled_date, start_time, end_time, reason)
+               SELECT a.activity_id, $2,
+                      COALESCE((SELECT MAX(version_number) FROM "ACTIVITY_SCHEDULE" WHERE activity_id = a.activity_id), 0) + 1,
+                      $3, $4, $5, 'ai_adjustment'
+                 FROM "ACTIVITY" a
+                WHERE a.activity_id = $1 AND a.deleted_at IS NULL AND a.status IN ('pending', 'in_progress')`,
+              [item.activity_id, selected.recommendation_id, item.new_scheduled_date, item.new_start_time, item.new_end_time],
+            );
+          }
+        } else if (selected.proposal_type === 'learning') {
+          const [stage] = await m.query(
+            'SELECT stage_id FROM "STAGE" WHERE goal_id = $1 ORDER BY sort_order, stage_id LIMIT 1',
+            [goalId],
+          );
+          if (!stage) throw new BadRequestException('El objetivo no tiene etapas para incorporar el refuerzo');
+          const descriptions = [
+            'Lectura y síntesis recomendada por IA para afianzar conceptos.',
+            'Resolución de problemas asistida con ejemplos prácticos.',
+          ];
+          const added = selected.items.filter((i) => i.action === 'add');
+          for (const [index, item] of added.entries()) {
+            const [activity] = await m.query(
+              `INSERT INTO "ACTIVITY"
+                 (stage_id, origin_recommendation_id, title, description, type, origin,
+                  estimated_minutes, sort_order, status)
+               VALUES ($1, $2, $3, $4, 'reinforcement', 'ai_adjustment', $5, $6, 'pending')
+               RETURNING activity_id`,
+              [stage.stage_id, selected.recommendation_id, item.new_title, descriptions[index] ?? null,
+               item.estimated_minutes ?? 30, index + 1],
+            );
+            await m.query(
+              `INSERT INTO "ACTIVITY_SCHEDULE"
+                 (activity_id, recommendation_id, version_number, scheduled_date, start_time, end_time, reason)
+               VALUES ($1, $2, 1, $3, $4, $5, 'ai_adjustment')`,
+              [activity.activity_id, selected.recommendation_id, item.new_scheduled_date, item.new_start_time, item.new_end_time],
+            );
+          }
+        } else if (selected.proposal_type === 'time' && selected.new_due_date) {
+          // HU-08 / HU-34: el trigger valida la fecha y guarda el historial con este motivo.
+          await m.query("SELECT set_config('flowstep.change_reason', $1, true)", [
+            'Ajuste por propuesta alternativa de menor carga',
+          ]);
+          await m.query('UPDATE "GOAL" SET due_date = $1 WHERE goal_id = $2 AND user_id = $3', [
+            selected.new_due_date,
+            goalId,
+            userId,
+          ]);
+        }
+
+        // HU-52: el trigger acepta la recomendacion y descarta las otras propuestas.
+        await store.markProposalSelected(m, selected.proposal_id);
+        return {
+          message: 'Propuesta de replanificación aplicada exitosamente',
+          proposal_type: dto.proposal_type,
+          goal_id: goalId,
+          recommendation_id: selected.recommendation_id,
+          proposal_id: selected.proposal_id,
+        };
+      });
+    } catch (err: any) {
+      if (err instanceof BadRequestException || err instanceof NotFoundException) throw err;
+      if (err?.code === '23514') {
+        throw new BadRequestException(err?.message || 'La propuesta no se puede aplicar');
+      }
+      // Base sin las tablas del Sprint 5: se aplica como antes.
+      return this.applyReplanLegacy(userId, goalId, dto, goal);
+    }
+  }
+
+  private async applyReplanLegacy(
+    userId: number,
+    goalId: number,
+    dto: ApplyAlternativeDto,
+    goal: Goal,
+  ): Promise<{ message: string; proposal_type: string; goal_id: number }> {
     if (dto.proposal_type === 'balanced') {
       const pendingActivities = await this.activitiesRepository
         .createQueryBuilder('activity')
@@ -1059,7 +1401,9 @@ export class GoalsService {
         await this.schedulesRepository.save([s1, s2]);
       }
     } else if (dto.proposal_type === 'time') {
-      const currentDue = goal.due_date ? new Date(goal.due_date) : new Date();
+      // Si la fecha limite ya vencio se extiende desde hoy, para no proponer una fecha pasada.
+      const due = goal.due_date ? new Date(goal.due_date) : new Date();
+      const currentDue = due.getTime() > Date.now() ? due : new Date();
       currentDue.setDate(currentDue.getDate() + 14);
       await this.updateDueDate(
         userId,
@@ -1083,10 +1427,17 @@ export class GoalsService {
       throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
     }
 
+    // HU-31: la decision queda registrada (las propuestas pasan a descartadas por trigger).
+    const store = this.learningStore;
+    const rejected = store
+      ? await store.safely('Rechazar propuestas', () => store.rejectPendingReplan(userId, goalId), [] as number[])
+      : [];
+
     return {
       message: 'Propuesta rechazada. Se conserva la planificación original.',
       status: 'rejected',
       goal_id: goalId,
+      ...(rejected.length ? { rejected_recommendation_ids: rejected } : {}),
     };
   }
 
@@ -1106,7 +1457,25 @@ export class GoalsService {
     const completedRatio = Math.max(0, Math.min(progressPct / 100, 1));
     const stageNames = goal.stages?.map((s) => s.name) || [];
 
-    return this.aiService.generateGoalKnowledge(goalId, goal.title, completedRatio, stageNames);
+    // Sprint 5: los conocimientos se generan una vez y quedan en TOPIC / GOAL_TOPIC;
+    // desde ahi su estado se calcula con el avance real (v_goal_knowledge).
+    const store = this.learningStore;
+    if (store) {
+      const saved = await store.safely('Leer conocimientos', () => store.loadGoalKnowledge(goalId, goal.title), null);
+      if (saved) return saved;
+    }
+
+    const generated = await this.aiService.generateGoalKnowledge(goalId, goal.title, completedRatio, stageNames);
+    if (!store) return generated;
+    const stored = await store.safely(
+      'Guardar conocimientos',
+      async () => {
+        await store.saveGoalKnowledge(goalId, generated, (goal.stages || []).map((s) => ({ stage_id: s.stage_id, name: s.name })));
+        return store.loadGoalKnowledge(goalId, goal.title);
+      },
+      null,
+    );
+    return stored ?? generated;
   }
 
   // HU-05, HU-38: Consultar recursos de aprendizaje del objetivo
@@ -1117,18 +1486,83 @@ export class GoalsService {
     }
 
     const stageNames = goal.stages?.map((s) => s.name) || [];
-    return this.aiService.generateLearningResources(goalId, goal.title, stageNames);
+
+    // Sprint 5: los recursos se generan una vez y quedan en LEARNING_RESOURCE.
+    const store = this.learningStore;
+    if (store) {
+      // Solo se reutiliza si el objetivo ya tiene su lista propia; los recursos que
+      // vienen de una actividad no reemplazan a los del objetivo.
+      const saved = await store.safely(
+        'Leer recursos',
+        async () => ((await store.hasGoalResources(goalId)) ? store.loadGoalResources(goalId) : []),
+        [] as LearningResourceItem[],
+      );
+      if (saved.length) return saved;
+    }
+
+    const generated = await this.aiService.generateLearningResources(goalId, goal.title, stageNames);
+    if (!store) return generated;
+    const stored = await store.safely(
+      'Guardar recursos',
+      async () => {
+        await store.saveGoalResources(goalId, generated);
+        return store.loadGoalResources(goalId);
+      },
+      [] as LearningResourceItem[],
+    );
+    return stored.length ? stored : generated;
   }
 
   // HU-40: Cuestionario de evaluación diagnóstica
-  async getGoalEvaluation(userId: number, goalId: number): Promise<QuizQuestionItem[]> {
+  async getGoalEvaluation(
+    userId: number,
+    goalId: number,
+  ): Promise<PublicQuizQuestionItem[]> {
     const goal = await this.findOneByUser(userId, goalId);
     if (!goal) {
       throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
     }
 
     const stageNames = goal.stages?.map((s) => s.name) || [];
-    return this.aiService.generateEvaluationQuiz(goalId, goal.title, stageNames);
+
+    // Sprint 5: el cuestionario se guarda en la base (ASSESSMENT) para calificar contra
+    // las mismas preguntas aunque el backend se reinicie; si hay uno sin responder
+    // (ultimos 7 dias) se reutiliza. Nunca se envian las respuestas correctas a la app.
+    const store = this.learningStore;
+    if (store) {
+      const open = await store.safely('Leer evaluacion abierta', () => store.loadOpenAssessment(goalId, userId), null);
+      if (open) return this.toPublicQuiz(open);
+    }
+
+    const questions = await this.aiService.generateEvaluationQuiz(
+      goalId,
+      goal.title,
+      stageNames,
+    );
+
+    if (store) {
+      const stored = await store.safely(
+        'Guardar evaluacion',
+        () => store.saveAssessment(goalId, questions),
+        [] as QuizQuestionItem[],
+      );
+      if (stored.length) return this.toPublicQuiz(stored);
+    }
+
+    // Respaldo sin las tablas del Sprint 5: el cuestionario se guarda en memoria.
+    const now = Date.now();
+    for (const [key, quiz] of this.evaluationQuizzes) {
+      if (quiz.expiresAt <= now) {
+        this.evaluationQuizzes.delete(key);
+      }
+    }
+
+    this.evaluationQuizzes.set(this.evaluationKey(userId, goalId), {
+      questions,
+      expiresAt: now + EVALUATION_TTL_MS,
+    });
+
+    return this.toPublicQuiz(questions);
   }
 
   // HU-40, HU-41, HU-42: Evaluar respuestas del cuestionario y sugerir refuerzo
@@ -1142,36 +1576,66 @@ export class GoalsService {
       throw new NotFoundException(`Objetivo con ID ${goalId} no encontrado`);
     }
 
-    const hasClientGrading = dto.answers && dto.answers.some((a) => typeof a.is_correct === 'boolean');
-    if (hasClientGrading) {
-      let score = 0;
-      const weakTopicsSet = new Set<string>();
-      for (const a of dto.answers) {
-        if (a.is_correct) {
-          score++;
-        } else {
-          weakTopicsSet.add(a.category || 'General');
-        }
-      }
-      const total = dto.answers.length || 1;
-      const percentage = Math.round((score / total) * 100);
-      const weak_topics = Array.from(weakTopicsSet);
-      return {
-        score,
-        total_questions: total,
-        percentage,
-        weak_topics,
-        reinforcement_recommendations: weak_topics.map((topic) => ({
-          topic,
-          suggested_title: `Refuerzo guiado: ${topic}`,
-          estimated_minutes: 30,
-        })),
-      };
+    // Una pregunta no puede responderse dos veces en el mismo envio.
+    const answeredIds = dto.answers.map((answer) => answer.question_id);
+    if (new Set(answeredIds).size !== answeredIds.length) {
+      throw new BadRequestException('Las respuestas no corresponden a esta evaluación.');
     }
 
-    const stageNames = goal.stages?.map((s) => s.name) || [];
-    const questions = await this.aiService.generateEvaluationQuiz(goalId, goal.title, stageNames);
-    return this.aiService.evaluateQuizAnswers(questions, dto.answers);
+    // Sprint 5: si las preguntas son de un cuestionario guardado, se califica en el
+    // servidor contra las opciones guardadas, se guarda el intento y se actualiza el
+    // dominio por tema (HU-41). Un segundo envio del mismo cuestionario devuelve el
+    // mismo resultado.
+    const store = this.learningStore;
+    if (store) {
+      const graded = await store.safely('Calificar evaluacion', () => store.gradeSubmission(userId, goalId, dto.answers), null);
+      if (graded) return graded;
+    }
+
+    const quizKey = this.evaluationKey(userId, goalId);
+    const quiz = this.evaluationQuizzes.get(quizKey);
+    if (!quiz || quiz.expiresAt <= Date.now()) {
+      this.evaluationQuizzes.delete(quizKey);
+      throw new BadRequestException(
+        'La evaluación expiró o no está disponible. Vuelve a cargar las preguntas.',
+      );
+    }
+    if (quiz.result) {
+      return quiz.result;
+    }
+
+    const questionIds = new Set(quiz.questions.map(({ id }) => id));
+    const submittedIds = new Set<number>();
+    const answers = dto.answers.map((answer) => {
+      if (!questionIds.has(answer.question_id) || submittedIds.has(answer.question_id)) {
+        throw new BadRequestException(
+          'Las respuestas no corresponden a esta evaluación.',
+        );
+      }
+      submittedIds.add(answer.question_id);
+      return {
+        question_id: answer.question_id,
+        selected_option: answer.selected_option || answer.selected_option_id || '',
+      };
+    });
+
+    const result = this.aiService.evaluateQuizAnswers(quiz.questions, answers);
+    quiz.result = result;
+    return result;
+  }
+
+  private evaluationKey(userId: number, goalId: number): string {
+    return `${userId}:${goalId}`;
+  }
+
+  // Version publica del cuestionario: sin la respuesta correcta ni la explicacion.
+  private toPublicQuiz(questions: QuizQuestionItem[]): PublicQuizQuestionItem[] {
+    return questions.map(({ id, category, question, options }) => ({
+      id,
+      category,
+      question,
+      options: options.map(({ key, text }) => ({ key, text })),
+    }));
   }
 
   // HU-42, HU-39: Agregar actividad de aprendizaje de refuerzo
@@ -1233,6 +1697,17 @@ export class GoalsService {
       reason: ScheduleReason.AI_ADJUSTMENT,
     });
     await this.schedulesRepository.save(sched);
+
+    // HU-42: se vincula al tema reforzado y a la recomendacion aceptada que la origino.
+    const store = this.learningStore;
+    if (store) {
+      const recommendationId = await store.safely(
+        'Registrar refuerzo',
+        () => store.recordReinforcement(userId, goalId, activity.activity_id, dto.topic),
+        null,
+      );
+      if (recommendationId) activity.origin_recommendation_id = recommendationId;
+    }
 
     return {
       message: 'Actividad de refuerzo añadida exitosamente al plan',

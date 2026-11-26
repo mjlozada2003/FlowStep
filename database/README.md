@@ -170,6 +170,7 @@ database/
 │   ├── sprint3.sql # Pruebas de seguimiento (HU-17 a HU-24)
 │   ├── goal_management.sql # Pruebas de las 14 HU de gestión de objetivos
 │   ├── learning_adaptation.sql # Pruebas de las 18 HU de aprendizaje y adaptación
+│   ├── learning_persistence.sql # Pruebas de las columnas y vistas que usa el backend
 │   └── backend.integration.cjs # Servicios y entidades reales contra PostgreSQL
 └── README.md      # Este documento
 ```
@@ -565,6 +566,8 @@ erDiagram
     ACTIVITY ||--o{ ACTIVITY_RESOURCE : "usa"
     LEARNING_RESOURCE ||--o{ ACTIVITY_RESOURCE : ""
     APP_USER ||--o{ RESOURCE_PROGRESS : "avanza"
+    GOAL ||--o{ GOAL_RESOURCE : "lista de recursos"
+    LEARNING_RESOURCE ||--o{ GOAL_RESOURCE : ""
     GOAL ||--o{ ASSESSMENT : "se evalúa"
     ASSESSMENT ||--o{ ASSESSMENT_QUESTION : "contiene"
     ASSESSMENT_QUESTION ||--o{ QUESTION_OPTION : "ofrece"
@@ -635,16 +638,27 @@ erDiagram
 | HU-51 | `REPLAN_PROPOSAL`: una por tipo (`balanced`, `learning`, `time`) y una sola recomendada; `v_replan_proposal_detail` resume cada alternativa. |
 | HU-52 | Al marcar una propuesta como `selected`, la recomendación pasa a `accepted` y las demás propuestas a `discarded`. Solo se elige una y solo sobre una recomendación pendiente. |
 
-### Indicaciones para el backend
+### Persistencia desde el backend
 
-El backend del Sprint 5 (rama `feature/backend`) funciona sin guardar nada: genera recomendaciones,
-alternativas, conocimientos, recursos y cuestionarios con Gemini en cada llamada. Las tablas permiten
-persistirlos sin cambiar el contrato de la API:
+El backend guarda en estas tablas lo que genera la IA (`backend/src/learning/learning-store.service.ts`),
+sin cambiar el contrato de la API. Las respuestas tienen la misma forma que antes; solo se agregan
+campos opcionales como `recommendation_id`, `proposal_id` o `attempt_id`.
 
-1. **Evaluación (HU-40/41)**: al generar el cuestionario, guardarlo en `ASSESSMENT`/`ASSESSMENT_QUESTION`/`QUESTION_OPTION` y devolver `question_id` reales. Al enviar, crear `ASSESSMENT_ATTEMPT` + `ATTEMPT_ANSWER`, fijar `submitted_at` y leer `v_assessment_attempt_result` y `v_attempt_topic_result`. Hoy `submitGoalEvaluation` vuelve a generar el cuestionario y puede calificar contra preguntas distintas.
-2. **Alternativas (HU-51/52/31)**: guardar la recomendación y sus tres `REPLAN_PROPOSAL`; `apply` marca la elegida como `selected` (y crea las versiones de `ACTIVITY_SCHEDULE` con `recommendation_id`); `reject` pone la recomendación en `rejected`. Hoy `reject` no deja rastro.
-3. **Conocimientos y recursos (HU-37/38)**: guardar lo que genere la IA en `TOPIC`/`GOAL_TOPIC`/`LEARNING_RESOURCE` una vez por objetivo y luego leer `v_goal_knowledge_summary`, `v_goal_knowledge` y `v_goal_learning_resources` (evita una llamada a Gemini por visita).
-4. Errores `23514` (check_violation) → 400; `23505` (unique_violation) → 409.
+| Endpoint | Qué guarda o lee |
+| --- | --- |
+| `GET /goals/:id/knowledge` (HU-37) | La primera vez guarda los temas en `TOPIC`/`GOAL_TOPIC` (vinculados a las etapas por nombre); después los lee de `v_goal_knowledge`, con estado calculado por el avance real. |
+| `GET /goals/:id/resources` (HU-05) | La primera vez guarda la lista del objetivo en `LEARNING_RESOURCE` + `GOAL_RESOURCE` (contenido enriquecido en `details`); después la lee de `v_goal_learning_resources`. |
+| `GET /activities/:id/resources` (HU-38) | Igual, con `ACTIVITY_RESOURCE`. |
+| `GET /goals/:id/evaluation` (HU-40) | Guarda el cuestionario (`ASSESSMENT`, `ASSESSMENT_QUESTION`, `QUESTION_OPTION`) y devuelve los `question_id` reales; reutiliza el que esté sin responder (7 días). |
+| `POST /goals/:id/evaluation/submit` (HU-40/41) | Califica **en el servidor** contra las opciones guardadas (no confía en `is_correct` del cliente), guarda `ASSESSMENT_ATTEMPT`/`ATTEMPT_ANSWER` y actualiza `USER_TOPIC`. |
+| `POST /goals/:id/reinforcement` (HU-42) | Vincula el refuerzo al tema (`ACTIVITY_TOPIC`) y a una recomendación `knowledge_gap` aceptada (`origin_recommendation_id`). |
+| `GET /goals/:id/recommendations`, `GET /goals/personalized-recommendations`, `GET /activities/:id/suggestions` (HU-04/26/30/43) | Guardan cada diagnóstico en `AI_RECOMMENDATION` (explicación y detalle en `details`); se reutiliza durante una hora. La personalizada elige el objetivo con `v_user_learning_profile.focus_goal_id`. |
+| `GET /goals/:id/alternatives` (HU-27/28/29/51) | Guarda la recomendación `replan`, sus tres `REPLAN_PROPOSAL` (textos en `presentation`) y el detalle real de cada cambio en `REPLAN_PROPOSAL_ITEM`: "Equilibrada" reprograma las actividades pendientes en las próximas franjas de disponibilidad; "Más aprendizaje" agrega dos refuerzos; "Más tiempo" extiende 14 días desde la fecha límite o desde hoy si ya venció. Se reutilizan durante el día. |
+| `POST /goals/:id/alternatives/apply` (HU-52/08) | Aplica exactamente lo guardado (nuevas versiones de `ACTIVITY_SCHEDULE` con `recommendation_id`, refuerzos con `origin_recommendation_id` o nueva fecha límite con historial) y marca la propuesta como `selected`. |
+| `POST /goals/:id/alternatives/reject` (HU-31) | Marca la recomendación como `rejected`; un trigger descarta sus propuestas. |
+
+Si la base todavía no tiene estas tablas, cada endpoint responde como antes (solo IA) y registra un
+aviso en el log; la app no deja de funcionar. Errores `23514` (check_violation) → 400.
 
 ```sql
 -- HU-37
@@ -707,7 +721,9 @@ misma base en línea y ya no hace falta Docker para la base.
    El script aplica `01` a `14` en orden y luego `cloud/cloud_setup.sql`, que fija la zona horaria
    `America/La_Paz` y retira el acceso público de la API REST de Supabase (roles `anon` y
    `authenticated`) activando RLS. El backend se conecta como `postgres`, así que no le afecta.
-5. Iniciar el backend como siempre (`npm run start:dev`). Para volver a Docker local, comentar
+5. **Para actualizar una base que ya existe** (por ejemplo, después de traer cambios de `database/`),
+   volver a ejecutar `npm run db:setup`: los scripts se pueden repetir, no borran ni duplican datos.
+6. Iniciar el backend como siempre (`npm run start:dev`). Para volver a Docker local, comentar
    `DATABASE_URL` y `DB_SSL`.
 
 **No subir `.env` al repositorio**: la cadena incluye la contraseña. Cada integrante copia la misma

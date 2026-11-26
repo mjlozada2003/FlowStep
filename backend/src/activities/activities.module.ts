@@ -10,11 +10,13 @@ import { ScheduleMiss } from './entities/schedule-miss.entity';
 import { ActivitiesService } from './activities.service';
 import { ActivitiesController } from './activities.controller';
 import { AiModule } from '../ai/ai.module';
+import { LearningModule } from '../learning/learning.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Activity, Stage, ActivitySchedule, ActivityStatusHistory, WorkSession, MissReason, ScheduleMiss]),
     AiModule,
+    LearningModule,
   ],
   providers: [ActivitiesService],
   controllers: [ActivitiesController],
